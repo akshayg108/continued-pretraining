@@ -41,7 +41,7 @@ def build_sigreg_loss(args):
     if args.univariate_test == "epps_pulley":
         univariate_test = utest_cls(t_max=args.t_max, n_points=args.n_points)
     elif args.univariate_test == "entropy":
-        univariate_test = utest_cls(m=args.entropy_m)
+        univariate_test = utest_cls(m=args.entropy_m, method=args.entropy_method)
     elif args.univariate_test == "moments":
         univariate_test = utest_cls(k_max=args.moments_k_max)
     elif args.univariate_test == "shapiro_wilk":
@@ -103,6 +103,7 @@ def main():
     parser.add_argument("--hv-gamma", type=float, default=1.0)
     # Entropy
     parser.add_argument("--entropy-m", type=int, default=1)
+    parser.add_argument("--entropy-method", type=str, default="centered", choices=["centered", "right"])
     # Moments
     parser.add_argument("--moments-k-max", type=int, default=4)
     # ShapiroWilk
