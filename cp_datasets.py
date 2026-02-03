@@ -70,17 +70,19 @@ DATASETS = {
         "loader": "hf",
         "hf_name": "cifar10",
         "num_classes": 10,
-        "input_size": 32,
+        "input_size": 224,  # Resize to 224 for ViT/MAE models (original is 32×32)
         "normalization": "cifar",
         "splits": ["train", "test", "test"],  # no val split, use test
+        "rename_columns": {"img": "image"},  # CIFAR uses 'img' instead of 'image'
     },
     "cifar100": {
         "loader": "hf",
         "hf_name": "cifar100",
         "num_classes": 100,
-        "input_size": 32,
+        "input_size": 224,  # Resize to 224 for ViT/MAE models (original is 32×32)
         "normalization": "cifar",
         "splits": ["train", "test", "test"],
+        "rename_columns": {"img": "image"},  # CIFAR uses 'img' instead of 'image'
     },
     "breastmnist": {
         "loader": "hf",

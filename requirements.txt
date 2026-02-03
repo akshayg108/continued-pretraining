@@ -9,4 +9,5 @@ torchmetrics==1.8.2
 numpy==2.3.5
 tqdm==4.67.1
 pillow==12.0.0
-stable-pretraining==0.1.0
+# stable-pretraining==0.1.0 # TODO: It will not download every core dependency
+# It will be better to use git clone and pip install -e .

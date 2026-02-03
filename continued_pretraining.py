@@ -26,15 +26,22 @@ except ImportError:
     from .cp_datasets import DATASETS, get_dataset_config
 
 BACKBONE_DIMS = {
+    # DINOv2 models
     "facebook/dinov2-small": 384,
     "facebook/dinov2-base": 768,
     "facebook/dinov2-large": 1024,
     "facebook/dinov2-giant": 1536,
+    # Google ViT models
     "google/vit-base-patch16-224": 768,
     "google/vit-large-patch16-224": 1024,
+    # Timm ViT models
     "vit_base_patch16": 768,
     "vit_large_patch16": 1024,
     "vit_huge_patch14": 1280,
+    # MAE models (Masked Autoencoders)
+    "facebook/vit-mae-base": 768,
+    "facebook/vit-mae-large": 1024,
+    "facebook/vit-mae-huge": 1280,
 }
 
 
@@ -142,29 +149,39 @@ def create_transforms(ds_cfg, n_views=1, strong_aug=False):
 
 def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
     hf_config = ds_cfg.get("hf_config")
+    # Use splits from dataset config to handle datasets without validation split
+    splits = ds_cfg.get("splits", ["train", "validation", "test"])
+    train_split, val_split, test_split = splits
+    
+    # Handle column name mapping (e.g., CIFAR uses 'img' instead of 'image')
+    rename_columns = ds_cfg.get("rename_columns", None)
+    
     full_train = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="train",
+        split=train_split,
         transform=train_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     val_data = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="validation",
+        split=val_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     test_data = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="test",
+        split=test_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
 
     torch.manual_seed(args.seed)
@@ -189,10 +206,11 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
     eval_train = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="train",
+        split=train_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     eval_train_loader = torch.utils.data.DataLoader(
         CPSubset(eval_train, indices),
