@@ -22,12 +22,15 @@ def setup_mae_cp(backbone, embed_dim, optim_config, **kwargs):
     patch_size = image_size // int(num_tokens ** 0.5)
     output_dim = patch_size ** 2 * 3
 
-    decoder = MAEDecoder(embed_dim=decoder_dim, decoder_embed_dim=decoder_dim,
-                         output_dim=output_dim, num_patches=num_tokens, depth=decoder_depth)
     # No need for projector since MAEDecoder already include one
+    # decoder = MAEDecoder(embed_dim=decoder_dim, decoder_embed_dim=decoder_dim,
+    #                      output_dim=output_dim, num_patches=num_tokens, depth=decoder_depth)
     # projector = nn.Linear(embed_dim, decoder_dim)
     # return spt.Module(backbone=backbone, forward=mae_cp_forward, optim=optim_config,
     #                   projector=projector, decoder=decoder, mask_ratio=mask_ratio, patch_size=patch_size)
+    
+    decoder = MAEDecoder(embed_dim=embed_dim, decoder_embed_dim=decoder_dim,
+                         output_dim=output_dim, num_patches=num_tokens, depth=decoder_depth)
     return spt.Module(backbone=backbone, forward=mae_cp_forward, optim=optim_config,
                       decoder=decoder, mask_ratio=mask_ratio, patch_size=patch_size)
 
