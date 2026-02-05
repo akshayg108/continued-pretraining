@@ -11,7 +11,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
-from stable_pretraining.backbone.utils import from_huggingface
+from stable_pretraining.backbone.utils import from_huggingface, from_timm
 from stable_pretraining.data.transforms import MultiViewTransform
 
 try:
@@ -26,15 +26,29 @@ except ImportError:
     from .cp_datasets import DATASETS, get_dataset_config
 
 BACKBONE_DIMS = {
+    # DINOv2 models
     "facebook/dinov2-small": 384,
     "facebook/dinov2-base": 768,
     "facebook/dinov2-large": 1024,
     "facebook/dinov2-giant": 1536,
+    # Google ViT models
     "google/vit-base-patch16-224": 768,
     "google/vit-large-patch16-224": 1024,
+    # Timm ViT models
     "vit_base_patch16": 768,
     "vit_large_patch16": 1024,
     "vit_huge_patch14": 1280,
+    "vit_base_patch16_224": 768,
+    "vit_large_patch16_224": 1024,
+    "vit_huge_patch14_224": 1280,
+    # MAE models - HuggingFace
+    "facebook/vit-mae-base": 768,
+    "facebook/vit-mae-large": 1024,
+    "facebook/vit-mae-huge": 1280,
+    # MAE models - timm
+    "vit_base_patch16_224.mae": 768,
+    "vit_large_patch16_224.mae": 1024,
+    "vit_huge_patch14_224.mae": 1280,
 }
 
 
@@ -142,29 +156,39 @@ def create_transforms(ds_cfg, n_views=1, strong_aug=False):
 
 def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
     hf_config = ds_cfg.get("hf_config")
+    # Use splits from dataset config to handle datasets without validation split
+    splits = ds_cfg.get("splits", ["train", "validation", "test"])
+    train_split, val_split, test_split = splits
+    
+    # Handle column name mapping (e.g., CIFAR uses 'img' instead of 'image')
+    rename_columns = ds_cfg.get("rename_columns", None)
+    
     full_train = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="train",
+        split=train_split,
         transform=train_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     val_data = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="validation",
+        split=val_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     test_data = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="test",
+        split=test_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
 
     torch.manual_seed(args.seed)
@@ -189,10 +213,11 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
     eval_train = spt.data.HFDataset(
         ds_cfg["hf_name"],
         name=hf_config,
-        split="train",
+        split=train_split,
         transform=val_transform,
         trust_remote_code=True,
         cache_dir=str(data_dir),
+        rename_columns=rename_columns,
     )
     eval_train_loader = torch.utils.data.DataLoader(
         CPSubset(eval_train, indices),
@@ -205,7 +230,29 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
 
 
 def load_backbone(args):
-    backbone = from_huggingface(args.backbone, pretrained=True)
+    """Load backbone from either timm or HuggingFace.
+    
+    Automatically detects model type:
+    - timm models: Contains '.', numbers, or known timm prefixes
+    - HuggingFace models: Contains '/'
+    """
+    backbone_name = args.backbone
+    
+    # Detect model type
+    is_timm_model = (
+        '/' not in backbone_name or  # timm models don't have '/'
+        backbone_name.startswith('vit_') or
+        backbone_name.startswith('deit_') or
+        '.mae' in backbone_name
+    )
+    
+    if is_timm_model:
+        print(f"Loading timm model: {backbone_name}")
+        backbone = from_timm(backbone_name, pretrained=True)
+    else:
+        print(f"Loading HuggingFace model: {backbone_name}")
+        backbone = from_huggingface(backbone_name, pretrained=True)
+    
     for p in backbone.parameters():
         p.requires_grad = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

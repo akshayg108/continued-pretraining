@@ -28,9 +28,15 @@ def create_cp_linear_probe(
         metrics["auroc"] = torchmetrics.classification.MulticlassAUROC(num_classes)
 
     return spt.callbacks.OnlineProbe(
-        module, name=name, input=input_key, target=target_key,
-        probe=nn.Linear(embedding_dim, num_classes), loss_fn=nn.CrossEntropyLoss(),
-        metrics=metrics, optimizer=optimizer, scheduler=scheduler,
+        module=module,
+        name=name,
+        input=input_key,
+        target=target_key,
+        probe=nn.Linear(embedding_dim, num_classes),
+        loss=nn.CrossEntropyLoss(),  
+        optimizer=optimizer,
+        scheduler=scheduler,
+        metrics=metrics,
     )
 
 
