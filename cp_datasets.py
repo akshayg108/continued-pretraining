@@ -45,7 +45,8 @@ DATASETS = {
         "num_classes": 10,
         "input_size": 224,
         "normalization": "galaxy10",
-        "splits": ["train", "train", "train"],  # Only train split available, will split manually
+        "splits": ["train", "val", "test"],
+        "manual_split": True,  # Force manual splitting from full dataset (avoid data leakage)
     },
     # MedMNIST datasets
     "bloodmnist": {
@@ -247,6 +248,25 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
     dataset_class = cfg["dataset_class"]
     config_name = cfg["config_name"]
     
+    # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
+    # force loading full dataset and split manually to avoid data leakage
+    if cfg.get("manual_split", False):
+        if config_name is not None:
+            hf_ds = dataset_class(
+                split=None,
+                config_name=config_name,
+                download_dir=str(download_dir),
+                processed_cache_dir=str(processed_cache_dir),
+            )
+        else:
+            hf_ds = dataset_class(
+                split=None,
+                download_dir=str(download_dir),
+                processed_cache_dir=str(processed_cache_dir),
+            )
+        hf_ds = _handle_split_from_dict(hf_ds, split, seed)
+        return HFDatasetWrapper(hf_ds, transform=transform)
+    
     # Load the raw HF dataset from stable-datasets
     if config_name is not None:
         # Dataset with config (e.g., MedMNIST variants)
@@ -282,11 +302,6 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 processed_cache_dir=str(processed_cache_dir),
             )
             hf_ds = _handle_split_from_dict(hf_ds, split, seed)
-    
-    # Handle datasets that return a single split (e.g., Galaxy10)
-    if hasattr(hf_ds, "train_test_split") and split != "train":
-        # Galaxy10 case: only has "train" split, need to create val/test
-        hf_ds = _split_single_dataset(hf_ds, split, seed)
     
     # Wrap in HFDatasetWrapper for stable-pretraining compatibility
     return HFDatasetWrapper(hf_ds, transform=transform)

@@ -1,5 +1,8 @@
 # Data loading utilities for continued pretraining
 import torch
+import hashlib
+import numpy as np
+from PIL import Image
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
@@ -137,6 +140,11 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
         cache_dir=data_dir,
         seed=args.seed,
     )
+    
+    # Verify no data leakage between splits
+    print("Checking for data leakage between splits...")
+    check_dataset_overlap(full_train, val_data, "train", "validation", sample_size=1000, seed=args.seed)
+    check_dataset_overlap(full_train, test_data, "train", "test", sample_size=1000, seed=args.seed)
 
     # Create training subset
     torch.manual_seed(args.seed)
@@ -179,3 +187,91 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
 
     print(f"Data: train={len(train_subset)} val={len(val_data)} test={len(test_data)}")
     return data, test_loader, eval_train_loader, indices
+
+
+def _hash_sample(sample):
+    """Create a hash for a sample based on its image content.
+    
+    Args:
+        sample: Sample dict with 'image' key containing PIL Image, tensor, or numpy array
+        
+    Returns:
+        str: Hash string identifying the sample
+    """
+    image = sample.get("image", sample.get("img", None))
+    if image is None:
+        # If no image key, use label as fallback
+        label = sample.get("label", sample.get("target", 0))
+        return hashlib.md5(str(label).encode()).hexdigest()
+    
+    # Convert image to numpy array for hashing
+    if isinstance(image, Image.Image):
+        img_array = np.array(image)
+    elif isinstance(image, torch.Tensor):
+        img_array = image.cpu().numpy()
+    else:
+        img_array = np.array(image)
+    
+    # Create hash from image bytes
+    return hashlib.md5(img_array.tobytes()).hexdigest()
+
+
+def check_dataset_overlap(dataset1, dataset2, dataset1_name="dataset1", dataset2_name="dataset2", 
+                          sample_size=100, seed=42):
+    """Check if two datasets have overlapping samples.
+    
+    Args:
+        dataset1, dataset2: Datasets to check (HFDatasetWrapper or similar)
+        dataset1_name, dataset2_name: Names for logging
+        sample_size: Number of samples to check from each dataset
+        seed: Random seed for sampling
+        
+    Raises:
+        AssertionError: If overlap is detected
+    """
+    np.random.seed(seed)
+    
+    # Get underlying HF datasets if wrapped
+    ds1 = dataset1.hf_dataset if hasattr(dataset1, 'hf_dataset') else dataset1
+    ds2 = dataset2.hf_dataset if hasattr(dataset2, 'hf_dataset') else dataset2
+    
+    # Sample indices
+    n1 = len(ds1)
+    n2 = len(ds2)
+    sample_size = min(sample_size, n1, n2)
+    
+    if sample_size == 0:
+        return  # Empty datasets, no overlap possible
+    
+    indices1 = np.random.choice(n1, size=min(sample_size, n1), replace=False)
+    indices2 = np.random.choice(n2, size=min(sample_size, n2), replace=False)
+    
+    # Create hash sets
+    hashes1 = set()
+    hashes2 = set()
+    
+    try:
+        for idx in indices1:
+            sample = ds1[int(idx)]
+            hashes1.add(_hash_sample(sample))
+        
+        for idx in indices2:
+            sample = ds2[int(idx)]
+            hashes2.add(_hash_sample(sample))
+    except Exception as e:
+        print(f"⚠️  Warning: Could not check dataset overlap due to: {e}")
+        return
+    
+    # Check for overlap
+    overlap = hashes1 & hashes2
+    overlap_ratio = len(overlap) / sample_size if sample_size > 0 else 0
+    
+    assert len(overlap) == 0, (
+        f"Dataset overlap detected between {dataset1_name} and {dataset2_name}! "
+        f"Found {len(overlap)}/{sample_size} overlapping samples ({overlap_ratio:.1%}). "
+        f"This indicates data leakage."
+    )
+    
+    print(f"✓ No overlap detected between {dataset1_name} and {dataset2_name} (checked {sample_size} samples each)")
+
+

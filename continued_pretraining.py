@@ -78,12 +78,29 @@ def create_base_parser(description="Continued Pretraining"):
 
 
 def setup_paths(args):
-    cache_dir, checkpoint_dir = Path(args.cache_dir), Path(args.checkpoint_dir)
-    data_dir = cache_dir / "huggingface" / "datasets"
+    """Setup paths for data and checkpoints.
+    
+    Args:
+        args: Command-line arguments with cache_dir and checkpoint_dir
+        
+    Returns:
+        tuple: (data_dir, checkpoint_dir)
+            - data_dir: Base cache directory for datasets
+            - checkpoint_dir: Directory for model checkpoints
+    """
+    cache_dir = Path(args.cache_dir)
+    checkpoint_dir = Path(args.checkpoint_dir)
+    
+    # Use cache_dir directly as data_dir for stable-datasets
+    # stable-datasets will create subdirectories: stable_datasets/downloads and stable_datasets/processed
+    data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Set HuggingFace environment variables (for compatibility with any remaining HF dependencies)
     os.environ["HF_HOME"] = str(cache_dir / "huggingface")
-    os.environ["HF_DATASETS_CACHE"] = str(data_dir)
+    os.environ["HF_DATASETS_CACHE"] = str(cache_dir / "huggingface" / "datasets")
+    
     return data_dir, checkpoint_dir
 
 
