@@ -49,18 +49,19 @@ python -u tent/tent_cp.py \
     --dataset galaxy10 \
     --backbone vit_base_patch16_224 \
     --n-samples 1000 \
-    --epochs 100 \
+    --epochs 40 \
     --batch-size 64 \
     --lr 1e-4 \
     --weight-decay 0.05 \
     --tent-mode norm_only \
+    --freeze-epochs 5 \
     --num-trained-blocks 2 \
     --warmup-epochs 10 \
     --knn-k 20 \
     --num-workers 8 \
     --checkpoint-dir ${CKPT_DIR} \
     --cache-dir ${DATA_DIR} \
-    --project tent-cp-galaxy10 \
+    --project cp-experiments \
     --seed 42 2>&1
 EXIT_CODE=$?
 echo "=========================================="
