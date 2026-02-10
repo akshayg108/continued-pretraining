@@ -8,8 +8,8 @@ from . import evaluation
 
 # Make key APIs easily accessible
 from .core import (
-    BaseCPMethod,
-    MethodConfig,
+    # BaseCPMethod,  # TODO: Implement base classes
+    # MethodConfig,  # TODO: Implement base classes
     register_method,
     get_method,
     list_methods,
@@ -23,8 +23,8 @@ __all__ = [
     "callbacks",
     "evaluation",
     # Key exports
-    "BaseCPMethod",
-    "MethodConfig",
+    # "BaseCPMethod",  # TODO: Implement
+    # "MethodConfig",  # TODO: Implement
     "register_method",
     "get_method",
     "list_methods",

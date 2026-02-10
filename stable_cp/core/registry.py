@@ -1,9 +1,9 @@
-from typing import Dict, Type, List
-from .base import BaseCPMethod
+from typing import Dict, Type, List, Any
+# from .base import BaseCPMethod  # TODO: Implement base class
 
 
 # Global registry mapping method names to method classes
-_METHODS_REGISTRY: Dict[str, Type[BaseCPMethod]] = {}
+_METHODS_REGISTRY: Dict[str, Type[Any]] = {}
 
 
 def register_method(name: str):
@@ -28,21 +28,19 @@ def register_method(name: str):
         ValueError: If the method name is already registered
     """
 
-    def decorator(cls: Type[BaseCPMethod]) -> Type[BaseCPMethod]:
+    def decorator(cls: Type[Any]) -> Type[Any]:
         if name in _METHODS_REGISTRY:
             raise ValueError(
                 f"Method '{name}' is already registered. "
                 f"Existing: {_METHODS_REGISTRY[name]}, New: {cls}"
             )
-        if not issubclass(cls, BaseCPMethod):
-            raise TypeError(f"Method class {cls} must inherit from BaseCPMethod")
         _METHODS_REGISTRY[name] = cls
         return cls
 
     return decorator
 
 
-def get_method(name: str) -> Type[BaseCPMethod]:
+def get_method(name: str) -> Type[Any]:
     """Get a registered method class by name.
 
     Args:
@@ -81,7 +79,7 @@ def is_method_registered(name: str) -> bool:
     return name in _METHODS_REGISTRY
 
 
-def get_all_methods() -> Dict[str, Type[BaseCPMethod]]:
+def get_all_methods() -> Dict[str, Type[Any]]:
     """Get all registered methods.
 
     Returns:
