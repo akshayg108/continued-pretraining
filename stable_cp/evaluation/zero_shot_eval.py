@@ -62,20 +62,22 @@ def load_backbone_from_checkpoint(
 
 def load_backbone(
     model_name: str,
-    source: str = "torchvision",
+    source: str = "timm",
     checkpoint: str = None,
     low_resolution: bool = False,
     **kwargs,
 ) -> nn.Module:
     # Load a backbone model using stable-pretraining conventions
     if source == "torchvision":
-        model = spt.backbone.from_torchvision(model_name, low_resolution=low_resolution, **kwargs)
+        model = spt.backbone.from_torchvision(
+            model_name, low_resolution=low_resolution, **kwargs
+        )
     elif source == "timm":
-        model = spt.backbone.from_timm(model_name, low_resolution=low_resolution, **kwargs)
-    elif source == "huggingface":
-        model = spt.backbone.from_huggingface(model_name, pretrained=checkpoint is None, **kwargs)
+        model = spt.backbone.from_timm(
+            model_name, low_resolution=low_resolution, **kwargs
+        )
     else:
-        raise ValueError(f"Unknown source: {source}. Use 'torchvision', 'timm', or 'huggingface'")
+        raise ValueError(f"Unknown source: {source}. Use 'torchvision' or 'timm'")
 
     # Load checkpoint if provided
     if checkpoint is not None:
@@ -119,14 +121,10 @@ def extract_features(
             x = x.to(device)
             feat = model(x)
 
-            # Handle HuggingFace model outputs
-            if hasattr(feat, 'last_hidden_state'):
-                feat = feat.last_hidden_state[:, 0]  # CLS token
-            elif hasattr(feat, 'pooler_output'):
-                feat = feat.pooler_output
             # Handle sequence outputs (e.g., ViT) - take CLS token or mean pool
-            elif feat.dim() == 3:
+            if feat.dim() == 3:
                 feat = feat[:, 0]  # CLS token
+            # Otherwise assume it's already pooled (2D tensor)
 
             features.append(feat.cpu().numpy())
             labels.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
@@ -168,12 +166,16 @@ def knn_evaluate(
 
     results = {
         "knn_acc": MulticlassAccuracy(num_classes=num_classes)(pred_t, target_t).item(),
-        "knn_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(pred_t, target_t).item(),
+        "knn_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
+            pred_t, target_t
+        ).item(),
     }
 
     # AUROC (may fail if not all classes present in test set)
     try:
-        results["knn_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(proba_t, target_t).item()
+        results["knn_auroc"] = MulticlassAUROC(
+            num_classes=num_classes, average="macro"
+        )(proba_t, target_t).item()
     except ValueError:
         results["knn_auroc"] = 0.0
 
@@ -214,12 +216,18 @@ def linear_probe_evaluate(
     proba_t = torch.from_numpy(proba).float()
 
     results = {
-        "linear_acc": MulticlassAccuracy(num_classes=num_classes)(pred_t, target_t).item(),
-        "linear_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(pred_t, target_t).item(),
+        "linear_acc": MulticlassAccuracy(num_classes=num_classes)(
+            pred_t, target_t
+        ).item(),
+        "linear_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
+            pred_t, target_t
+        ).item(),
     }
 
     try:
-        results["linear_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(proba_t, target_t).item()
+        results["linear_auroc"] = MulticlassAUROC(
+            num_classes=num_classes, average="macro"
+        )(proba_t, target_t).item()
     except ValueError:
         results["linear_auroc"] = 0.0
 
@@ -284,12 +292,18 @@ def linear_probe_pytorch_evaluate(
 
     # Compute metrics
     results = {
-        "linear_pytorch_acc": MulticlassAccuracy(num_classes=num_classes)(pred, test_labels_t).item(),
-        "linear_pytorch_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(pred, test_labels_t).item(),
+        "linear_pytorch_acc": MulticlassAccuracy(num_classes=num_classes)(
+            pred, test_labels_t
+        ).item(),
+        "linear_pytorch_f1": MulticlassF1Score(
+            num_classes=num_classes, average="macro"
+        )(pred, test_labels_t).item(),
     }
 
     try:
-        results["linear_pytorch_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(proba, test_labels_t).item()
+        results["linear_pytorch_auroc"] = MulticlassAUROC(
+            num_classes=num_classes, average="macro"
+        )(proba, test_labels_t).item()
     except ValueError:
         results["linear_pytorch_auroc"] = 0.0
 
@@ -336,7 +350,9 @@ def zero_shot_eval(
     # Extract features
     if verbose:
         print("Extracting features...")
-    train_features, train_labels = extract_features(model, train_loader, device, verbose)
+    train_features, train_labels = extract_features(
+        model, train_loader, device, verbose
+    )
     test_features, test_labels = extract_features(model, test_loader, device, verbose)
 
     if verbose:
@@ -347,7 +363,11 @@ def zero_shot_eval(
     # k-NN evaluation
     if verbose:
         print("Running k-NN evaluation...")
-    results.update(knn_evaluate(train_features, train_labels, test_features, test_labels, k=k_neighbors))
+    results.update(
+        knn_evaluate(
+            train_features, train_labels, test_features, test_labels, k=k_neighbors
+        )
+    )
     if verbose:
         print(f"  Accuracy: {results['knn_acc']:.4f}, F1: {results['knn_f1']:.4f}")
 
@@ -355,26 +375,42 @@ def zero_shot_eval(
     if linear_probe_method in ["sklearn", "both"]:
         if verbose:
             print("Running linear probe evaluation (sklearn LogisticRegression)...")
-        results.update(linear_probe_evaluate(
-            train_features, train_labels, test_features, test_labels,
-            max_iter=linear_max_iter,
-        ))
+        results.update(
+            linear_probe_evaluate(
+                train_features,
+                train_labels,
+                test_features,
+                test_labels,
+                max_iter=linear_max_iter,
+            )
+        )
         if verbose:
-            print(f"  Accuracy: {results['linear_acc']:.4f}, F1: {results['linear_f1']:.4f}")
+            print(
+                f"  Accuracy: {results['linear_acc']:.4f}, F1: {results['linear_f1']:.4f}"
+            )
 
     # Linear probe evaluation - PyTorch (DIET-CP reference protocol)
     if linear_probe_method in ["pytorch", "both"]:
         if verbose:
-            print(f"Running linear probe evaluation (PyTorch, {linear_pytorch_steps} steps)...")
-        results.update(linear_probe_pytorch_evaluate(
-            train_features, train_labels, test_features, test_labels,
-            device=device,
-            lr=linear_pytorch_lr,
-            num_steps=linear_pytorch_steps,
-            verbose=verbose,
-        ))
+            print(
+                f"Running linear probe evaluation (PyTorch, {linear_pytorch_steps} steps)..."
+            )
+        results.update(
+            linear_probe_pytorch_evaluate(
+                train_features,
+                train_labels,
+                test_features,
+                test_labels,
+                device=device,
+                lr=linear_pytorch_lr,
+                num_steps=linear_pytorch_steps,
+                verbose=verbose,
+            )
+        )
         if verbose:
-            print(f"  Accuracy: {results['linear_pytorch_acc']:.4f}, F1: {results['linear_pytorch_f1']:.4f}")
+            print(
+                f"  Accuracy: {results['linear_pytorch_acc']:.4f}, F1: {results['linear_pytorch_f1']:.4f}"
+            )
 
     # K-means evaluation
     if verbose:

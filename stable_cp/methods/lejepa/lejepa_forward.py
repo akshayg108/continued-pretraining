@@ -21,11 +21,10 @@ def _get_views_list(batch):
 
 
 def _extract_embedding(embedding):
-    if hasattr(embedding, "last_hidden_state"):
-        return embedding.last_hidden_state[:, 0, :]
-    elif embedding.dim() == 3:
-        return embedding[:, 0, :]
-    return embedding
+    # Extract CLS token from TIMM ViT output
+    if embedding.dim() == 3:
+        return embedding[:, 0, :]  # CLS token
+    return embedding  # Already 2D (pooled)
 
 
 def lejepa_forward(self, batch, stage):
@@ -56,15 +55,31 @@ def lejepa_forward(self, batch, stage):
             if _supports_3d_input(self.sigreg_loss):
                 sigreg_loss = self.sigreg_loss(proj_stacked)
             else:
-                sigreg_loss = self.sigreg_loss(proj_stacked.reshape(-1, proj_stacked.size(-1)))
+                sigreg_loss = self.sigreg_loss(
+                    proj_stacked.reshape(-1, proj_stacked.size(-1))
+                )
 
             lamb = getattr(self, "lamb", 0.02)
             lejepa_loss = sigreg_loss * lamb + inv_loss * (1 - lamb)
             out["loss"] = lejepa_loss
 
-            self.log(f"{stage}/sigreg", sigreg_loss, on_step=True, on_epoch=True, sync_dist=True)
-            self.log(f"{stage}/inv", inv_loss, on_step=True, on_epoch=True, sync_dist=True)
-            self.log(f"{stage}/lejepa", lejepa_loss, on_step=True, on_epoch=True, sync_dist=True)
+            self.log(
+                f"{stage}/sigreg",
+                sigreg_loss,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
+            self.log(
+                f"{stage}/inv", inv_loss, on_step=True, on_epoch=True, sync_dist=True
+            )
+            self.log(
+                f"{stage}/lejepa",
+                lejepa_loss,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
     else:
         # Single-view (validation)
         out["embedding"] = _extract_embedding(self.backbone(batch["image"]))

@@ -22,7 +22,9 @@ class FreezeBackboneCallback(pl.Callback):
             self._freeze_backbone(pl_module)
             self._backbone_frozen = True
             self._initial_freeze_applied = True
-            print(f"FreezeBackboneCallback: Backbone frozen for first {self.freeze_epochs} epochs")
+            print(
+                f"FreezeBackboneCallback: Backbone frozen for first {self.freeze_epochs} epochs"
+            )
 
     def on_train_epoch_start(self, trainer, pl_module):
         # Handle freezing/unfreezing at epoch boundaries
@@ -38,7 +40,9 @@ class FreezeBackboneCallback(pl.Callback):
             elif self.num_trained_blocks == 0:
                 print(f"Epoch {current_epoch}: Backbone remains frozen (head-only)")
             else:
-                print(f"Epoch {current_epoch}: Training last {self.num_trained_blocks} blocks")
+                print(
+                    f"Epoch {current_epoch}: Training last {self.num_trained_blocks} blocks"
+                )
 
     def _freeze_backbone(self, pl_module):
         # Freeze all backbone parameters
@@ -52,7 +56,10 @@ class FreezeBackboneCallback(pl.Callback):
 
         # Ensure BatchNorm layers stay in eval mode
         for module in pl_module.backbone.modules():
-            if isinstance(module, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d)):
+            if isinstance(
+                module,
+                (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d),
+            ):
                 module.eval()
 
     def _apply_selective_unfreezing(self, pl_module):
@@ -88,30 +95,22 @@ class FreezeBackboneCallback(pl.Callback):
             print(f"Selectively training blocks {start_idx} to {total_blocks - 1}")
         else:
             # Fallback: unfreeze everything with warning
-            print("Warning: Could not find transformer layers, unfreezing all parameters")
+            print(
+                "Warning: Could not find transformer layers, unfreezing all parameters"
+            )
             pl_module.backbone.train()
             for param in pl_module.backbone.parameters():
                 param.requires_grad = True
 
     def _find_transformer_layers(self, backbone):
-        # Find transformer layers in various model architectures
-        # HuggingFace ViT wrapped in a container
-        if hasattr(backbone, "model"):
-            inner = backbone.model
-            if hasattr(inner, "encoder") and hasattr(inner.encoder, "layer"):
-                return inner.encoder.layer
-            if hasattr(inner, "layer"):
-                return inner.layer
-            if hasattr(inner, "vit") and hasattr(inner.vit, "encoder"):
-                return inner.vit.encoder.layer
-
-        # Direct HuggingFace ViT
-        if hasattr(backbone, "encoder") and hasattr(backbone.encoder, "layer"):
-            return backbone.encoder.layer
-
-        # timm ViT
+        # Find transformer layers in TIMM model architectures
+        # TIMM ViT (standard)
         if hasattr(backbone, "blocks"):
             return backbone.blocks
+
+        # TIMM ViT wrapped in container
+        if hasattr(backbone, "model") and hasattr(backbone.model, "blocks"):
+            return backbone.model.blocks
 
         # ResNet layers
         if hasattr(backbone, "layer4"):

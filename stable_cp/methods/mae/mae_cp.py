@@ -83,22 +83,12 @@ def main():
         )
 
         # Get token sequence (not pooled features)
-        if hasattr(backbone, "forward_features"):
-            # timm models: use forward_features to get all tokens
-            out = backbone.forward_features(test_input)
-        else:
-            # HuggingFace models: regular forward
-            out = backbone(test_input)
+        # TIMM models: use forward_features to get all tokens
+        tokens = backbone.forward_features(test_input)
 
-        # Handle different output formats
-        if hasattr(out, "last_hidden_state"):
-            # HuggingFace models
-            tokens = out.last_hidden_state
-        elif isinstance(out, torch.Tensor):
-            # timm models return tensor directly
-            tokens = out
-        else:
-            raise ValueError(f"Unexpected backbone output type: {type(out)}")
+        # Ensure output is a tensor
+        if not isinstance(tokens, torch.Tensor):
+            raise ValueError(f"Unexpected backbone output type: {type(tokens)}")
 
         # Check token shape is valid
         if tokens.dim() != 3:

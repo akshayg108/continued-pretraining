@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import LearningRateMonitor
 
 import stable_pretraining as spt
-from stable_pretraining.backbone.utils import from_huggingface, from_timm
+from stable_pretraining.backbone.utils import from_timm
 
 from stable_cp.callbacks import (
     FreezeBackboneCallback,
@@ -17,34 +17,9 @@ from stable_cp.callbacks import (
 )
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
 from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from stable_cp.utils.backbone import BACKBONE_DIMS
 from cp_datasets import DATASETS, get_dataset_config
 from cp_dataloader import create_data_loaders, create_transforms
-
-BACKBONE_DIMS = {
-    # DINOv2 models
-    "facebook/dinov2-small": 384,
-    "facebook/dinov2-base": 768,
-    "facebook/dinov2-large": 1024,
-    "facebook/dinov2-giant": 1536,
-    # Google ViT models
-    "google/vit-base-patch16-224": 768,
-    "google/vit-large-patch16-224": 1024,
-    # Timm ViT models
-    "vit_base_patch16": 768,
-    "vit_large_patch16": 1024,
-    "vit_huge_patch14": 1280,
-    "vit_base_patch16_224": 768,
-    "vit_large_patch16_224": 1024,
-    "vit_huge_patch14_224": 1280,
-    # MAE models - HuggingFace
-    "facebook/vit-mae-base": 768,
-    "facebook/vit-mae-large": 1024,
-    "facebook/vit-mae-huge": 1280,
-    # MAE models - timm
-    "vit_base_patch16_224.mae": 768,
-    "vit_large_patch16_224.mae": 1024,
-    "vit_huge_patch14_224.mae": 1280,
-}
 
 
 # Shared functions
@@ -93,10 +68,6 @@ def setup_paths(args):
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Set HuggingFace environment variables (for compatibility with any remaining HF dependencies)
-    os.environ["HF_HOME"] = str(cache_dir / "huggingface")
-    os.environ["HF_DATASETS_CACHE"] = str(cache_dir / "huggingface" / "datasets")
-
     return data_dir, checkpoint_dir
 
 
@@ -113,28 +84,17 @@ def get_config(args):
 
 
 def load_backbone(args):
-    """Load backbone from either timm or HuggingFace.
+    """Load backbone from TIMM.
 
-    Automatically detects model type:
-    - timm models: Contains '.', numbers, or known timm prefixes
-    - HuggingFace models: Contains '/'
+    Args:
+        args: Arguments with backbone name
+
+    Returns:
+        tuple: (backbone model, device)
     """
     backbone_name = args.backbone
-
-    # Detect model type
-    is_timm_model = (
-        "/" not in backbone_name  # timm models don't have '/'
-        or backbone_name.startswith("vit_")
-        or backbone_name.startswith("deit_")
-        or ".mae" in backbone_name
-    )
-
-    if is_timm_model:
-        print(f"Loading timm model: {backbone_name}")
-        backbone = from_timm(backbone_name, pretrained=True)
-    else:
-        print(f"Loading HuggingFace model: {backbone_name}")
-        backbone = from_huggingface(backbone_name, pretrained=True)
+    print(f"Loading TIMM model: {backbone_name}")
+    backbone = from_timm(backbone_name, pretrained=True)
 
     for p in backbone.parameters():
         p.requires_grad = True
@@ -346,8 +306,8 @@ def main():
                 ds_cfg["input_size"],
                 device=next(backbone.parameters()).device,
             )
-            out = backbone(test_input)
-            tokens = out.last_hidden_state if hasattr(out, "last_hidden_state") else out
+            # Use forward_features for TIMM models to get token sequence
+            tokens = backbone.forward_features(test_input)
             num_tokens = tokens.shape[1] - 1
         kwargs.update(
             image_size=ds_cfg["input_size"],
