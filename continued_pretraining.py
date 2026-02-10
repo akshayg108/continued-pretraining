@@ -11,24 +11,14 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_huggingface, from_timm
 
-try:
-    from stable_cp.callbacks import (
-        FreezeBackboneCallback,
-        create_cp_evaluation_callbacks,
-    )
-    from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
-    from cp_datasets import DATASETS, get_dataset_config
-    from cp_dataloader import create_data_loaders, create_transforms
-except ImportError:
-    from .stable_cp.callbacks import (
-        FreezeBackboneCallback,
-        create_cp_evaluation_callbacks,
-    )
-    from .stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from .stable_cp.evaluation.zero_shot_eval import zero_shot_eval
-    from .cp_datasets import DATASETS, get_dataset_config
-    from .cp_dataloader import create_data_loaders, create_transforms
+from stable_cp.callbacks import (
+    FreezeBackboneCallback,
+    create_cp_evaluation_callbacks,
+)
+from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
+from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from cp_datasets import DATASETS, get_dataset_config
+from cp_dataloader import create_data_loaders, create_transforms
 
 BACKBONE_DIMS = {
     # DINOv2 models
