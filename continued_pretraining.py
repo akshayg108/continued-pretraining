@@ -12,15 +12,21 @@ import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_huggingface, from_timm
 
 try:
-    from callbacks import FreezeBackboneCallback, create_cp_evaluation_callbacks
-    from callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from evaluation.zero_shot_eval import zero_shot_eval
+    from stable_cp.callbacks import (
+        FreezeBackboneCallback,
+        create_cp_evaluation_callbacks,
+    )
+    from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
+    from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
     from cp_datasets import DATASETS, get_dataset_config
     from cp_dataloader import create_data_loaders, create_transforms
 except ImportError:
-    from .callbacks import FreezeBackboneCallback, create_cp_evaluation_callbacks
-    from .callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from .evaluation.zero_shot_eval import zero_shot_eval
+    from .stable_cp.callbacks import (
+        FreezeBackboneCallback,
+        create_cp_evaluation_callbacks,
+    )
+    from .stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
+    from .stable_cp.evaluation.zero_shot_eval import zero_shot_eval
     from .cp_datasets import DATASETS, get_dataset_config
     from .cp_dataloader import create_data_loaders, create_transforms
 
@@ -79,10 +85,10 @@ def create_base_parser(description="Continued Pretraining"):
 
 def setup_paths(args):
     """Setup paths for data and checkpoints.
-    
+
     Args:
         args: Command-line arguments with cache_dir and checkpoint_dir
-        
+
     Returns:
         tuple: (data_dir, checkpoint_dir)
             - data_dir: Base cache directory for datasets
@@ -90,17 +96,17 @@ def setup_paths(args):
     """
     cache_dir = Path(args.cache_dir)
     checkpoint_dir = Path(args.checkpoint_dir)
-    
+
     # Use cache_dir directly as data_dir for stable-datasets
     # stable-datasets will create subdirectories: stable_datasets/downloads and stable_datasets/processed
     data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Set HuggingFace environment variables (for compatibility with any remaining HF dependencies)
     os.environ["HF_HOME"] = str(cache_dir / "huggingface")
     os.environ["HF_DATASETS_CACHE"] = str(cache_dir / "huggingface" / "datasets")
-    
+
     return data_dir, checkpoint_dir
 
 
@@ -118,28 +124,28 @@ def get_config(args):
 
 def load_backbone(args):
     """Load backbone from either timm or HuggingFace.
-    
+
     Automatically detects model type:
     - timm models: Contains '.', numbers, or known timm prefixes
     - HuggingFace models: Contains '/'
     """
     backbone_name = args.backbone
-    
+
     # Detect model type
     is_timm_model = (
-        '/' not in backbone_name or  # timm models don't have '/'
-        backbone_name.startswith('vit_') or
-        backbone_name.startswith('deit_') or
-        '.mae' in backbone_name
+        "/" not in backbone_name  # timm models don't have '/'
+        or backbone_name.startswith("vit_")
+        or backbone_name.startswith("deit_")
+        or ".mae" in backbone_name
     )
-    
+
     if is_timm_model:
         print(f"Loading timm model: {backbone_name}")
         backbone = from_timm(backbone_name, pretrained=True)
     else:
         print(f"Loading HuggingFace model: {backbone_name}")
         backbone = from_huggingface(backbone_name, pretrained=True)
-    
+
     for p in backbone.parameters():
         p.requires_grad = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -189,12 +195,21 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
 
 
 def run_training(
-    module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path, method=None, num_trained_blocks=None
+    module,
+    data,
+    args,
+    ds_cfg,
+    embed_dim,
+    freeze_epochs,
+    logger,
+    ckpt_path,
+    method=None,
+    num_trained_blocks=None,
 ):
     # Use provided num_trained_blocks or fall back to args
     if num_trained_blocks is None:
         num_trained_blocks = args.num_trained_blocks
-    
+
     callbacks = [
         FreezeBackboneCallback(
             freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks
@@ -256,10 +271,10 @@ def run_final_eval(
 
 # Unified CLI
 def main():
-    from simclr.simclr_cp import setup_simclr
-    from lejepa.lejepa_cp import setup_lejepa
-    from mae.mae_cp import setup_mae_cp
-    from diet.diet_cp import setup_diet
+    from stable_cp.methods.simclr.simclr_cp import setup_simclr
+    from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
+    from stable_cp.methods.mae.mae_cp import setup_mae_cp
+    from stable_cp.methods.diet.diet_cp import setup_diet
 
     METHODS = {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},

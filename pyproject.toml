@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -51,12 +51,8 @@ dev = [
     "mypy>=0.950",
 ]
 
-[project.scripts]
-stable-cp = "stable_cp.cli:main"
-
-
 [tool.setuptools]
-packages = ["stable_cp"]
+packages = {find = {where = ["."], include = ["stable_cp*"]}}
 
 [tool.black]
 line-length = 100
