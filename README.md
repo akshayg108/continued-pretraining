@@ -4,15 +4,35 @@ A benchmark and toolkit for continued pretraining methods including LeJEPA, SimC
 
 ## Installation
 
-### Standard Installation (Editable Mode)
+### Option 1: Using Poetry (Recommended)
 
-Install the package in development/editable mode from the repository root:
+If you have [Poetry](https://python-poetry.org/) installed, it can automatically install git dependencies:
+
+```bash
+poetry install
+```
+
+Poetry will automatically clone and install `stable-pretraining` and `stable-datasets` from GitHub.
+
+### Option 2: Using pip
+
+Before installing this package with pip, you must first install `stable-pretraining` and `stable-datasets` from their GitHub repositories:
+
+```bash
+# Install stable-pretraining
+pip install git+https://github.com/galilai-group/stable-pretraining.git
+
+# Install stable-datasets
+pip install git+https://github.com/galilai-group/stable-datasets.git
+```
+
+Then install this package in development/editable mode:
 
 ```bash
 pip install -e .
 ```
 
-This installs the `stable-cp` package along with all dependencies defined in `pyproject.toml`.
+This installs the `stable-cp` package along with all other dependencies defined in `pyproject.toml`.
 
 ### Dependencies
 
@@ -26,16 +46,46 @@ The package requires:
 
 ## Development Setup
 
-### With stable-pretraining
+### Contributing to stable-pretraining and/or stable-datasets
 
-If you want to contribute to `stable-pretraining` alongside this project:
+If you want to contribute to `stable-pretraining` and/or `stable-datasets` alongside this project, install them in editable mode:
+
+#### Using Poetry
 
 ```bash
 cd ..  # Go to parent directory
+
+# Clone stable-pretraining and stable-datasets
+git clone https://github.com/galilai-group/stable-pretraining.git
+git clone https://github.com/galilai-group/stable-datasets.git
+
+cd continued-pretraining
+
+# Add local editable dependencies
+poetry add --editable ../stable-pretraining
+poetry add --editable ../stable-datasets
+poetry install
+```
+
+#### Using pip
+
+```bash
+cd ..  # Go to parent directory
+
+# Clone and install stable-pretraining in editable mode
 git clone https://github.com/galilai-group/stable-pretraining.git
 cd stable-pretraining
 pip install -e .
-cd ../continued-pretraining
+cd ..
+
+# Clone and install stable-datasets in editable mode
+git clone https://github.com/galilai-group/stable-datasets.git
+cd stable-datasets
+pip install -e .
+cd ..
+
+# Install continued-pretraining in editable mode
+cd continued-pretraining
 pip install -e .
 ```
 

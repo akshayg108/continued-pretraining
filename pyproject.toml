@@ -38,8 +38,7 @@ dependencies = [
     "torchmetrics>=1.0.0",
     "numpy>=1.20.0",
     "tqdm>=4.60.0",
-    "pillow>=9.0.0",
-    "stable-pretraining",
+    "pillow>=9.0.0"
 ]
 
 [project.optional-dependencies]
@@ -68,3 +67,28 @@ python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
+
+# Poetry can auto-resolve git dependencies
+[tool.poetry.dependencies]
+python = "^3.8"
+torch = ">=2.0.0"
+torchvision = ">=0.15.0"
+lightning = ">=2.0.0"
+transformers = ">=4.30.0"
+datasets = ">=2.0.0"
+wandb = ">=0.15.0"
+scikit-learn = ">=1.0.0"
+torchmetrics = ">=1.0.0"
+numpy = ">=1.20.0"
+tqdm = ">=4.60.0"
+pillow = ">=9.0.0"
+stable-pretraining = { git = "https://github.com/galilai-group/stable-pretraining.git", branch = "main" }
+stable-datasets = { git = "https://github.com/galilai-group/stable-datasets.git", branch = "main" }
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0.0"
+pytest-cov = ">=3.0.0"
+black = ">=22.0.0"
+isort = ">=5.10.0"
+flake8 = ">=4.0.0"
+mypy = ">=0.950"
