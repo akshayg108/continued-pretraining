@@ -38,7 +38,7 @@ dependencies = [
     "numpy>=1.20.0",
     "tqdm>=4.60.0",
     "pillow>=9.0.0",
-    "stable-pretraining>=0.1.0",
+    "stable-pretraining",
 ]
 
 [project.optional-dependencies]
