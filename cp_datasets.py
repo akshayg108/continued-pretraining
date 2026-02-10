@@ -1,9 +1,4 @@
 # Dataset registry for continued pretraining (using stable-datasets)
-#
-# Datasets NOT available in stable-datasets (removed from registry):
-# - plantnet300k
-# - crop14_balance
-#
 from pathlib import Path
 
 import stable_pretraining as spt
@@ -152,17 +147,14 @@ DATASETS = {
 NORMALIZATIONS = {
     # Standard presets from stable-pretraining
     "imagenet": spt.data.static.ImageNet,  # mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    "cifar10": spt.data.static.CIFAR10,    # mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
+    "cifar10": spt.data.static.CIFAR10,  # mean=[0.4914, 0.4822, 0.4465], std=[0.2470, 0.2435, 0.2616]
     "cifar100": spt.data.static.CIFAR100,  # mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761]
-
-     # Datasets using ImageNet statistics (for reference, not yet in stable-datasets)
+    # Datasets using ImageNet statistics (for reference, not yet in stable-datasets)
     "plantnet300k": spt.data.static.ImageNet,
     "crop14_balance": spt.data.static.ImageNet,
     "fgvc_aircraft": spt.data.static.ImageNet,
-    
     # Custom statistics computed for specific datasets
     "galaxy10": {"mean": [0.097, 0.097, 0.097], "std": [0.174, 0.164, 0.156]},
-    
     # MedMNIST custom statistics (RGB datasets)
     "bloodmnist": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},
     "pathmnist": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},
@@ -171,7 +163,6 @@ NORMALIZATIONS = {
     "organamnist": {"mean": [0.4996, 0.4996, 0.4996], "std": [0.1731, 0.1731, 0.1731]},
     "organcmnist": {"mean": [0.4996, 0.4996, 0.4996], "std": [0.1731, 0.1731, 0.1731]},
     "organsmnist": {"mean": [0.4996, 0.4996, 0.4996], "std": [0.1731, 0.1731, 0.1731]},
-    
     # MedMNIST custom statistics (Grayscale datasets - single channel)
     "tissuemnist": {"mean": [0.5], "std": [0.5]},
     "chestmnist": {"mean": [0.4984], "std": [0.2483]},
@@ -183,7 +174,7 @@ NORMALIZATIONS = {
 
 class HFDatasetWrapper(spt.data.Dataset):
     """Wrapper for HuggingFace datasets with transform support.
-    
+
     This wrapper enables stable-datasets (which return HF Dataset objects) to be
     used with stable-pretraining's transform pipeline.
     """
@@ -193,7 +184,9 @@ class HFDatasetWrapper(spt.data.Dataset):
         self.hf_dataset = hf_dataset
         # Add sample_idx if not present (required by some stable-pretraining callbacks)
         if "sample_idx" not in hf_dataset.column_names:
-            self.hf_dataset = hf_dataset.add_column("sample_idx", list(range(hf_dataset.num_rows)))
+            self.hf_dataset = hf_dataset.add_column(
+                "sample_idx", list(range(hf_dataset.num_rows))
+            )
 
     def __getitem__(self, idx):
         sample = self.hf_dataset[idx]
@@ -209,10 +202,10 @@ class HFDatasetWrapper(spt.data.Dataset):
 
 def get_dataset_config(name):
     """Get dataset configuration.
-    
+
     Args:
         name: Dataset name from DATASETS registry
-        
+
     Returns:
         dict: Dataset configuration with normalization preset resolved
     """
@@ -225,29 +218,29 @@ def get_dataset_config(name):
 
 def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
     """Load dataset by name using stable-datasets.
-    
+
     Args:
         name: Dataset name from DATASETS registry
         split: Split name ("train", "validation", or "test")
         transform: Transform to apply to samples
         cache_dir: Base cache directory for downloads and processed data
         seed: Random seed for splitting datasets that only have a single split
-        
+
     Returns:
         HFDatasetWrapper: Wrapped dataset compatible with stable-pretraining
     """
     cfg = DATASETS[name]
     cache_dir = Path(cache_dir)
-    
+
     # Create cache subdirectories
     download_dir = cache_dir / "stable_datasets" / "downloads"
     processed_cache_dir = cache_dir / "stable_datasets" / "processed"
     download_dir.mkdir(parents=True, exist_ok=True)
     processed_cache_dir.mkdir(parents=True, exist_ok=True)
-    
+
     dataset_class = cfg["dataset_class"]
     config_name = cfg["config_name"]
-    
+
     # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
     # force loading full dataset and split manually to avoid data leakage
     if cfg.get("manual_split", False):
@@ -266,7 +259,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
             )
         hf_ds = _handle_split_from_dict(hf_ds, split, seed)
         return HFDatasetWrapper(hf_ds, transform=transform)
-    
+
     # Load the raw HF dataset from stable-datasets
     if config_name is not None:
         # Dataset with config (e.g., MedMNIST variants)
@@ -302,19 +295,19 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 processed_cache_dir=str(processed_cache_dir),
             )
             hf_ds = _handle_split_from_dict(hf_ds, split, seed)
-    
+
     # Wrap in HFDatasetWrapper for stable-pretraining compatibility
     return HFDatasetWrapper(hf_ds, transform=transform)
 
 
 def _handle_split_from_dict(dataset_dict, split, seed=42):
     """Handle DatasetDict returned when split=None.
-    
+
     Args:
         dataset_dict: HuggingFace DatasetDict
         split: Requested split name
         seed: Random seed for splitting
-        
+
     Returns:
         Dataset: The requested split
     """
@@ -325,41 +318,45 @@ def _handle_split_from_dict(dataset_dict, split, seed=42):
         "test": ["test"],
         "train": ["train"],
     }
-    
+
     # Try to find the split in the DatasetDict
     possible_names = split_map.get(split, [split])
     for name in possible_names:
         if name in dataset_dict:
             return dataset_dict[name]
-    
+
     # If split not found, create it from train split
     if "train" in dataset_dict:
         return _split_single_dataset(dataset_dict["train"], split, seed)
-    
+
     raise ValueError(f"Split '{split}' not found in dataset and cannot be created")
 
 
 def _split_single_dataset(hf_dataset, split, seed=42, val_ratio=0.1, test_ratio=0.1):
     """Split a single dataset into train/val/test.
-    
+
     Args:
         hf_dataset: HuggingFace Dataset (single split)
         split: Requested split ("train", "validation", or "test")
         seed: Random seed for splitting
         val_ratio: Validation set ratio
         test_ratio: Test set ratio
-        
+
     Returns:
         Dataset: The requested split
     """
     # For Galaxy10 and similar datasets with only one split
     if split == "train":
         # Keep (1 - val_ratio - test_ratio) for train
-        temp_split = hf_dataset.train_test_split(test_size=val_ratio + test_ratio, seed=seed)
+        temp_split = hf_dataset.train_test_split(
+            test_size=val_ratio + test_ratio, seed=seed
+        )
         return temp_split["train"]
     elif split in ["validation", "val"]:
         # Take val_ratio
-        temp_split = hf_dataset.train_test_split(test_size=val_ratio + test_ratio, seed=seed)
+        temp_split = hf_dataset.train_test_split(
+            test_size=val_ratio + test_ratio, seed=seed
+        )
         val_test = temp_split["test"]
         val_test_split = val_test.train_test_split(
             test_size=test_ratio / (val_ratio + test_ratio), seed=seed
@@ -367,7 +364,9 @@ def _split_single_dataset(hf_dataset, split, seed=42, val_ratio=0.1, test_ratio=
         return val_test_split["train"]
     elif split == "test":
         # Take test_ratio
-        temp_split = hf_dataset.train_test_split(test_size=val_ratio + test_ratio, seed=seed)
+        temp_split = hf_dataset.train_test_split(
+            test_size=val_ratio + test_ratio, seed=seed
+        )
         val_test = temp_split["test"]
         val_test_split = val_test.train_test_split(
             test_size=test_ratio / (val_ratio + test_ratio), seed=seed

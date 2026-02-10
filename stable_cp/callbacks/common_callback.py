@@ -1,4 +1,3 @@
-# Common callbacks
 import lightning as pl
 import torch
 

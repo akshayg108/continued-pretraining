@@ -1,4 +1,3 @@
-# DIET forward - instance discrimination with optional MixUp/CutMix
 import torch
 import torch.nn.functional as F
 from torchvision.transforms import v2

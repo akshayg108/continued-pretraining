@@ -1,9 +1,3 @@
-"""
-TENT Continued Pretraining - Forward pass and loss computation.
-
-Core functions adapted from tent/tent.py for test-time entropy minimization.
-"""
-
 import torch
 import torch.nn as nn
 

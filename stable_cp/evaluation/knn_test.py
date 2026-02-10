@@ -1,5 +1,3 @@
-"""Quick test to compare k-NN with different training set sizes."""
-
 import sys
 import os
 

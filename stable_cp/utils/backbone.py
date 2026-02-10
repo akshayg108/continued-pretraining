@@ -1,5 +1,3 @@
-"""Backbone network utilities."""
-
 import torch
 import torch.nn as nn
 from stable_pretraining.backbone.utils import from_timm

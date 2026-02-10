@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# MAE Continued Pretraining - masked reconstruction (ViT-only)
 import torch
 import stable_pretraining as spt
 from lightning.pytorch.loggers import WandbLogger

@@ -1,4 +1,3 @@
-# MAE CP forward - reconstruct pixels from pretrained backbone latents
 import torch
 import stable_pretraining as spt
 

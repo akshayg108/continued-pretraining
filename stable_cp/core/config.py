@@ -1,5 +1,3 @@
-"""Configuration dataclasses for continued pretraining."""
-
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from pathlib import Path

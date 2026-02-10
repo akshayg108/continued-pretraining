@@ -1,4 +1,3 @@
-# SimCLR forward for CP - handles ViT CLS token extraction
 import torch
 
 

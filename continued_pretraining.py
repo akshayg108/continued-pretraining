@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# Continued Pretraining - shared functions + unified CLI
 import argparse, os
 from pathlib import Path
 

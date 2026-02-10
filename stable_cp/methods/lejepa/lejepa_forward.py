@@ -1,4 +1,3 @@
-# LeJEPA/SIGReg forward - multi-view invariance + normality regularization
 import torch
 
 from .lejepa_losses import EppsPulley, SlicingUnivariateTest

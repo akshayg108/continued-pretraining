@@ -1,4 +1,3 @@
-# LeJEPA/SIGReg-specific metrics callback
 import lightning as pl
 import torch
 
@@ -30,7 +29,9 @@ class LeJEPAMetricsCallback(pl.Callback):
         with torch.no_grad():
             self._log_embedding_stats(pl_module, embedding, "train")
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(
+        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
+    ):
         # Log embedding statistics during validation
         if batch_idx != 0:  # Only log first val batch to reduce overhead
             return
@@ -50,13 +51,13 @@ class LeJEPAMetricsCallback(pl.Callback):
 
         # Per-dimension statistics
         dim_mean = embedding.mean(dim=0)  # [emb_dim]
-        dim_var = embedding.var(dim=0)    # [emb_dim]
+        dim_var = embedding.var(dim=0)  # [emb_dim]
 
         # Aggregate statistics
-        mean_of_means = dim_mean.mean()           # Should → 0
-        mean_of_vars = dim_var.mean()             # Should → 1
-        std_of_means = dim_mean.std()             # Spread of dimension means
-        std_of_vars = dim_var.std()               # Spread of dimension variances
+        mean_of_means = dim_mean.mean()  # Should → 0
+        mean_of_vars = dim_var.mean()  # Should → 1
+        std_of_means = dim_mean.std()  # Spread of dimension means
+        std_of_vars = dim_var.std()  # Spread of dimension variances
 
         # Embedding norms
         embedding_norms = torch.norm(embedding, dim=1)  # [batch_size]
@@ -64,18 +65,34 @@ class LeJEPAMetricsCallback(pl.Callback):
         std_norm = embedding_norms.std()
 
         # Log metrics
-        pl_module.log(f"{stage}/{self.prefix}/mean_of_dim_means", mean_of_means, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/mean_of_dim_vars", mean_of_vars, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/std_of_dim_means", std_of_means, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/std_of_dim_vars", std_of_vars, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/embedding_norm_mean", mean_norm, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/embedding_norm_std", std_norm, sync_dist=True)
+        pl_module.log(
+            f"{stage}/{self.prefix}/mean_of_dim_means", mean_of_means, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/mean_of_dim_vars", mean_of_vars, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/std_of_dim_means", std_of_means, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/std_of_dim_vars", std_of_vars, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/embedding_norm_mean", mean_norm, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/embedding_norm_std", std_norm, sync_dist=True
+        )
 
         # Deviation from N(0,I) target
-        mean_deviation = mean_of_means.abs()      # Distance from 0
+        mean_deviation = mean_of_means.abs()  # Distance from 0
         var_deviation = (mean_of_vars - 1).abs()  # Distance from 1
-        pl_module.log(f"{stage}/{self.prefix}/mean_deviation", mean_deviation, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/var_deviation", var_deviation, sync_dist=True)
+        pl_module.log(
+            f"{stage}/{self.prefix}/mean_deviation", mean_deviation, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/var_deviation", var_deviation, sync_dist=True
+        )
 
         # Covariance statistics (optional, more expensive)
         if self.compute_covariance and batch_size > 1:
@@ -103,5 +120,9 @@ class LeJEPAMetricsCallback(pl.Callback):
 
         pl_module.log(f"{stage}/{self.prefix}/cov_diag_mean", diag_mean, sync_dist=True)
         pl_module.log(f"{stage}/{self.prefix}/cov_diag_std", diag_std, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/cov_offdiag_abs_mean", off_diag_mean, sync_dist=True)
-        pl_module.log(f"{stage}/{self.prefix}/cov_offdiag_abs_max", off_diag_max, sync_dist=True)
+        pl_module.log(
+            f"{stage}/{self.prefix}/cov_offdiag_abs_mean", off_diag_mean, sync_dist=True
+        )
+        pl_module.log(
+            f"{stage}/{self.prefix}/cov_offdiag_abs_max", off_diag_max, sync_dist=True
+        )

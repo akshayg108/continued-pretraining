@@ -1,4 +1,3 @@
-"""Training utilities and optimization configuration."""
 from typing import Dict, Any
 
 
@@ -10,20 +9,20 @@ def create_optim_config(
     steps_per_epoch: int,
 ) -> Dict[str, Any]:
     """Create optimizer and scheduler configuration.
-    
+
     Args:
         lr: Learning rate
         weight_decay: Weight decay for AdamW
         epochs: Total number of training epochs
         warmup_epochs: Number of warmup epochs
         steps_per_epoch: Number of optimization steps per epoch
-        
+
     Returns:
         Configuration dictionary for stable-pretraining
     """
     total_steps = epochs * steps_per_epoch
     warmup_steps = warmup_epochs * steps_per_epoch
-    
+
     return {
         "optimizer": {
             "type": "AdamW",

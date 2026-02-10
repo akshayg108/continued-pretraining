@@ -1,4 +1,3 @@
-"""Core abstractions for the continued pretraining benchmark."""
 from .base import BaseCPMethod, MethodConfig
 from .registry import (
     register_method,

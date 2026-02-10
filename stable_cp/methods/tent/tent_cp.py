@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""TENT (Test-Time Entropy Minimization) Continued Pretraining."""
 
 import torch.nn as nn
 import stable_pretraining as spt
