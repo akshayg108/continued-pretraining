@@ -17,8 +17,8 @@ from stable_cp.callbacks import (
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
 from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
 from stable_cp.utils.backbone import BACKBONE_DIMS
-from cp_datasets import DATASETS, get_dataset_config
-from cp_dataloader import create_data_loaders, create_transforms
+from stable_cp.data import DATASETS, get_dataset_config
+from stable_cp.data import create_data_loaders, create_transforms
 
 
 # Shared functions

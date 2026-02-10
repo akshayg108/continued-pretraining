@@ -15,7 +15,7 @@ from continued_pretraining import (
     run_training,
     run_final_eval,
 )
-from cp_dataloader import create_transforms, create_data_loaders
+from stable_cp.data import create_transforms, create_data_loaders
 from stable_cp.methods.mae.mae_cp_forward import mae_cp_forward
 
 
