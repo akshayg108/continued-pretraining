@@ -3,7 +3,6 @@
 # Datasets NOT available in stable-datasets (removed from registry):
 # - plantnet300k
 # - crop14_balance
-# - fgvc_aircraft (not yet migrated)
 #
 from pathlib import Path
 
@@ -37,6 +36,15 @@ DATASETS = {
         "input_size": 224,
         "normalization": "imagenet",
         "splits": ["train", "test", "test"],
+    },
+    # Fine-Grained Classification
+    "fgvc_aircraft": {
+        "dataset_class": stable_ds.FGVCAircraft,
+        "config_name": "variant",  # Options: "variant" (100), "family" (70), "manufacturer" (30)
+        "num_classes": 100,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "validation", "test"],
     },
     # Galaxy dataset
     "galaxy10": {
