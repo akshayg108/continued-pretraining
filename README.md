@@ -32,7 +32,7 @@ If you want to contribute to `stable-pretraining` alongside this project:
 
 ```bash
 cd ..  # Go to parent directory
-git clone https://github.com/user/stable-pretraining.git
+git clone https://github.com/galilai-group/stable-pretraining.git
 cd stable-pretraining
 pip install -e .
 cd ../continued-pretraining
