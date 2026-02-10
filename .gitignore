@@ -144,7 +144,7 @@ wandb/
 logs/
 
 # Data and cache directories
-data/
+./data/
 datasets/
 .cache/
 *.h5
