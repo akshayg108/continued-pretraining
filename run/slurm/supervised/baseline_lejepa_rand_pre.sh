@@ -26,7 +26,7 @@ echo "Python: $(which python)"
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
-cd /scratch/gs4133/zhd/CP/continued-pretraining/continued-pretraining
+cd /scratch/gs4133/zhd/CP/continued-pretraining
 export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -102,13 +102,13 @@ EXPERIMENTS=(
     # "galaxy10 500"
     # "galaxy10 1000"
     # "galaxy10 1600"
+    # "galaxy10 3400"
     # "food101 100"
     # "food101 500"
     # "food101 1000"
     # "food101 10000"
     # "food101 25000"
     # "food101 75750"
-    # "galaxy10 3400"
 )
 
 # ============================================================
