@@ -1,7 +1,38 @@
+import torch
 import torch.nn as nn
 import torchmetrics
 from typing import List, Optional, Union
 import stable_pretraining as spt
+
+
+class _FixedNumClassesKNN(spt.callbacks.OnlineKNN):
+    """OnlineKNN subclass that guarantees predictions match the true num_classes.
+
+    The upstream OnlineKNN infers num_classes from ``cached_labels.max() + 1``.
+    When the KNN queue does not contain every class (common with small
+    ``n_samples``), the prediction tensor is too narrow and torchmetrics raises
+    a shape mismatch error.  This subclass pads the predictions to the known
+    ``num_classes`` so the metrics always receive the correct shape.
+    """
+
+    def __init__(self, num_classes: int, **kwargs):
+        super().__init__(**kwargs)
+        self._fixed_num_classes = num_classes
+
+    @torch.no_grad()
+    def _compute_knn_predictions(self, features, cached_features, cached_labels):
+        predictions = super()._compute_knn_predictions(
+            features, cached_features, cached_labels
+        )
+        if predictions is not None and predictions.shape[1] < self._fixed_num_classes:
+            padding = torch.zeros(
+                predictions.shape[0],
+                self._fixed_num_classes - predictions.shape[1],
+                device=predictions.device,
+                dtype=predictions.dtype,
+            )
+            predictions = torch.cat([predictions, padding], dim=1)
+        return predictions
 
 
 def create_cp_linear_probe(
@@ -62,7 +93,8 @@ def create_cp_knn_probe(
             num_classes, average="macro"
         )
 
-    return spt.callbacks.OnlineKNN(
+    return _FixedNumClassesKNN(
+        num_classes=num_classes,
         name=name,
         input=input_key,
         target=target_key,

@@ -71,32 +71,37 @@ SEEDS=(42 43 44)
 EXPERIMENTS=(
     # DermaMNIST
     "dermamnist 100"
-    "dermamnist 500"
-    "dermamnist 1000"
-    "dermamnist 7007"
+    # "dermamnist 500"
+    # "dermamnist 1000"
+    # "dermamnist 7007"
+
     # BreastMNIST
-    "breastmnist 100"
-    "breastmnist 500"
+    # "breastmnist 100"
+    # "breastmnist 500"
+
     # OCTMNIST
-    "octmnist 100"
-    "octmnist 500"
-    "octmnist 1000"
-    "octmnist 10000"
-    "octmnist 97477"
+    # "octmnist 100"
+    # "octmnist 500"
+    # "octmnist 1000"
+    # "octmnist 10000"
+    # "octmnist 97477"
+
     # OrganAMNIST
-    "organamnist 100"
-    "organamnist 500"
-    "organamnist 1000"
-    "organamnist 10000"
-    "organamnist 25000"
-    "organamnist 34561"
+    # "organamnist 100"
+    # "organamnist 500"
+    # "organamnist 1000"
+    # "organamnist 10000"
+    # "organamnist 25000"
+    # "organamnist 34561"
+
     # PathMNIST
-    "pathmnist 100"
-    "pathmnist 500"
-    "pathmnist 1000"
-    "pathmnist 10000"
-    "pathmnist 25000"
-    "pathmnist 89996"
+    # "pathmnist 100"
+    # "pathmnist 500"
+    # "pathmnist 1000"
+    # "pathmnist 10000"
+    # "pathmnist 25000"
+    # "pathmnist 89996"
+    
     # TODO: Galaxy10 and Food101 (add back later)
     # "galaxy10 100"
     # "galaxy10 500"
