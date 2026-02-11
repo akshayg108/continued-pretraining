@@ -176,12 +176,24 @@ def run_training(
             "Please ensure run_training() is called with method='<method_name>'."
         )
     
-    if current_method != "tent":
+    # Configure FreezeBackboneCallback based on method
+    if current_method == "tent":
+        # TENT-specific parameter mapping
+        tent_mode = getattr(args, "tent_mode", "norm_only")
+        num_trained_blocks = 0 if tent_mode == "norm_only" else args.num_trained_blocks
+        callbacks.append(
+            FreezeBackboneCallback(
+                freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks, all_norm=True
+            ),
+        )
+    else:
+        # Standard FreezeBackboneCallback for other methods
         callbacks.append(
             FreezeBackboneCallback(
                 freeze_epochs=freeze_epochs, num_trained_blocks=args.num_trained_blocks
             ),
         )
+    
     if current_method == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
 

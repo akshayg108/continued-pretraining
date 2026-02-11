@@ -16,11 +16,7 @@ from continued_pretraining import (
     run_final_eval,
 )
 from stable_cp.data import create_transforms, create_data_loaders
-from stable_cp.methods.tent.tent_cp_forward import (
-    tent_cp_forward,
-    configure_model_for_tent,
-    collect_params,
-)
+from stable_cp.methods.tent.tent_cp_forward import tent_cp_forward
 
 
 def setup_tent_cp(
@@ -45,20 +41,12 @@ def setup_tent_cp(
     Returns:
         spt.Module configured for TENT adaptation
     """
+    # Initialize classifier (always trainable for TENT)
     classifier = nn.Linear(embed_dim, num_classes)
+    classifier.requires_grad_(True)
 
-    backbone, classifier = configure_model_for_tent(
-        backbone, classifier, tent_mode, num_trained_blocks
-    )
-
-    if tent_mode in ["norm_only", "combined"]:
-        params, param_names = collect_params(backbone)
-        print(f"Parameters for TENT adaptation: {len(params)} parameters")
-        if len(param_names) <= 10:
-            print(f"  Names: {param_names}")
-        else:
-            print(f"  First 5: {param_names[:5]}")
-            print(f"  Last 5: {param_names[-5:]}")
+    print(f"TENT setup: mode={tent_mode}, num_trained_blocks={num_trained_blocks}")
+    print(f"  Classifier initialized with {embed_dim} -> {num_classes}")
 
     return spt.Module(
         backbone=backbone,
@@ -84,7 +72,6 @@ def main():
     data_dir, checkpoint_dir = setup_paths(args)
     ds_cfg, embed_dim, freeze_epochs, warmup_epochs = get_config(args)
     num_classes = ds_cfg["num_classes"]
-    image_size = ds_cfg["input_size"]
 
     print("=" * 50)
     print(f"TENT CP: {args.dataset} | {args.backbone}")

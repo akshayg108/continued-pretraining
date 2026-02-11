@@ -1,6 +1,7 @@
 # Common callbacks
 import lightning as pl
 import torch
+import torch.nn as nn
 
 
 class FreezeBackboneCallback(pl.Callback):
@@ -9,10 +10,12 @@ class FreezeBackboneCallback(pl.Callback):
         self,
         freeze_epochs: int = 0,
         num_trained_blocks: int = -1,
+        all_norm: bool = False,
     ):
         super().__init__()
         self.freeze_epochs = freeze_epochs
         self.num_trained_blocks = num_trained_blocks
+        self.all_norm = all_norm
         self._backbone_frozen = False
         self._initial_freeze_applied = False
 
@@ -22,14 +25,12 @@ class FreezeBackboneCallback(pl.Callback):
             self._freeze_backbone(pl_module)
             self._backbone_frozen = True
             self._initial_freeze_applied = True
-            print(f"FreezeBackboneCallback: Backbone frozen for first {self.freeze_epochs} epochs")
-        elif self.num_trained_blocks != -1:
-            # If freeze_epochs=0 but num_trained_blocks is set, apply selective training immediately
+            norm_info = " (norm layers will be enabled after freeze)" if self.all_norm else ""
+            print(f"FreezeBackboneCallback: Backbone frozen for first {self.freeze_epochs} epochs{norm_info}")
+        elif self.num_trained_blocks != -1 or self.all_norm:
+            # If freeze_epochs=0 but num_trained_blocks or all_norm is set, apply selective training immediately
             self._apply_selective_unfreezing(pl_module)
-            if self.num_trained_blocks == 0:
-                print(f"FreezeBackboneCallback: Backbone frozen (head-only training)")
-            else:
-                print(f"FreezeBackboneCallback: Training last {self.num_trained_blocks} blocks")
+            self._print_training_mode()
 
     def on_train_epoch_start(self, trainer, pl_module):
         # Handle freezing/unfreezing at epoch boundaries
@@ -39,13 +40,21 @@ class FreezeBackboneCallback(pl.Callback):
         if self._backbone_frozen and current_epoch >= self.freeze_epochs:
             self._apply_selective_unfreezing(pl_module)
             self._backbone_frozen = False
+            print(f"Epoch {current_epoch}: ", end="")
+            self._print_training_mode()
 
-            if self.num_trained_blocks == -1:
-                print(f"Epoch {current_epoch}: Backbone unfrozen (full fine-tuning)")
-            elif self.num_trained_blocks == 0:
-                print(f"Epoch {current_epoch}: Backbone remains frozen (head-only)")
-            else:
-                print(f"Epoch {current_epoch}: Training last {self.num_trained_blocks} blocks")
+    def _print_training_mode(self):
+        """Print current training mode based on configuration"""
+        if self.all_norm and self.num_trained_blocks == 0:
+            print("Training norm layers only (TENT norm_only mode)")
+        elif self.all_norm and self.num_trained_blocks > 0:
+            print(f"Training norm layers + last {self.num_trained_blocks} blocks (TENT combined mode)")
+        elif self.num_trained_blocks == -1:
+            print("Backbone unfrozen (full fine-tuning)")
+        elif self.num_trained_blocks == 0:
+            print("Backbone frozen (head-only training)")
+        else:
+            print(f"Training last {self.num_trained_blocks} blocks")
 
     def _freeze_backbone(self, pl_module):
         # Freeze all backbone parameters
@@ -53,38 +62,50 @@ class FreezeBackboneCallback(pl.Callback):
             print("Warning: Module has no 'backbone' attribute, skipping freeze")
             return
 
+        pl_module.backbone.eval()  # Set entire backbone to eval mode (for Dropout, etc.)
         for param in pl_module.backbone.parameters():
             param.requires_grad = False
 
         # Ensure BatchNorm layers stay in eval mode
         for module in pl_module.backbone.modules():
-            if isinstance(module, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d)):
+            if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
                 module.eval()
 
     def _apply_selective_unfreezing(self, pl_module):
-        # Apply selective parameter training based on num_trained_blocks setting
+        """Apply selective parameter training based on num_trained_blocks and all_norm settings"""
         if not hasattr(pl_module, "backbone"):
             return
 
+        # Step 1: Freeze all parameters first
+        for param in pl_module.backbone.parameters():
+            param.requires_grad = False
+
+        # Step 2: Handle normalization layers if all_norm=True
+        if self.all_norm:
+            pl_module.backbone.train()
+            self._enable_norm_layers(pl_module.backbone)
+
+        # Step 3: Handle block-wise unfreezing based on num_trained_blocks
         if self.num_trained_blocks == 0:
-            # Keep all frozen (or freeze if not already frozen)
-            if not self._backbone_frozen:
-                self._freeze_backbone(pl_module)
+            # Only norm layers (if all_norm=True) or completely frozen
+            if not self.all_norm:
+                # Standard head-only training: ensure backbone is in eval mode
+                pl_module.backbone.eval()
+                # Ensure BatchNorm layers stay in eval mode
+                for module in pl_module.backbone.modules():
+                    if isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+                        module.eval()
+            # else: TENT mode - backbone in train mode, norm layers enabled
             return
 
         if self.num_trained_blocks == -1:
-            # Train all blocks
+            # Train all blocks (in addition to norm layers if all_norm=True)
             pl_module.backbone.train()
             for param in pl_module.backbone.parameters():
                 param.requires_grad = True
             return
 
-        # Selective training: train only last N blocks
-        # Step 1: Freeze all parameters first
-        for param in pl_module.backbone.parameters():
-            param.requires_grad = False
-        
-        # Step 2: Find transformer blocks and unfreeze last N blocks
+        # Step 4: Selective training - train last N blocks (+ norm layers if all_norm=True)
         layers = self._find_transformer_layers(pl_module.backbone)
 
         if layers is not None:
@@ -107,34 +128,39 @@ class FreezeBackboneCallback(pl.Callback):
             for param in pl_module.backbone.parameters():
                 param.requires_grad = True
 
+    def _enable_norm_layers(self, backbone):
+        """Enable all normalization layers for training (TENT-style adaptation)"""
+        for m in backbone.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.requires_grad_(True)
+                m.train()  # Set to train mode (override previous .eval() call)
+                # Force use of batch statistics (TENT requirement)
+                m.track_running_stats = False
+                m.running_mean = None
+                m.running_var = None
+            elif isinstance(m, nn.LayerNorm):
+                # LayerNorm always uses batch statistics
+                m.requires_grad_(True)
+                m.train()  # Set to train mode
+
     def _find_transformer_layers(self, backbone):
-        # Find transformer layers in various model architectures
+        """Find transformer/CNN blocks for TIMM models.
         
-        # MaskedEncoder (stable_pretraining wrapper)
+        This function supports:
+        - TIMM ViT models (direct): backbone.blocks
+        - Wrapped ViT (e.g., MaskedEncoder): backbone.vit.blocks
+        - TIMM ResNet models: backbone.layer1-4
+        """
+        # MaskedEncoder (stable_pretraining wrapper for ViT)
         if hasattr(backbone, "vit") and hasattr(backbone.vit, "blocks"):
             return backbone.vit.blocks
         
-        # HuggingFace ViT wrapped in a container
-        if hasattr(backbone, "model"):
-            inner = backbone.model
-            if hasattr(inner, "encoder") and hasattr(inner.encoder, "layer"):
-                return inner.encoder.layer
-            if hasattr(inner, "layer"):
-                return inner.layer
-            if hasattr(inner, "vit") and hasattr(inner.vit, "encoder"):
-                return inner.vit.encoder.layer
-
-        # Direct HuggingFace ViT
-        if hasattr(backbone, "encoder") and hasattr(backbone.encoder, "layer"):
-            return backbone.encoder.layer
-
-        # timm ViT (direct, not wrapped)
+        # Direct TIMM ViT (e.g., from_timm("vit_base_patch16_224"))
         if hasattr(backbone, "blocks"):
             return backbone.blocks
 
-        # ResNet layers
+        # TIMM ResNet models (e.g., from_timm("resnet50"))
         if hasattr(backbone, "layer4"):
-            # Return list of ResNet layers
             layers = []
             for i in range(1, 5):
                 layer = getattr(backbone, f"layer{i}", None)
