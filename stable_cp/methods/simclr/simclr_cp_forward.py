@@ -1,14 +1,11 @@
-# SimCLR forward for CP - handles ViT CLS token extraction
 import torch
 
 
 def _extract_embedding(embedding):
     # Extract embedding from backbone output (handles ViT and CNN)
-    if hasattr(embedding, "last_hidden_state"):
-        return embedding.last_hidden_state[:, 0, :]  # HuggingFace ViT CLS token
-    elif embedding.dim() == 3:
-        return embedding[:, 0, :]  # timm ViT CLS token
-    return embedding  # Already 2D (ResNet)
+    if embedding.dim() == 3:
+        return embedding[:, 0, :]  # TIMM ViT CLS token
+    return embedding  # Already 2D (ResNet or pooled)
 
 
 def _get_views_list(batch):
@@ -39,7 +36,13 @@ def simclr_cp_forward(self, batch, stage):
         if self.training:
             projections = [self.projector(emb) for emb in embeddings]
             out["loss"] = self.simclr_loss(projections[0], projections[1])
-            self.log(f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True)
+            self.log(
+                f"{stage}/loss",
+                out["loss"],
+                on_step=True,
+                on_epoch=True,
+                sync_dist=True,
+            )
     else:
         out["embedding"] = _extract_embedding(self.backbone(batch["image"]))
         if "label" in batch:

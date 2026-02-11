@@ -85,6 +85,9 @@ ipython_config.py
 # pipenv
 Pipfile.lock
 
+# python tools
+.flake8
+
 # PEP 582
 __pypackages__/
 
@@ -141,7 +144,7 @@ wandb/
 logs/
 
 # Data and cache directories
-data/
+./data/
 datasets/
 .cache/
 *.h5
@@ -151,3 +154,7 @@ datasets/
 *.pth
 *.pt
 *.safetensors
+
+# stable training
+stable-pretraining/
+stable-datasets/

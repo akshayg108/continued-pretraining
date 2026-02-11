@@ -1,4 +1,3 @@
-# Post-training evaluation utilities for continued pretraining
 from .zero_shot_eval import (
     # Checkpoint loading (saving is via Lightning: trainer.save_checkpoint)
     load_backbone_from_checkpoint,

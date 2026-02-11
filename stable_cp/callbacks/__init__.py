@@ -1,4 +1,3 @@
-# Callbacks for continued pretraining with SSL methods
 from .common_callback import FreezeBackboneCallback, GradientClipCallback
 from .continued_pretraining_metrics import (
     create_cp_linear_probe,

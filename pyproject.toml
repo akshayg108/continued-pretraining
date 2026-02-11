@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,7 +11,8 @@ requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
     {name = "Akshay Ghandikota"},
-    {name= "Jakob Ambsdorf", email="jaam@di.ku.dk"}
+    {name= "Jakob Ambsdorf", email="jaam@di.ku.dk"},
+    {name= "Haodong Zhang", email="haodong_zhang@brown.edu"}
 ]
 keywords = ["deep learning", "self-supervised learning", "continued pretraining", "vision transformers"]
 classifiers = [
@@ -38,7 +39,8 @@ dependencies = [
     "numpy>=1.20.0",
     "tqdm>=4.60.0",
     "pillow>=9.0.0",
-    "stable-pretraining>=0.1.0",
+    "stable-pretraining @ git+https://github.com/galilai-group/stable-pretraining.git",
+    "stable-datasets @ git+https://github.com/haodongzhang0118/stable-datasets.git",
 ]
 
 [project.optional-dependencies]
@@ -51,12 +53,8 @@ dev = [
     "mypy>=0.950",
 ]
 
-[project.scripts]
-stable-cp = "stable_cp.cli:main"
-
-
 [tool.setuptools]
-packages = ["stable_cp"]
+packages = {find = {where = ["."], include = ["stable_cp*"]}}
 
 [tool.black]
 line-length = 100

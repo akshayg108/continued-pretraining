@@ -1,5 +1,3 @@
-"""Core abstractions for the continued pretraining benchmark."""
-from .base import BaseCPMethod, MethodConfig
 from .registry import (
     register_method,
     get_method,
@@ -17,9 +15,6 @@ from .config import (
 )
 
 __all__ = [
-    # Base classes
-    "BaseCPMethod",
-    "MethodConfig",
     # Registry
     "register_method",
     "get_method",

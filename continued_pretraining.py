@@ -1,55 +1,24 @@
 #!/usr/bin/env python
-# Continued Pretraining - shared functions + unified CLI
 import argparse, os
 from pathlib import Path
 
 import lightning as pl
 import torch
-import torch.nn as nn
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import LearningRateMonitor
 
 import stable_pretraining as spt
-from stable_pretraining.data import transforms
-from stable_pretraining.backbone.utils import from_huggingface
-from stable_pretraining.data.transforms import MultiViewTransform
+from stable_pretraining.backbone.utils import from_timm
 
-try:
-    from callbacks import FreezeBackboneCallback, create_cp_evaluation_callbacks
-    from callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from evaluation.zero_shot_eval import zero_shot_eval
-    from cp_datasets import DATASETS, get_dataset_config
-except ImportError:
-    from .callbacks import FreezeBackboneCallback, create_cp_evaluation_callbacks
-    from .callbacks.lejepa_metrics import LeJEPAMetricsCallback
-    from .evaluation.zero_shot_eval import zero_shot_eval
-    from .cp_datasets import DATASETS, get_dataset_config
-
-BACKBONE_DIMS = {
-    "facebook/dinov2-small": 384,
-    "facebook/dinov2-base": 768,
-    "facebook/dinov2-large": 1024,
-    "facebook/dinov2-giant": 1536,
-    "google/vit-base-patch16-224": 768,
-    "google/vit-large-patch16-224": 1024,
-    "vit_base_patch16": 768,
-    "vit_large_patch16": 1024,
-    "vit_huge_patch14": 1280,
-}
-
-
-class CPSubset(torch.utils.data.Dataset):
-    def __init__(self, dataset, indices):
-        self.dataset, self.indices = dataset, indices
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, idx):
-        sample = self.dataset[self.indices[idx]]
-        if isinstance(sample, dict):
-            sample["sample_idx"] = idx
-        return sample
+from stable_cp.callbacks import (
+    FreezeBackboneCallback,
+    create_cp_evaluation_callbacks,
+)
+from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
+from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from stable_cp.utils.backbone import BACKBONE_DIMS
+from stable_cp.data import DATASETS, get_dataset_config
+from stable_cp.data import create_data_loaders, create_transforms
 
 
 # Shared functions
@@ -79,12 +48,25 @@ def create_base_parser(description="Continued Pretraining"):
 
 
 def setup_paths(args):
-    cache_dir, checkpoint_dir = Path(args.cache_dir), Path(args.checkpoint_dir)
-    data_dir = cache_dir / "huggingface" / "datasets"
+    """Setup paths for data and checkpoints.
+
+    Args:
+        args: Command-line arguments with cache_dir and checkpoint_dir
+
+    Returns:
+        tuple: (data_dir, checkpoint_dir)
+            - data_dir: Base cache directory for datasets
+            - checkpoint_dir: Directory for model checkpoints
+    """
+    cache_dir = Path(args.cache_dir)
+    checkpoint_dir = Path(args.checkpoint_dir)
+
+    # Use cache_dir directly as data_dir for stable-datasets
+    # stable-datasets will create subdirectories: stable_datasets/downloads and stable_datasets/processed
+    data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    os.environ["HF_HOME"] = str(cache_dir / "huggingface")
-    os.environ["HF_DATASETS_CACHE"] = str(data_dir)
+
     return data_dir, checkpoint_dir
 
 
@@ -100,112 +82,20 @@ def get_config(args):
     return ds_cfg, embed_dim, freeze_epochs, warmup_epochs
 
 
-def create_transforms(ds_cfg, n_views=1, strong_aug=False):
-    if strong_aug:
-        base_aug = transforms.Compose(
-            transforms.RGB(),
-            transforms.RandomResizedCrop(
-                (ds_cfg["input_size"], ds_cfg["input_size"]), scale=(0.2, 1.0)
-            ),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(
-                brightness=0.8, contrast=0.8, saturation=0.8, hue=0.2, p=0.8
-            ),
-            transforms.RandomGrayscale(p=0.2),
-            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0), p=0.5),
-            transforms.ToImage(**ds_cfg["normalization"]),
-        )
-    else:
-        base_aug = transforms.Compose(
-            transforms.RGB(),
-            transforms.RandomResizedCrop((ds_cfg["input_size"], ds_cfg["input_size"])),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(
-                brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2, p=0.3
-            ),
-            transforms.RandomGrayscale(p=0.2),
-            transforms.GaussianBlur(kernel_size=3, sigma=(1.0, 2.0), p=0.2),
-            transforms.ToImage(**ds_cfg["normalization"]),
-        )
-    val_transform = transforms.Compose(
-        transforms.RGB(),
-        transforms.Resize((ds_cfg["input_size"], ds_cfg["input_size"])),
-        transforms.ToImage(**ds_cfg["normalization"]),
-    )
-    train_transform = (
-        MultiViewTransform({f"view_{i}": base_aug for i in range(n_views)})
-        if n_views > 1
-        else base_aug
-    )
-    return train_transform, val_transform
+def load_backbone(args, img_size=224):
+    """Load backbone from TIMM.
 
+    Args:
+        args: Arguments with backbone name
+        img_size: Input image size for the model (default: 224)
 
-def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
-    hf_config = ds_cfg.get("hf_config")
-    full_train = spt.data.HFDataset(
-        ds_cfg["hf_name"],
-        name=hf_config,
-        split="train",
-        transform=train_transform,
-        trust_remote_code=True,
-        cache_dir=str(data_dir),
-    )
-    val_data = spt.data.HFDataset(
-        ds_cfg["hf_name"],
-        name=hf_config,
-        split="validation",
-        transform=val_transform,
-        trust_remote_code=True,
-        cache_dir=str(data_dir),
-    )
-    test_data = spt.data.HFDataset(
-        ds_cfg["hf_name"],
-        name=hf_config,
-        split="test",
-        transform=val_transform,
-        trust_remote_code=True,
-        cache_dir=str(data_dir),
-    )
+    Returns:
+        tuple: (backbone model, device)
+    """
+    backbone_name = args.backbone
+    print(f"Loading TIMM model: {backbone_name} with img_size={img_size}")
+    backbone = from_timm(backbone_name, pretrained=True, img_size=img_size)
 
-    torch.manual_seed(args.seed)
-    indices = torch.randperm(len(full_train))[: args.n_samples].tolist()
-    train_subset = CPSubset(full_train, indices)
-
-    train_loader = torch.utils.data.DataLoader(
-        train_subset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        drop_last=True,
-        shuffle=True,
-    )
-    val_loader = torch.utils.data.DataLoader(
-        val_data, batch_size=args.batch_size, num_workers=args.num_workers
-    )
-    test_loader = torch.utils.data.DataLoader(
-        test_data, batch_size=args.batch_size, num_workers=args.num_workers
-    )
-    data = spt.data.DataModule(train=train_loader, val=val_loader)
-
-    eval_train = spt.data.HFDataset(
-        ds_cfg["hf_name"],
-        name=hf_config,
-        split="train",
-        transform=val_transform,
-        trust_remote_code=True,
-        cache_dir=str(data_dir),
-    )
-    eval_train_loader = torch.utils.data.DataLoader(
-        CPSubset(eval_train, indices),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-
-    print(f"Data: train={len(train_subset)} val={len(val_data)} test={len(test_data)}")
-    return data, test_loader, eval_train_loader, indices
-
-
-def load_backbone(args):
-    backbone = from_huggingface(args.backbone, pretrained=True)
     for p in backbone.parameters():
         p.requires_grad = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -255,11 +145,24 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
 
 
 def run_training(
-    module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path, method=None
+    module,
+    data,
+    args,
+    ds_cfg,
+    embed_dim,
+    freeze_epochs,
+    logger,
+    ckpt_path,
+    method=None,
+    num_trained_blocks=None,
 ):
+    # Use provided num_trained_blocks or fall back to args
+    if num_trained_blocks is None:
+        num_trained_blocks = args.num_trained_blocks
+
     callbacks = [
         FreezeBackboneCallback(
-            freeze_epochs=freeze_epochs, num_trained_blocks=args.num_trained_blocks
+            freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks
         ),
         *create_cp_evaluation_callbacks(
             module,
@@ -318,10 +221,10 @@ def run_final_eval(
 
 # Unified CLI
 def main():
-    from simclr.simclr_cp import setup_simclr
-    from lejepa.lejepa_cp import setup_lejepa
-    from mae.mae_cp import setup_mae_cp
-    from diet.diet_cp import setup_diet
+    from stable_cp.methods.simclr.simclr_cp import setup_simclr
+    from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
+    from stable_cp.methods.mae.mae_cp import setup_mae_cp
+    from stable_cp.methods.diet.diet_cp import setup_diet
 
     METHODS = {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
@@ -370,7 +273,7 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir
     )
 
-    backbone, device = load_backbone(args)
+    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
 
     project = args.project or f"{args.dataset}-{args.cp_method}-cp"
     run_name = f"{args.cp_method}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"
@@ -403,8 +306,8 @@ def main():
                 ds_cfg["input_size"],
                 device=next(backbone.parameters()).device,
             )
-            out = backbone(test_input)
-            tokens = out.last_hidden_state if hasattr(out, "last_hidden_state") else out
+            # Use forward_features for TIMM models to get token sequence
+            tokens = backbone.forward_features(test_input)
             num_tokens = tokens.shape[1] - 1
         kwargs.update(
             image_size=ds_cfg["input_size"],
