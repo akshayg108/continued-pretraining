@@ -4,8 +4,6 @@ A benchmark and toolkit for continued pretraining methods including LeJEPA, SimC
 
 ## Installation
 
-### Standard Installation
-
 Install the package in editable mode:
 
 ```bash
@@ -13,18 +11,6 @@ pip install -e .
 ```
 
 This will automatically install all dependencies including `stable-pretraining` and `stable-datasets` from their GitHub repositories.
-
-**Note:** The first installation may take a few minutes as pip clones and installs the git dependencies.
-
-### Dependencies
-
-The package requires:
-- Python ≥ 3.8
-- PyTorch ≥ 2.0.0
-- Lightning ≥ 2.0.0
-- transformers ≥ 4.30.0
-- Other dependencies listed in `pyproject.toml`
-
 
 ## Development Setup
 
@@ -53,24 +39,9 @@ cd continued-pretraining
 pip install -e .
 ```
 
-## Package Structure
-
-After installation, you can import the package:
-
-```python
-from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
-from stable_cp.methods.simclr.simclr_cp import setup_simclr
-from stable_cp.methods.mae.mae_cp import setup_mae_cp
-from stable_cp.methods.diet.diet_cp import setup_diet
-from stable_cp.methods.tent.tent_cp import setup_tent_cp
-from stable_cp.callbacks import FreezeBackboneCallback
-from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
-```
-
 ## Usage
 
 Run continued pretraining experiments:
-
 
 ```bash
 python continued_pretraining.py --method lejepa --dataset <dataset> --backbone <model>
