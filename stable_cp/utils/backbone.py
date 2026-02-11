@@ -30,18 +30,19 @@ BACKBONE_DIMS = {
 
 
 def load_backbone(
-    backbone_name: str, pretrained: bool = True
+    backbone_name: str, pretrained: bool = True, img_size: int = 224
 ) -> Tuple[nn.Module, torch.device]:
     """Load a backbone network from TIMM.
 
     Args:
         backbone_name: Name of the TIMM model
         pretrained: Whether to load pretrained weights
+        img_size: Input image size for the model (default: 224)
 
     Returns:
         Tuple of (backbone, device)
     """
-    backbone = from_timm(backbone_name, pretrained=pretrained)
+    backbone = from_timm(backbone_name, pretrained=pretrained, img_size=img_size)
 
     # Ensure all parameters are trainable
     for p in backbone.parameters():

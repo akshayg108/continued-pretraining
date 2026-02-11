@@ -68,7 +68,7 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir, remap_sample_idx=True
     )
 
-    backbone, device = load_backbone(args)
+    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
 
     project = args.project or f"{args.dataset}-diet-cp"
     run_name = f"diet_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"

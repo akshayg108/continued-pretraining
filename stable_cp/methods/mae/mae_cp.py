@@ -73,7 +73,7 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir
     )
 
-    backbone, device = load_backbone(args)
+    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
 
     # Dynamic num_tokens calculation
     with torch.no_grad():

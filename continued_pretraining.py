@@ -82,18 +82,19 @@ def get_config(args):
     return ds_cfg, embed_dim, freeze_epochs, warmup_epochs
 
 
-def load_backbone(args):
+def load_backbone(args, img_size=224):
     """Load backbone from TIMM.
 
     Args:
         args: Arguments with backbone name
+        img_size: Input image size for the model (default: 224)
 
     Returns:
         tuple: (backbone model, device)
     """
     backbone_name = args.backbone
-    print(f"Loading TIMM model: {backbone_name}")
-    backbone = from_timm(backbone_name, pretrained=True)
+    print(f"Loading TIMM model: {backbone_name} with img_size={img_size}")
+    backbone = from_timm(backbone_name, pretrained=True, img_size=img_size)
 
     for p in backbone.parameters():
         p.requires_grad = True
@@ -272,7 +273,7 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir
     )
 
-    backbone, device = load_backbone(args)
+    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
 
     project = args.project or f"{args.dataset}-{args.cp_method}-cp"
     run_name = f"{args.cp_method}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"
