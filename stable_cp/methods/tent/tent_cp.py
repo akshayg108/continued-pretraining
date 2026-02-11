@@ -125,38 +125,16 @@ def main():
     )
     print(f"Checkpoint path: {ckpt_path}")
 
-    if args.tent_mode in ["norm_only", "combined"]:
-        print(
-            f"TENT {args.tent_mode} mode: freeze_epochs={freeze_epochs}, num_trained_blocks={args.num_trained_blocks}"
-        )
-        if freeze_epochs > 0 or args.num_trained_blocks != -1:
-            print(
-                f"⚠️  WARNING: --freeze-epochs and --num-trained-blocks are ignored in TENT {args.tent_mode} mode"
-            )
-            print(
-                f"   Original: freeze_epochs={freeze_epochs}, num_trained_blocks={args.num_trained_blocks}"
-            )
-            print(f"   Modified: freeze_epochs=0, num_trained_blocks=-1")
-            print(
-                f"   Note: TENT {args.tent_mode} mode controlded by configure_model_for_tent"
-            )
-
-        effective_freeze_epochs = 0
-        effective_num_trained_blocks = -1
-    else:
-        effective_freeze_epochs = freeze_epochs
-        effective_num_trained_blocks = args.num_trained_blocks
-
     run_training(
         module,
         data,
         args,
         ds_cfg,
         embed_dim,
-        effective_freeze_epochs,
+        freeze_epochs,
         logger,
         ckpt_path,
-        num_trained_blocks=effective_num_trained_blocks,
+        method="tent",
     )
 
     run_final_eval(

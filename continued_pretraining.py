@@ -153,16 +153,8 @@ def run_training(
     logger,
     ckpt_path,
     method=None,
-    num_trained_blocks=None,
 ):
-    # Use provided num_trained_blocks or fall back to args
-    if num_trained_blocks is None:
-        num_trained_blocks = args.num_trained_blocks
-
     callbacks = [
-        FreezeBackboneCallback(
-            freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks
-        ),
         *create_cp_evaluation_callbacks(
             module,
             ds_cfg["num_classes"],
@@ -174,8 +166,25 @@ def run_training(
         ),
         LearningRateMonitor(logging_interval="step"),
     ]
-    if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
+
+    # Determine the current method
+    current_method = getattr(args, "cp_method", method)
+    if current_method is None:
+        raise ValueError(
+            "Method must be specified either via args.cp_method (unified CLI) "
+            "or method parameter (standalone script). "
+            "Please ensure run_training() is called with method='<method_name>'."
+        )
+    
+    if current_method != "tent":
+        callbacks.append(
+            FreezeBackboneCallback(
+                freeze_epochs=freeze_epochs, num_trained_blocks=args.num_trained_blocks
+            ),
+        )
+    if current_method == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
+
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         num_sanity_val_steps=0,
@@ -224,12 +233,14 @@ def main():
     from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
     from stable_cp.methods.mae.mae_cp import setup_mae_cp
     from stable_cp.methods.diet.diet_cp import setup_diet
+    from stable_cp.methods.tent.tent_cp import setup_tent_cp
 
     METHODS = {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
         "diet": {"n_views": 1, "setup": setup_diet},
         "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
         "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
+        "tent": {"n_views": 1, "setup": setup_tent_cp},
     }
 
     parser = create_base_parser("Continued Pretraining CLI")
@@ -249,9 +260,18 @@ def main():
         "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
     )
     parser.add_argument("--temperature", type=float, default=0.5)
+    # MAE-spcific arguments
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)
     parser.add_argument("--mask-ratio", type=float, default=0.75)
+    # TENT-specific arguments
+    parser.add_argument(
+        "--tent-mode",
+        type=str,
+        default="norm_only",
+        choices=["norm_only", "combined"],
+        help="TENT parameter update mode: 'norm_only' (only normalization layers) or 'combined' (norm + last N blocks)",
+    )
     args = parser.parse_args()
 
     method_cfg = METHODS[args.cp_method]
@@ -296,6 +316,8 @@ def main():
         mixup_cutmix_switch_prob=args.mixup_cutmix_switch_prob,
         pool_strategy=args.pool_strategy,
     )
+
+    # Method-specific parameter setup
     if args.cp_method == "mae_cp":
         with torch.no_grad():
             test_input = torch.zeros(
@@ -314,6 +336,13 @@ def main():
             decoder_dim=args.decoder_dim,
             decoder_depth=args.decoder_depth,
             mask_ratio=args.mask_ratio,
+        )
+    elif args.cp_method == "tent":
+        # TENT-specific parameters
+        kwargs.update(
+            num_classes=ds_cfg["num_classes"],
+            tent_mode=args.tent_mode,
+            num_trained_blocks=args.num_trained_blocks,
         )
 
     module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)

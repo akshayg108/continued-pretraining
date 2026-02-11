@@ -125,7 +125,7 @@ def main():
         checkpoint_dir / f"mae_cp_{args.dataset}_{args.backbone.replace('/', '_')}.ckpt"
     )
     run_training(
-        module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path
+        module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path, method="mae_cp"
     )
     run_final_eval(
         backbone, eval_train_loader, test_loader, device, args, logger, baseline_results

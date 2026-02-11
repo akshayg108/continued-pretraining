@@ -23,24 +23,24 @@ DATASETS = {
         "normalization": "cifar100",
         "splits": ["train", "test", "test"],
     },
-    # Food and Objects (TODO: - not yet implemented in stable-datasets)
-    # "food101": {
-    #     "dataset_class": stable_ds.Food101,
-    #     "config_name": None,
-    #     "num_classes": 101,
-    #     "input_size": 224,
-    #     "normalization": "imagenet",
-    #     "splits": ["train", "test", "test"],
-    # },
-    # Fine-Grained Classification (TODO: - not yet implemented in stable-datasets)
-    # "fgvc_aircraft": {
-    #     "dataset_class": stable_ds.FGVCAircraft,
-    #     "config_name": "variant",  # Options: "variant" (100), "family" (70), "manufacturer" (30)
-    #     "num_classes": 100,
-    #     "input_size": 224,
-    #     "normalization": "imagenet",
-    #     "splits": ["train", "validation", "test"],
-    # },
+    # Food and Objects
+    "food101": {
+        "dataset_class": stable_ds.Food101,
+        "config_name": None,
+        "num_classes": 101,
+        "input_size": 224,
+        "normalization": "food101",
+        "splits": ["train", "test", "test"],
+    },
+    # Fine-Grained Classification
+    "fgvc_aircraft": {
+        "dataset_class": stable_ds.FGVCAircraft,
+        "config_name": "variant",  # Options: "variant" (100), "family" (70), "manufacturer" (30)
+        "num_classes": 100,
+        "input_size": 224,
+        "normalization": "fgvc_aircraft",
+        "splits": ["train", "validation", "test"],
+    },
     # Galaxy dataset
     "galaxy10": {
         "dataset_class": stable_ds.Galaxy10Decal,
@@ -152,8 +152,9 @@ NORMALIZATIONS = {
     # Datasets using ImageNet statistics (for reference, not yet in stable-datasets)
     "plantnet300k": spt.data.static.ImageNet,
     "crop14_balance": spt.data.static.ImageNet,
-    # "fgvc_aircraft": spt.data.static.ImageNet,  # Commented out - dataset not yet implemented
     # Custom statistics computed for specific datasets
+    "fgvc_aircraft": spt.data.static.ImageNet,
+    "food101": spt.data.static.ImageNet,
     "galaxy10": {"mean": [0.097, 0.097, 0.097], "std": [0.174, 0.164, 0.156]},
     # MedMNIST custom statistics (RGB datasets)
     "bloodmnist": {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]},
