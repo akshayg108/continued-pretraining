@@ -38,7 +38,7 @@ def create_cp_linear_probe(
         input=input_key,
         target=target_key,
         probe=nn.Linear(embedding_dim, num_classes),
-        loss_fn=nn.CrossEntropyLoss(),
+        loss=nn.CrossEntropyLoss(),
         metrics=metrics,
         optimizer=optimizer,
         scheduler=scheduler,
