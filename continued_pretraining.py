@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import argparse, os
+import argparse, json, os
 from pathlib import Path
 
 import lightning as pl
@@ -15,7 +15,7 @@ from stable_cp.callbacks import (
     create_cp_evaluation_callbacks,
 )
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from stable_cp.evaluation.zero_shot_eval import zero_shot_eval, finetune_evaluate
 from stable_cp.utils.backbone import BACKBONE_DIMS
 from stable_cp.data import DATASETS, get_dataset_config
 from stable_cp.data import create_data_loaders, create_transforms
@@ -82,19 +82,21 @@ def get_config(args):
     return ds_cfg, embed_dim, freeze_epochs, warmup_epochs
 
 
-def load_backbone(args, img_size=224):
+def load_backbone(args, img_size=224, pretrained=True):
     """Load backbone from TIMM.
 
     Args:
         args: Arguments with backbone name
         img_size: Input image size for the model (default: 224)
+        pretrained: Whether to load pretrained weights (default: True)
 
     Returns:
         tuple: (backbone model, device)
     """
     backbone_name = args.backbone
-    print(f"Loading TIMM model: {backbone_name} with img_size={img_size}")
-    backbone = from_timm(backbone_name, pretrained=True, img_size=img_size)
+    init_str = "pretrained" if pretrained else "randomly initialized"
+    print(f"Loading TIMM model: {backbone_name} ({init_str}) with img_size={img_size}")
+    backbone = from_timm(backbone_name, pretrained=pretrained, img_size=img_size)
 
     for p in backbone.parameters():
         p.requires_grad = True
@@ -189,11 +191,35 @@ def run_training(
     )()
 
 
+def run_finetune_eval(module, test_loader, device, logger, pool_strategy="cls"):
+    """Evaluate the fine-tuned model (backbone + classifier) on test data.
+
+    Args:
+        module: Trained spt.Module with backbone and classifier
+        test_loader: Test data loader
+        device: Device to use
+        logger: WandbLogger for logging
+        pool_strategy: 'cls' or 'mean' for ViT embedding extraction
+
+    Returns:
+        dict: Finetune evaluation results
+    """
+    print("Finetune eval (backbone + classifier)...")
+    results = finetune_evaluate(
+        module.backbone, module.classifier, test_loader, device,
+        pool_strategy=pool_strategy, verbose=True,
+    )
+    for k, v in results.items():
+        logger.experiment.summary[f"final/{k}"] = v
+    print(f"Finetune: acc={results['finetune_acc']:.4f} f1={results['finetune_f1']:.4f}")
+    return results
+
+
 def run_final_eval(
     backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
 ):
     if args.skip_final_eval:
-        return
+        return None
     print("Final eval...")
     final_results = zero_shot_eval(
         backbone,
@@ -218,6 +244,8 @@ def run_final_eval(
                     f"  {key}: {baseline_results[key]:.4f} -> {final_results[key]:.4f} ({delta:+.4f})"
                 )
 
+    return final_results
+
 
 # Unified CLI
 def main():
@@ -225,12 +253,14 @@ def main():
     from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
     from stable_cp.methods.mae.mae_cp import setup_mae_cp
     from stable_cp.methods.diet.diet_cp import setup_diet
+    from stable_cp.methods.supervised.sft_cp import setup_sft
 
     METHODS = {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
         "diet": {"n_views": 1, "setup": setup_diet},
         "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
         "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
+        "sft": {"n_views": 1, "setup": setup_sft},
     }
 
     parser = create_base_parser("Continued Pretraining CLI")
@@ -253,6 +283,18 @@ def main():
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)
     parser.add_argument("--mask-ratio", type=float, default=0.75)
+    # SFT-specific arguments
+    parser.add_argument(
+        "--random-init",
+        action="store_true",
+        help="Use randomly initialized backbone (no pretrained weights)",
+    )
+    parser.add_argument(
+        "--results-json",
+        type=str,
+        default=None,
+        help="Path to save results as JSON (for automated result collection)",
+    )
     args = parser.parse_args()
 
     method_cfg = METHODS[args.cp_method]
@@ -273,10 +315,12 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir
     )
 
-    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
+    pretrained = not getattr(args, "random_init", False)
+    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=pretrained)
 
+    init_tag = "rand" if not pretrained else "pre"
     project = args.project or f"{args.dataset}-{args.cp_method}-cp"
-    run_name = f"{args.cp_method}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"
+    run_name = f"{args.cp_method}_{init_tag}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"
     logger = WandbLogger(project=project, name=run_name, log_model=False)
 
     baseline_results = run_baseline(
@@ -317,6 +361,9 @@ def main():
             mask_ratio=args.mask_ratio,
         )
 
+    if args.cp_method == "sft":
+        kwargs["num_classes"] = ds_cfg["num_classes"]
+
     module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
 
     ckpt_path = str(
@@ -326,9 +373,49 @@ def main():
     run_training(
         module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path
     )
-    run_final_eval(
+
+    # Finetune evaluation for SFT (backbone + classifier on test set)
+    finetune_results = None
+    if args.cp_method == "sft" and hasattr(module, "classifier"):
+        pool_strategy = getattr(args, "pool_strategy", "cls")
+        finetune_results = run_finetune_eval(
+            module, test_loader, device, logger, pool_strategy=pool_strategy
+        )
+
+    final_eval_results = run_final_eval(
         backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
     )
+
+    # Save results to JSON if requested
+    if args.results_json:
+        results_json = {
+            "dataset": args.dataset,
+            "n_samples": args.n_samples,
+            "backbone": args.backbone,
+            "method": args.cp_method,
+            "seed": args.seed,
+            "epochs": args.epochs,
+            "random_init": getattr(args, "random_init", False),
+        }
+        if baseline_results:
+            results_json["pre_knn_f1"] = baseline_results.get("knn_f1", None)
+            results_json["pre_linear_f1"] = baseline_results.get("linear_f1", None)
+            results_json["pre_knn_acc"] = baseline_results.get("knn_acc", None)
+            results_json["pre_linear_acc"] = baseline_results.get("linear_acc", None)
+        if final_eval_results:
+            results_json["post_knn_f1"] = final_eval_results.get("knn_f1", None)
+            results_json["post_linear_f1"] = final_eval_results.get("linear_f1", None)
+            results_json["post_knn_acc"] = final_eval_results.get("knn_acc", None)
+            results_json["post_linear_acc"] = final_eval_results.get("linear_acc", None)
+        if finetune_results:
+            results_json["finetune_f1"] = finetune_results.get("finetune_f1", None)
+            results_json["finetune_acc"] = finetune_results.get("finetune_acc", None)
+
+        results_path = Path(args.results_json)
+        results_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(results_path, "w") as f:
+            json.dump(results_json, f, indent=2)
+        print(f"Results saved to {results_path}")
 
     logger.experiment.finish()
     print("Done!")
