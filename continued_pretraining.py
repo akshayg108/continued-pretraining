@@ -320,7 +320,7 @@ def main():
 
     init_tag = "rand" if not pretrained else "pre"
     project = args.project or f"{args.dataset}-{args.cp_method}-cp"
-    run_name = f"{args.cp_method}_{init_tag}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}"
+    run_name = f"{args.cp_method}_{init_tag}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}_s{args.seed}"
     logger = WandbLogger(project=project, name=run_name, log_model=False)
 
     baseline_results = run_baseline(
@@ -368,7 +368,7 @@ def main():
 
     ckpt_path = str(
         checkpoint_dir
-        / f"{args.cp_method}_{args.dataset}_{args.backbone.replace('/', '_')}.ckpt"
+        / f"{args.cp_method}_{args.dataset}_{args.backbone.replace('/', '_')}_n{args.n_samples}_s{args.seed}.ckpt"
     )
     run_training(
         module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path
