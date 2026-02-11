@@ -32,7 +32,8 @@ def sft_forward(self, batch, stage):
     """
     out = {}
     pool_strategy = getattr(self, "pool_strategy", "cls")
-    out["embedding"] = _extract_embedding(self.backbone(batch["image"]), pool_strategy)
+    features = self.backbone.forward_features(batch["image"])
+    out["embedding"] = _extract_embedding(features, pool_strategy)
     out["logits"] = self.classifier(out["embedding"])
 
     if "label" in batch:

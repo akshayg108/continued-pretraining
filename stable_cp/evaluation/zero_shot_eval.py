@@ -468,8 +468,7 @@ def finetune_evaluate(
             else:
                 raise ValueError(f"Unexpected batch type: {type(batch)}")
 
-            features = backbone(images)
-            # Handle ViT sequence outputs [B, T, D]
+            features = backbone.forward_features(images)
             if features.dim() == 3:
                 if pool_strategy == "mean":
                     features = features[:, 1:, :].mean(dim=1)
