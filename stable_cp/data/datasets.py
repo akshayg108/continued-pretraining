@@ -242,22 +242,22 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
     config_name = cfg["config_name"]
 
     # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
-    # force loading full dataset and split manually to avoid data leakage
+    # load the "train" split and split manually to avoid data leakage
     if cfg.get("manual_split", False):
         if config_name is not None:
-            hf_ds = dataset_class(
-                split=None,
+            hf_ds_full = dataset_class(
+                split="train",
                 config_name=config_name,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
             )
         else:
-            hf_ds = dataset_class(
-                split=None,
+            hf_ds_full = dataset_class(
+                split="train",
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
             )
-        hf_ds = _handle_split_from_dict(hf_ds, split, seed)
+        hf_ds = _split_single_dataset(hf_ds_full, split, seed)
         return HFDatasetWrapper(hf_ds, transform=transform)
 
     # Load the raw HF dataset from stable-datasets
