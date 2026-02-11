@@ -40,7 +40,7 @@ dependencies = [
     "tqdm>=4.60.0",
     "pillow>=9.0.0",
     "stable-pretraining @ git+https://github.com/galilai-group/stable-pretraining.git",
-    "stable-datasets @ git+https://github.com/galilai-group/stable-datasets.git",
+    "stable-datasets @ git+https://github.com/haodongzhang0118/stable-datasets.git",
 ]
 
 [project.optional-dependencies]
