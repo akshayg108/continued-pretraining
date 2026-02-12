@@ -26,6 +26,14 @@ BACKBONE_DIMS = {
     "vit_base_patch16_224.mae": 768,
     "vit_large_patch16_224.mae": 1024,
     "vit_huge_patch14_224.mae": 1280,
+    # CLIP models (TIMM - OpenAI)
+    "vit_base_patch16_clip_224.openai": 768,
+    "vit_base_patch32_clip_224.openai": 768,
+    "vit_large_patch14_clip_224.openai": 1024,
+    # CLIP models (TIMM - LAION/OpenCLIP)
+    "vit_base_patch16_clip_224.laion2b": 768,
+    "vit_large_patch14_clip_224.laion2b": 1024,
+    "vit_huge_patch14_clip_224.laion2b": 1280,
 }
 
 
