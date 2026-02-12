@@ -15,7 +15,11 @@ from stable_cp.callbacks import (
     create_cp_evaluation_callbacks,
 )
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-from stable_cp.evaluation.zero_shot_eval import zero_shot_eval, finetune_evaluate
+from stable_cp.evaluation.zero_shot_eval import (
+    zero_shot_eval,
+    finetune_evaluate,
+    load_backbone_from_checkpoint,
+)
 from stable_cp.utils.backbone import BACKBONE_DIMS
 from stable_cp.data import DATASETS, get_dataset_config
 from stable_cp.data import create_data_loaders, create_transforms
@@ -283,11 +287,18 @@ def main():
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)
     parser.add_argument("--mask-ratio", type=float, default=0.75)
-    # SFT-specific arguments
+    # Backbone initialization
     parser.add_argument(
         "--random-init",
         action="store_true",
         help="Use randomly initialized backbone (no pretrained weights)",
+    )
+    parser.add_argument(
+        "--init-checkpoint",
+        type=str,
+        default=None,
+        help="Path to a CP checkpoint to initialize backbone weights from "
+             "(e.g., for SFT after LeJEPA-CP). Overrides --random-init.",
     )
     parser.add_argument(
         "--results-json",
@@ -315,10 +326,17 @@ def main():
         args, ds_cfg, train_transform, val_transform, data_dir
     )
 
-    pretrained = not getattr(args, "random_init", False)
-    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=pretrained)
-
-    init_tag = "rand" if not pretrained else "pre"
+    # Backbone initialization: --init-checkpoint > --random-init > pretrained (default)
+    if args.init_checkpoint:
+        # Load TIMM architecture (no pretrained weights), then load CP checkpoint
+        backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=False)
+        load_backbone_from_checkpoint(backbone, args.init_checkpoint)
+        init_tag = "ckpt"
+        pretrained = False
+    else:
+        pretrained = not getattr(args, "random_init", False)
+        backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=pretrained)
+        init_tag = "rand" if not pretrained else "pre"
     project = args.project or f"{args.dataset}-{args.cp_method}-cp"
     run_name = f"{args.cp_method}_{init_tag}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}_s{args.seed}"
     logger = WandbLogger(project=project, name=run_name, log_model=False)
@@ -396,6 +414,7 @@ def main():
             "seed": args.seed,
             "epochs": args.epochs,
             "random_init": getattr(args, "random_init", False),
+            "init_checkpoint": args.init_checkpoint,
         }
         if baseline_results:
             results_json["pre_knn_f1"] = baseline_results.get("knn_f1", None)
