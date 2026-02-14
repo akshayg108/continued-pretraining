@@ -70,44 +70,53 @@ SEEDS=(42 43 44)
 # ============================================================
 EXPERIMENTS=(
     # DermaMNIST
-    "dermamnist 100"
-    "dermamnist 500"
-    "dermamnist 1000"
-    "dermamnist 7007"
+    # "dermamnist 100"
+    # "dermamnist 500"
+    # "dermamnist 1000"
+    # "dermamnist 7007"
 
     # BreastMNIST
-    "breastmnist 100"
-    "breastmnist 500"
+    # "breastmnist 100"
+    # "breastmnist 500"
 
     # OCTMNIST
-    "octmnist 100"
-    "octmnist 500"
-    "octmnist 1000"
-    "octmnist 10000"
+    # "octmnist 100"
+    # "octmnist 500"
+    # "octmnist 1000"
+    # "octmnist 10000"
     "octmnist 97477"
+    "octmnist 25000"
 
     # OrganAMNIST
-    "organamnist 100"
-    "organamnist 500"
-    "organamnist 1000"
-    "organamnist 10000"
-    "organamnist 25000"
-    "organamnist 34561"
+    # "organamnist 100"
+    # "organamnist 500"
+    # "organamnist 1000"
+    # "organamnist 10000"
+    # "organamnist 25000"
+    # "organamnist 34561"
 
     # PathMNIST
-    "pathmnist 100"
-    "pathmnist 500"
-    "pathmnist 1000"
-    "pathmnist 10000"
-    "pathmnist 25000"
-    "pathmnist 89996"
+    # "pathmnist 100"
+    # "pathmnist 500"
+    # "pathmnist 1000"
+    # "pathmnist 10000"
+    # "pathmnist 25000"
+    # "pathmnist 89996"
 
-    # TODO: Galaxy10 and Food101 (add back later)
-    # "galaxy10 100"
-    # "galaxy10 500"
-    # "galaxy10 1000"
-    # "galaxy10 1600"
-    # "galaxy10 3400"
+    # Galaxy10
+    "galaxy10 100"
+    "galaxy10 500"
+    "galaxy10 1000"
+    "galaxy10 10000"
+    "galaxy10 14188"
+
+    # FGVC_Aircraft
+    "fgvc_aircraft 100"
+    "fgvc_aircraft 500"
+    "fgvc_aircraft 1000"
+    "fgvc_aircraft 3400"
+
+    # Food101
     # "food101 100"
     # "food101 500"
     # "food101 1000"
@@ -126,9 +135,10 @@ get_display_name() {
         octmnist)    echo "OCTMNIST" ;;
         organamnist) echo "OrganAMNIST" ;;
         pathmnist)   echo "PathMNIST" ;;
-        galaxy10)    echo "Galaxy10" ;;
-        food101)     echo "Food101" ;;
-        *)           echo "$1" ;;
+        galaxy10)       echo "Galaxy10" ;;
+        food101)        echo "Food101" ;;
+        fgvc_aircraft)  echo "FGVC_Aircraft" ;;
+        *)              echo "$1" ;;
     esac
 }
 
