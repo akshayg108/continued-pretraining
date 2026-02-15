@@ -228,7 +228,7 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
     echo "############################################################"
     echo ""
 
-    CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
+    CSV_FILE="${LOG_DIR}/${DATASET}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
     echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
     echo "CSV file: ${CSV_FILE}"
 
