@@ -3,6 +3,7 @@ import torch
 import hashlib
 import numpy as np
 from PIL import Image
+from sklearn.model_selection import train_test_split
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
@@ -155,9 +156,19 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
             val_data, test_data, "validation", "test", sample_size=100, seed=args.seed
         )
 
-    # Create training subset
-    torch.manual_seed(args.seed)
-    indices = torch.randperm(len(full_train))[: args.n_samples].tolist()
+    # Create training subset with stratified sampling to preserve class distribution
+    all_labels = np.array(full_train.hf_dataset["label"]).ravel()
+    all_indices = np.arange(len(full_train))
+    if args.n_samples >= len(full_train):
+        indices = all_indices.tolist()
+    else:
+        indices, _ = train_test_split(
+            all_indices,
+            train_size=args.n_samples,
+            stratify=all_labels,
+            random_state=args.seed,
+        )
+        indices = indices.tolist()
     train_subset = CPSubset(full_train, indices)
 
     # Create data loaders

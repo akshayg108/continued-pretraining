@@ -135,26 +135,6 @@ def extract_features(
     return features, labels
 
 
-def _infer_num_classes(*label_arrays) -> int:
-    """Infer num_classes from the max label value across all label arrays."""
-    max_label = max(int(arr.max()) for arr in label_arrays if len(arr) > 0)
-    return max_label + 1
-
-
-def _expand_proba(proba: np.ndarray, classes: np.ndarray, num_classes: int) -> np.ndarray:
-    """Expand sklearn predict_proba output to full num_classes columns.
-
-    sklearn classifiers only output probabilities for classes seen during fit.
-    This pads missing class columns with zeros so the shape is (N, num_classes).
-    """
-    if proba.shape[1] == num_classes:
-        return proba
-    full_proba = np.zeros((proba.shape[0], num_classes), dtype=proba.dtype)
-    for i, c in enumerate(classes):
-        full_proba[:, int(c)] = proba[:, i]
-    return full_proba
-
-
 def knn_evaluate(
     train_features: np.ndarray,
     train_labels: np.ndarray,
@@ -179,10 +159,10 @@ def knn_evaluate(
     proba = knn.predict_proba(test_features)
 
     # Compute metrics using torchmetrics
-    num_classes = _infer_num_classes(train_labels, test_labels)
+    num_classes = len(np.unique(train_labels))
     pred_t = torch.from_numpy(pred)
     target_t = torch.from_numpy(test_labels)
-    proba_t = torch.from_numpy(_expand_proba(proba, knn.classes_, num_classes))
+    proba_t = torch.from_numpy(proba)
 
     results = {
         "knn_acc": MulticlassAccuracy(num_classes=num_classes)(pred_t, target_t).item(),
@@ -215,7 +195,7 @@ def linear_probe_evaluate(
     train_features = normalize(train_features)
     test_features = normalize(test_features)
 
-    num_classes = _infer_num_classes(train_labels, test_labels)
+    num_classes = len(np.unique(train_labels))
 
     # sklearn LogisticRegression (standard for post-training eval)
     clf = LogisticRegression(
@@ -233,9 +213,7 @@ def linear_probe_evaluate(
     # Compute metrics using torchmetrics
     pred_t = torch.from_numpy(pred)
     target_t = torch.from_numpy(test_labels)
-    proba_t = torch.from_numpy(
-        _expand_proba(proba, clf.classes_, num_classes)
-    ).float()
+    proba_t = torch.from_numpy(proba).float()
 
     results = {
         "linear_acc": MulticlassAccuracy(num_classes=num_classes)(
@@ -278,7 +256,7 @@ def linear_probe_pytorch_evaluate(
     test_features_t = torch.from_numpy(test_features).float().to(device)
     test_labels_t = torch.from_numpy(test_labels).long()
 
-    num_classes = _infer_num_classes(train_labels, test_labels)
+    num_classes = len(np.unique(train_labels))
     in_dim = train_features.shape[1]
 
     # Create linear classifier
