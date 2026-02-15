@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-test-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-test-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-test-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-test-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -26,7 +26,7 @@ echo "Python: $(which python)"
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
-cd /scratch/gs4133/zhd/CP/continued-pretraining
+cd /scratch/gs4133/zhd/Continued-Pretraining/continued-pretraining
 export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -39,9 +39,9 @@ nvidia-smi
 # ============================================================
 # Paths
 # ============================================================
-DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/pre-cp-only/DIET"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/pre-cp-only/DIET"
+DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/pre-cp-only/DIET"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET"
 SLURM_LOG_DIR="${LOG_DIR}/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
