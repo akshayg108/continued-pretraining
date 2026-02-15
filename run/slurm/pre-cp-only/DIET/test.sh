@@ -48,8 +48,8 @@ mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="galaxy10"
-DISPLAY_NAME="Galaxy10"
+DATASET="dermamnist"
+DISPLAY_NAME="DermaMNIST"
 MODEL_SIZE="ViT-B"
 BATCH_SIZE=32
 KNN_K=20

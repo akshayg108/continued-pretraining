@@ -14,11 +14,6 @@ import lightning as pl
 import torch
 import torch.nn as nn
 from lightning.pytorch.callbacks import LearningRateMonitor
-from torchmetrics.classification import (
-    MulticlassAccuracy,
-    MulticlassF1Score,
-    MulticlassAUROC,
-)
 
 import stable_pretraining as spt
 
@@ -84,30 +79,12 @@ def _sft_forward(self, batch, stage):
             sync_dist=True,
         )
 
-        # Epoch-level metrics via torchmetrics (accumulate per batch, compute at epoch end)
-        self.sft_acc_metric(out["logits"], batch["label"])
+        preds = out["logits"].detach().argmax(dim=-1)
+        acc = (preds == batch["label"]).float().mean()
         self.log(
             f"{stage}/{prefix}_acc",
-            self.sft_acc_metric,
-            on_step=False,
-            on_epoch=True,
-            sync_dist=True,
-        )
-
-        self.sft_f1_metric(out["logits"], batch["label"])
-        self.log(
-            f"{stage}/{prefix}_f1",
-            self.sft_f1_metric,
-            on_step=False,
-            on_epoch=True,
-            sync_dist=True,
-        )
-
-        self.sft_auroc_metric(out["logits"], batch["label"])
-        self.log(
-            f"{stage}/{prefix}_auroc",
-            self.sft_auroc_metric,
-            on_step=False,
+            acc,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
         )
@@ -128,9 +105,6 @@ def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
         metric_prefix=metric_prefix,
         forward=_sft_forward,
         optim=optim_config,
-        sft_acc_metric=MulticlassAccuracy(num_classes=num_classes, average="macro"),
-        sft_f1_metric=MulticlassF1Score(num_classes=num_classes, average="macro"),
-        sft_auroc_metric=MulticlassAUROC(num_classes=num_classes, average="macro"),
     )
 
 
