@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
-#SBATCH --time=72:00:00
+#SBATCH --time=96:00:00
 #SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-small-%j.out
 #SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-small-%j.err
 
