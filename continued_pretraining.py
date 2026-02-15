@@ -1,4 +1,13 @@
 #!/usr/bin/env python
+"""Unified CLI for Continued Pretraining (CP) experiments.
+
+Supports two orthogonal axes:
+  1. **CP methods**: lejepa, diet, simclr, mae_cp  (--cp-method)
+  2. **SFT evaluation**: fine-tune + evaluate before/after CP  (--pre-cp-sft / --post-cp-sft)
+
+The ``--no-cp`` flag skips CP training entirely, useful for baseline
+evaluation (KNN + Linear Probe + SFT) on a pretrained or random backbone.
+"""
 import argparse, json, os
 from pathlib import Path
 
@@ -15,17 +24,17 @@ from stable_cp.callbacks import (
     create_cp_evaluation_callbacks,
 )
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-from stable_cp.evaluation.zero_shot_eval import (
-    zero_shot_eval,
-    finetune_evaluate,
-    load_backbone_from_checkpoint,
-)
+from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from stable_cp.evaluation.sft_eval import sft_evaluate
 from stable_cp.utils.backbone import BACKBONE_DIMS
 from stable_cp.data import DATASETS, get_dataset_config
 from stable_cp.data import create_data_loaders, create_transforms
 
 
-# Shared functions
+# ============================================================
+# Shared helper functions
+# ============================================================
+
 def create_base_parser(description="Continued Pretraining"):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
@@ -52,25 +61,12 @@ def create_base_parser(description="Continued Pretraining"):
 
 
 def setup_paths(args):
-    """Setup paths for data and checkpoints.
-
-    Args:
-        args: Command-line arguments with cache_dir and checkpoint_dir
-
-    Returns:
-        tuple: (data_dir, checkpoint_dir)
-            - data_dir: Base cache directory for datasets
-            - checkpoint_dir: Directory for model checkpoints
-    """
+    """Setup paths for data and checkpoints."""
     cache_dir = Path(args.cache_dir)
     checkpoint_dir = Path(args.checkpoint_dir)
-
-    # Use cache_dir directly as data_dir for stable-datasets
-    # stable-datasets will create subdirectories: stable_datasets/downloads and stable_datasets/processed
     data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
     return data_dir, checkpoint_dir
 
 
@@ -128,10 +124,15 @@ def create_optim_config(args, warmup_epochs):
     }
 
 
+# ============================================================
+# Evaluation phases
+# ============================================================
+
 def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger):
+    """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
         return None
-    print("Baseline eval...")
+    print("Baseline eval (KNN + Linear Probe) …")
     results = zero_shot_eval(
         backbone,
         eval_train_loader,
@@ -150,6 +151,42 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
     return results
 
 
+def run_final_eval(
+    backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
+):
+    """Post-CP evaluation: KNN + Linear Probe."""
+    if args.skip_final_eval:
+        return None
+    print("Final eval (KNN + Linear Probe) …")
+    final_results = zero_shot_eval(
+        backbone,
+        eval_train_loader,
+        test_loader,
+        device,
+        k_neighbors=args.knn_k,
+        linear_probe_method="both",
+        verbose=True,
+    )
+    for k, v in final_results.items():
+        logger.experiment.summary[f"final/{k}"] = v
+
+    if baseline_results:
+        print("Improvement:")
+        for key in ["knn_f1", "linear_f1", "knn_acc", "linear_acc"]:
+            if key in baseline_results and key in final_results:
+                delta = final_results[key] - baseline_results[key]
+                logger.experiment.summary[f"delta/{key}"] = delta
+                print(
+                    f"  {key}: {baseline_results[key]:.4f} -> {final_results[key]:.4f} ({delta:+.4f})"
+                )
+
+    return final_results
+
+
+# ============================================================
+# CP training
+# ============================================================
+
 def run_training(
     module,
     data,
@@ -162,7 +199,6 @@ def run_training(
     method=None,
     num_trained_blocks=None,
 ):
-    # Use provided num_trained_blocks or fall back to args
     if num_trained_blocks is None:
         num_trained_blocks = args.num_trained_blocks
 
@@ -195,82 +231,31 @@ def run_training(
     )()
 
 
-def run_finetune_eval(module, test_loader, device, logger, pool_strategy="cls"):
-    """Evaluate the fine-tuned model (backbone + classifier) on test data.
-
-    Args:
-        module: Trained spt.Module with backbone and classifier
-        test_loader: Test data loader
-        device: Device to use
-        logger: WandbLogger for logging
-        pool_strategy: 'cls' or 'mean' for ViT embedding extraction
-
-    Returns:
-        dict: Finetune evaluation results
-    """
-    print("Finetune eval (backbone + classifier)...")
-    results = finetune_evaluate(
-        module.backbone, module.classifier, test_loader, device,
-        pool_strategy=pool_strategy, verbose=True,
-    )
-    for k, v in results.items():
-        logger.experiment.summary[f"final/{k}"] = v
-    print(f"Finetune: acc={results['finetune_acc']:.4f} f1={results['finetune_f1']:.4f}")
-    return results
-
-
-def run_final_eval(
-    backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
-):
-    if args.skip_final_eval:
-        return None
-    print("Final eval...")
-    final_results = zero_shot_eval(
-        backbone,
-        eval_train_loader,
-        test_loader,
-        device,
-        k_neighbors=args.knn_k,
-        linear_probe_method="both",
-        verbose=True,
-    )
-    # Log to summary only (not history) to avoid step ordering issues
-    for k, v in final_results.items():
-        logger.experiment.summary[f"final/{k}"] = v
-
-    if baseline_results:
-        print("Improvement:")
-        for key in ["knn_f1", "linear_f1", "knn_acc", "linear_acc"]:
-            if key in baseline_results and key in final_results:
-                delta = final_results[key] - baseline_results[key]
-                logger.experiment.summary[f"delta/{key}"] = delta
-                print(
-                    f"  {key}: {baseline_results[key]:.4f} -> {final_results[key]:.4f} ({delta:+.4f})"
-                )
-
-    return final_results
-
-
+# ============================================================
 # Unified CLI
+# ============================================================
+
 def main():
     from stable_cp.methods.simclr.simclr_cp import setup_simclr
     from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
     from stable_cp.methods.mae.mae_cp import setup_mae_cp
     from stable_cp.methods.diet.diet_cp import setup_diet
-    from stable_cp.methods.supervised.sft_cp import setup_sft
 
     METHODS = {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
         "diet": {"n_views": 1, "setup": setup_diet},
         "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
         "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
-        "sft": {"n_views": 1, "setup": setup_sft},
     }
 
     parser = create_base_parser("Continued Pretraining CLI")
+
+    # ---- CP method (not required when --no-cp) ----
     parser.add_argument(
         "--cp-method", type=str, required=True, choices=list(METHODS.keys())
     )
+
+    # ---- CP method hyper-parameters ----
     parser.add_argument("--n-views", type=int, default=4)
     parser.add_argument("--proj-dim", type=int, default=128)
     parser.add_argument("--hidden-dim", type=int, default=2048)
@@ -287,148 +272,285 @@ def main():
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)
     parser.add_argument("--mask-ratio", type=float, default=0.75)
-    # Backbone initialization
+
+    # ---- Backbone initialization ----
     parser.add_argument(
         "--random-init",
         action="store_true",
         help="Use randomly initialized backbone (no pretrained weights)",
     )
+
+    # ---- Evaluation mode flags ----
     parser.add_argument(
-        "--init-checkpoint",
-        type=str,
-        default=None,
-        help="Path to a CP checkpoint to initialize backbone weights from "
-             "(e.g., for SFT after LeJEPA-CP). Overrides --random-init.",
+        "--pre-cp-sft",
+        action="store_true",
+        help="Run SFT evaluation BEFORE CP (also enables KNN+LP baseline)",
     )
+    parser.add_argument(
+        "--post-cp-sft",
+        action="store_true",
+        help="Run SFT evaluation AFTER CP (also enables KNN+LP final eval)",
+    )
+    parser.add_argument(
+        "--no-cp",
+        action="store_true",
+        help="Skip CP training entirely (baseline-only mode)",
+    )
+
+    # ---- Results output ----
     parser.add_argument(
         "--results-json",
         type=str,
         default=None,
         help="Path to save results as JSON (for automated result collection)",
     )
+
     args = parser.parse_args()
 
-    method_cfg = METHODS[args.cp_method]
+    # ---- Validate flag combinations ----
+    if args.no_cp and args.post_cp_sft:
+        parser.error("--post-cp-sft requires CP training (remove --no-cp)")
+
+    # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
     ds_cfg, embed_dim, freeze_epochs, warmup_epochs = get_config(args)
 
-    n_views = (
-        args.n_views if args.cp_method == "lejepa" else method_cfg.get("n_views", 1)
+    # ---- Backbone ----
+    pretrained = not getattr(args, "random_init", False)
+    backbone, device = load_backbone(
+        args, img_size=ds_cfg["input_size"], pretrained=pretrained
     )
-    print(
-        f"{args.cp_method.upper()} CP: {args.dataset} | {args.backbone} | views={n_views} freeze={freeze_epochs} warmup={warmup_epochs}"
-    )
+    init_tag = "rand" if not pretrained else "pre"
 
-    train_transform, val_transform = create_transforms(
-        ds_cfg, n_views, method_cfg.get("strong_aug", False)
-    )
-    data, test_loader, eval_train_loader, indices = create_data_loaders(
-        args, ds_cfg, train_transform, val_transform, data_dir
-    )
-
-    # Backbone initialization: --init-checkpoint > --random-init > pretrained (default)
-    if args.init_checkpoint:
-        # Load TIMM architecture (no pretrained weights), then load CP checkpoint
-        backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=False)
-        load_backbone_from_checkpoint(backbone, args.init_checkpoint)
-        init_tag = "ckpt"
-        pretrained = False
+    # ---- Wandb logger ----
+    if args.no_cp:
+        project = args.project or f"{args.dataset}-sft-eval"
+        run_name = (f"sft_eval_{init_tag}_n{args.n_samples}_s{args.seed}")
     else:
-        pretrained = not getattr(args, "random_init", False)
-        backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=pretrained)
-        init_tag = "rand" if not pretrained else "pre"
-    project = args.project or f"{args.dataset}-{args.cp_method}-cp"
-    run_name = f"{args.cp_method}_{init_tag}_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}_s{args.seed}"
+        method_cfg = METHODS[args.cp_method]
+        project = args.project or f"{args.dataset}-{args.cp_method}-cp"
+        run_name = (f"{args.cp_method}_{init_tag}_n{args.n_samples}"
+                    f"_ep{args.epochs}_frz{freeze_epochs}"
+                    f"_blk{args.num_trained_blocks}_s{args.seed}")
     logger = WandbLogger(project=project, name=run_name, log_model=False)
 
-    baseline_results = run_baseline(
-        backbone, eval_train_loader, test_loader, device, args, logger
-    )
-    optim_config = create_optim_config(args, warmup_epochs)
+    # ================================================================
+    # Data creation
+    # ================================================================
+    sft_data = None
+    cp_data = None
 
-    kwargs = dict(
-        num_samples=len(indices),
-        proj_dim=args.proj_dim,
-        hidden_dim=args.hidden_dim,
-        lamb=args.lamb,
-        label_smoothing=args.label_smoothing,
-        temperature=args.temperature,
-        mixup_alpha=args.mixup_alpha,
-        cutmix_alpha=args.cutmix_alpha,
-        mixup_cutmix_prob=args.mixup_cutmix_prob,
-        mixup_cutmix_switch_prob=args.mixup_cutmix_switch_prob,
-        pool_strategy=args.pool_strategy,
-    )
-    if args.cp_method == "mae_cp":
-        with torch.no_grad():
-            test_input = torch.zeros(
-                1,
-                3,
-                ds_cfg["input_size"],
-                ds_cfg["input_size"],
-                device=next(backbone.parameters()).device,
+    # SFT data (n_views=1, standard augmentation) — also provides
+    # the shared eval_train_loader and test_loader for KNN/LP.
+    if args.pre_cp_sft or args.post_cp_sft:
+        sft_train_tf, sft_val_tf = create_transforms(
+            ds_cfg, n_views=1, strong_aug=False
+        )
+        sft_data, test_loader, eval_train_loader, indices = create_data_loaders(
+            args, ds_cfg, sft_train_tf, sft_val_tf, data_dir
+        )
+        print(f"SFT data created: {len(indices)} train samples")
+
+    # CP data (method-specific multi-view transforms)
+    if not args.no_cp:
+        method_cfg = METHODS[args.cp_method]
+        n_views = (
+            args.n_views
+            if args.cp_method == "lejepa"
+            else method_cfg.get("n_views", 1)
+        )
+        cp_train_tf, cp_val_tf = create_transforms(
+            ds_cfg, n_views, method_cfg.get("strong_aug", False)
+        )
+        cp_data, cp_test_loader, cp_eval_train_loader, cp_indices = (
+            create_data_loaders(args, ds_cfg, cp_train_tf, cp_val_tf, data_dir)
+        )
+        # If no SFT flags, use CP's eval loaders for KNN/LP
+        if sft_data is None:
+            test_loader = cp_test_loader
+            eval_train_loader = cp_eval_train_loader
+            indices = cp_indices
+        print(
+            f"{args.cp_method.upper()} CP: {args.dataset} | {args.backbone} | "
+            f"views={n_views} freeze={freeze_epochs} warmup={warmup_epochs}"
+        )
+
+    # Fallback: --no-cp without SFT flags still needs eval loaders
+    # for baseline KNN/LP evaluation
+    if sft_data is None and args.no_cp:
+        base_train_tf, base_val_tf = create_transforms(
+            ds_cfg, n_views=1, strong_aug=False
+        )
+        _, test_loader, eval_train_loader, indices = create_data_loaders(
+            args, ds_cfg, base_train_tf, base_val_tf, data_dir
+        )
+
+    # ================================================================
+    # Phase 1: Pre-CP evaluation
+    # ================================================================
+    baseline_results = None
+    sft_pre_results = None
+
+    if not args.skip_baseline:
+        baseline_results = run_baseline(
+            backbone, eval_train_loader, test_loader, device, args, logger
+        )
+
+    if args.pre_cp_sft:
+        # SFT evaluation (deep-copies backbone internally)
+        sft_pre_dir = checkpoint_dir / "sft_pre"
+        sft_pre_dir.mkdir(parents=True, exist_ok=True)
+        sft_ckpt = str(
+            sft_pre_dir
+            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+              f"_n{args.n_samples}_s{args.seed}.ckpt"
+        )
+        sft_pre_results = sft_evaluate(
+            backbone,
+            sft_data,
+            test_loader,
+            device,
+            num_classes=ds_cfg["num_classes"],
+            embed_dim=embed_dim,
+            n_samples=len(indices),
+            pool_strategy=args.pool_strategy,
+            seed=args.seed,
+            ckpt_path=sft_ckpt,
+            logger=logger,
+            prefix="pre_sft",
+        )
+        for k, v in sft_pre_results.items():
+            logger.experiment.summary[k] = v
+
+    # ================================================================
+    # Phase 2: Continued Pretraining
+    # ================================================================
+    if not args.no_cp:
+        method_cfg = METHODS[args.cp_method]
+        optim_config = create_optim_config(args, warmup_epochs)
+
+        kwargs = dict(
+            num_samples=len(indices),
+            proj_dim=args.proj_dim,
+            hidden_dim=args.hidden_dim,
+            lamb=args.lamb,
+            label_smoothing=args.label_smoothing,
+            temperature=args.temperature,
+            mixup_alpha=args.mixup_alpha,
+            cutmix_alpha=args.cutmix_alpha,
+            mixup_cutmix_prob=args.mixup_cutmix_prob,
+            mixup_cutmix_switch_prob=args.mixup_cutmix_switch_prob,
+            pool_strategy=args.pool_strategy,
+        )
+
+        if args.cp_method == "mae_cp":
+            with torch.no_grad():
+                test_input = torch.zeros(
+                    1, 3, ds_cfg["input_size"], ds_cfg["input_size"],
+                    device=next(backbone.parameters()).device,
+                )
+                tokens = backbone.forward_features(test_input)
+                num_tokens = tokens.shape[1] - 1
+            kwargs.update(
+                image_size=ds_cfg["input_size"],
+                num_tokens=num_tokens,
+                decoder_dim=args.decoder_dim,
+                decoder_depth=args.decoder_depth,
+                mask_ratio=args.mask_ratio,
             )
-            # Use forward_features for TIMM models to get token sequence
-            tokens = backbone.forward_features(test_input)
-            num_tokens = tokens.shape[1] - 1
-        kwargs.update(
-            image_size=ds_cfg["input_size"],
-            num_tokens=num_tokens,
-            decoder_dim=args.decoder_dim,
-            decoder_depth=args.decoder_depth,
-            mask_ratio=args.mask_ratio,
+
+        module = method_cfg["setup"](
+            backbone, embed_dim, optim_config, **kwargs
         )
 
-    if args.cp_method == "sft":
-        kwargs["num_classes"] = ds_cfg["num_classes"]
-
-    module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
-
-    ckpt_path = str(
-        checkpoint_dir
-        / f"{args.cp_method}_{args.dataset}_{args.backbone.replace('/', '_')}_n{args.n_samples}_s{args.seed}.ckpt"
-    )
-    run_training(
-        module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path
-    )
-
-    # Finetune evaluation for SFT (backbone + classifier on test set)
-    finetune_results = None
-    if args.cp_method == "sft" and hasattr(module, "classifier"):
-        pool_strategy = getattr(args, "pool_strategy", "cls")
-        finetune_results = run_finetune_eval(
-            module, test_loader, device, logger, pool_strategy=pool_strategy
+        cp_dir = checkpoint_dir / "cp"
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        cp_ckpt_path = str(
+            cp_dir
+            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+              f"_n{args.n_samples}_s{args.seed}.ckpt"
+        )
+        run_training(
+            module, cp_data, args, ds_cfg, embed_dim, freeze_epochs,
+            logger, cp_ckpt_path,
         )
 
-    final_eval_results = run_final_eval(
-        backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
-    )
+    # ================================================================
+    # Phase 3: Post-CP evaluation
+    # ================================================================
+    final_eval_results = None
+    sft_post_results = None
 
-    # Save results to JSON if requested
+    if not args.skip_final_eval and not args.no_cp:
+        final_eval_results = run_final_eval(
+            backbone, eval_train_loader, test_loader, device,
+            args, logger, baseline_results,
+        )
+
+    if args.post_cp_sft:
+        # SFT evaluation on CP-trained backbone (deep-copies internally)
+        sft_post_dir = checkpoint_dir / "sft_post"
+        sft_post_dir.mkdir(parents=True, exist_ok=True)
+        sft_post_ckpt = str(
+            sft_post_dir
+            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+              f"_n{args.n_samples}_s{args.seed}.ckpt"
+        )
+        sft_post_results = sft_evaluate(
+            backbone,
+            sft_data,
+            test_loader,
+            device,
+            num_classes=ds_cfg["num_classes"],
+            embed_dim=embed_dim,
+            n_samples=len(indices),
+            pool_strategy=args.pool_strategy,
+            seed=args.seed,
+            ckpt_path=sft_post_ckpt,
+            logger=logger,
+            prefix="post_sft",
+        )
+        for k, v in sft_post_results.items():
+            logger.experiment.summary[k] = v
+
+    # ================================================================
+    # Save results to JSON
+    # ================================================================
     if args.results_json:
         results_json = {
             "dataset": args.dataset,
             "n_samples": args.n_samples,
             "backbone": args.backbone,
-            "method": args.cp_method,
+            "method": args.cp_method or "none",
             "seed": args.seed,
             "epochs": args.epochs,
             "random_init": getattr(args, "random_init", False),
-            "init_checkpoint": args.init_checkpoint,
+            "no_cp": args.no_cp,
         }
+
+        # Pre-CP KNN / Linear Probe
         if baseline_results:
             results_json["pre_knn_f1"] = baseline_results.get("knn_f1", None)
             results_json["pre_linear_f1"] = baseline_results.get("linear_f1", None)
             results_json["pre_knn_acc"] = baseline_results.get("knn_acc", None)
             results_json["pre_linear_acc"] = baseline_results.get("linear_acc", None)
+
+        # Pre-CP SFT
+        if sft_pre_results:
+            results_json["pre_sft_f1"] = sft_pre_results.get("pre_sft_f1", None)
+            results_json["pre_sft_acc"] = sft_pre_results.get("pre_sft_acc", None)
+
+        # Post-CP KNN / Linear Probe
         if final_eval_results:
             results_json["post_knn_f1"] = final_eval_results.get("knn_f1", None)
             results_json["post_linear_f1"] = final_eval_results.get("linear_f1", None)
             results_json["post_knn_acc"] = final_eval_results.get("knn_acc", None)
             results_json["post_linear_acc"] = final_eval_results.get("linear_acc", None)
-        if finetune_results:
-            results_json["finetune_f1"] = finetune_results.get("finetune_f1", None)
-            results_json["finetune_acc"] = finetune_results.get("finetune_acc", None)
+
+        # Post-CP SFT
+        if sft_post_results:
+            results_json["post_sft_f1"] = sft_post_results.get("post_sft_f1", None)
+            results_json["post_sft_acc"] = sft_post_results.get("post_sft_acc", None)
 
         results_path = Path(args.results_json)
         results_path.parent.mkdir(parents=True, exist_ok=True)

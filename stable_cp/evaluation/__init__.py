@@ -14,6 +14,8 @@ from .zero_shot_eval import (
     evaluate_model,
 )
 
+from .sft_eval import sft_evaluate
+
 __all__ = [
     # Checkpoint loading
     "load_backbone_from_checkpoint",
@@ -27,4 +29,6 @@ __all__ = [
     "kmeans_evaluate",
     "zero_shot_eval",
     "evaluate_model",
+    # SFT evaluation
+    "sft_evaluate",
 ]
