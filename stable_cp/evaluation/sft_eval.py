@@ -23,7 +23,7 @@ from .zero_shot_eval import finetune_evaluate
 # ---------------------------------------------------------------------------
 # Fixed SFT evaluation hyper-parameters (not user-configurable)
 # ---------------------------------------------------------------------------
-SFT_EPOCHS = 150
+SFT_EPOCHS = 5
 SFT_LR = 1e-4
 SFT_BATCH_SIZE = 32
 SFT_WEIGHT_DECAY = 0.05
