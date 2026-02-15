@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-food101-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET/slurm-log/pre-cp-diet-food101-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-food101-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-food101-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -42,7 +42,7 @@ nvidia-smi
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
 CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/pre-cp-only/DIET"
 LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET"
-SLURM_LOG_DIR="${LOG_DIR}/slurm-log"
+SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
