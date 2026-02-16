@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-cp-diet-fgvc-aircraft
+#SBATCH --job-name=pre-fgvc-aircraft
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

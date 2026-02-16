@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-breastmnist
+#SBATCH --job-name=rand-pre-breastmnist
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-breastmnist-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-breastmnist-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/rand-pre-cp-diet-breastmnist-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/rand-pre-cp-diet-breastmnist-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,8 +40,8 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/pre-cp-only/DIET"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/pre-cp-only/DIET"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/random-pre-cp-only/DIET"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/random-pre-cp-only/DIET"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
@@ -57,65 +57,56 @@ NUM_WORKERS=8
 SEEDS=(42 43 44)
 
 # ============================================================
-# Backbone definitions
+# Backbone definition (randomly initialized)
 # ============================================================
-BACKBONE_TAGS=("DINOv3" "MAE" "CLIP")
-BACKBONE_TIMM_NAMES=(
-    "vit_base_patch16_dinov3.lvd1689m"
-    "vit_base_patch16_224.mae"
-    "vit_base_patch16_clip_224.openai"
-)
+BACKBONE_TAG="SCRATCH"
+BACKBONE_TIMM="vit_base_patch16_224"
 
 # ============================================================
-# Experiment lists per backbone: n_samples only
-# BreastMNIST MAX=546
+# n_samples list (BreastMNIST MAX=546)
 # ============================================================
-DINOV3_NSAMPLES=(100 500 546)
-MAE_NSAMPLES=(100 546)
-CLIP_NSAMPLES=(100 546)
+NSAMPLES=(100 500 546)
 
 # ============================================================
 # Run a single experiment
 # ============================================================
 run_single() {
-    local backbone_tag=$1
-    local backbone_timm=$2
-    local n_samples=$3
-    local seed=$4
+    local n_samples=$1
+    local seed=$2
 
     local dataset_results_dir="${LOG_DIR}/${DATASET}"
     mkdir -p "${dataset_results_dir}"
 
-    local results_file="${dataset_results_dir}/${backbone_tag}_${DATASET}_n${n_samples}_seed${seed}.json"
+    local results_file="${dataset_results_dir}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     local dataset_ckpt_dir="${CKPT_DIR}/${DATASET}"
     mkdir -p "${dataset_ckpt_dir}"
 
     if [ -f "$results_file" ]; then
-        echo "[SKIP] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
+        echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
         return 0
     fi
 
     echo "=========================================="
-    echo "[RUN] ${backbone_tag} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  Start: $(date)"
     echo "=========================================="
-
-    local backbone_tag_lower=$(echo "${backbone_tag}" | tr '[:upper:]' '[:lower:]')
 
     python -u continued_pretraining.py \
         --cp-method diet \
         --no-cp \
+        --random-init \
         --pre-cp-sft \
         --dataset ${DATASET} \
-        --backbone ${backbone_timm} \
+        --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
         --batch-size ${BATCH_SIZE} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
         --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
-        --project pre-cp-diet-${backbone_tag_lower}-${DATASET} \
+        --project rand-pre-cp-diet-scratch-${DATASET} \
+        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
 
@@ -124,7 +115,7 @@ run_single() {
     echo "  End: $(date)"
 
     if [ $exit_code -ne 0 ]; then
-        echo "[FAIL] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed}"
+        echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
     fi
 
     return $exit_code
@@ -134,9 +125,8 @@ run_single() {
 # Aggregate results across seeds
 # ============================================================
 aggregate_results() {
-    local backbone_tag=$1
-    local n_samples=$2
-    local csv_file=$3
+    local n_samples=$1
+    local csv_file=$2
 
     local dataset_results_dir="${LOG_DIR}/${DATASET}"
 
@@ -144,7 +134,7 @@ aggregate_results() {
 import json, os, statistics
 
 results_dir = "${dataset_results_dir}"
-backbone_tag = "${backbone_tag}"
+backbone_tag = "${BACKBONE_TAG}"
 dataset = "${DATASET}"
 n_samples = "${n_samples}"
 display_name = "${DISPLAY_NAME}"
@@ -209,8 +199,8 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Pre-CP-Only Evaluation: ${DISPLAY_NAME}"
-echo "Backbones: ${BACKBONE_TAGS[*]}"
+echo "Starting Random Pre-CP-Only Evaluation: ${DISPLAY_NAME}"
+echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
@@ -218,44 +208,28 @@ echo ""
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
 
-for idx in "${!BACKBONE_TAGS[@]}"; do
-    BACKBONE_TAG="${BACKBONE_TAGS[$idx]}"
-    BACKBONE_TIMM="${BACKBONE_TIMM_NAMES[$idx]}"
+CSV_FILE="${LOG_DIR}/${DATASET}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
+mkdir -p "${LOG_DIR}/${DATASET}"
+echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
+echo "CSV file: ${CSV_FILE}"
 
+for n_samples in "${NSAMPLES[@]}"; do
     echo ""
-    echo "############################################################"
-    echo "# Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
-    echo "############################################################"
-    echo ""
+    echo "============================================================"
+    echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
+    echo "============================================================"
 
-    CSV_FILE="${LOG_DIR}/${DATASET}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
-    echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
-    echo "CSV file: ${CSV_FILE}"
-
-    case "$BACKBONE_TAG" in
-        DINOv3) CURRENT_NSAMPLES=("${DINOV3_NSAMPLES[@]}") ;;
-        MAE)    CURRENT_NSAMPLES=("${MAE_NSAMPLES[@]}") ;;
-        CLIP)   CURRENT_NSAMPLES=("${CLIP_NSAMPLES[@]}") ;;
-    esac
-
-    for n_samples in "${CURRENT_NSAMPLES[@]}"; do
-        echo ""
-        echo "============================================================"
-        echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
-        echo "============================================================"
-
-        for seed in "${SEEDS[@]}"; do
-            run_single ${BACKBONE_TAG} ${BACKBONE_TIMM} ${n_samples} ${seed}
-            if [ $? -eq 0 ]; then
-                TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
-            else
-                TOTAL_FAIL=$((TOTAL_FAIL + 1))
-            fi
-        done
-
-        echo "--- Aggregating results for ${BACKBONE_TAG} | ${DISPLAY_NAME} n=${n_samples} ---"
-        aggregate_results ${BACKBONE_TAG} ${n_samples} ${CSV_FILE}
+    for seed in "${SEEDS[@]}"; do
+        run_single ${n_samples} ${seed}
+        if [ $? -eq 0 ]; then
+            TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
+        else
+            TOTAL_FAIL=$((TOTAL_FAIL + 1))
+        fi
     done
+
+    echo "--- Aggregating results for ${BACKBONE_TAG} | ${DISPLAY_NAME} n=${n_samples} ---"
+    aggregate_results ${n_samples} ${CSV_FILE}
 done
 
 echo ""
@@ -263,7 +237,6 @@ echo "=========================================="
 echo "All ${DISPLAY_NAME} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
-echo "  Results CSVs: ${LOG_DIR}/*_pre_cp_only_diet_results.csv"
-echo "  Individual JSONs: ${LOG_DIR}/${DATASET}/"
+echo "  Results: ${LOG_DIR}/${DATASET}/"
 echo "  End Time: $(date)"
 echo "=========================================="

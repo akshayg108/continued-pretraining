@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-cp-diet-food101
+#SBATCH --job-name=pre-food101
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

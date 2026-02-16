@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-cp-diet-dermamnist
+#SBATCH --job-name=pre-dermamnist
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

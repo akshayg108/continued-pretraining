@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-cp-diet-galaxy10
+#SBATCH --job-name=pre-galaxy10
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
