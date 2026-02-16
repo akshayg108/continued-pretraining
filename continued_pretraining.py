@@ -55,6 +55,8 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--project", type=str, default=None)
+    parser.add_argument("--run-name", type=str, default=None,
+                        help="Override Wandb run name (default: auto-generated)")
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     return parser
@@ -332,6 +334,8 @@ def main():
         run_name = (f"{args.cp_method}_{init_tag}_n{args.n_samples}"
                     f"_ep{args.epochs}_frz{freeze_epochs}"
                     f"_blk{args.num_trained_blocks}_s{args.seed}")
+    if args.run_name:
+        run_name = args.run_name
     logger = WandbLogger(project=project, name=run_name, log_model=False)
 
     # ================================================================
