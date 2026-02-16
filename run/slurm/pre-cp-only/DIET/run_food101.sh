@@ -1,13 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=pre-food101
 #SBATCH --partition=nvidia
+#SBATCH --qos=medium
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
-#SBATCH --time=72:00:00
+#SBATCH --time=168:00:00
 #SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-food101-%j.out
 #SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/pre-cp-diet-food101-%j.err
 

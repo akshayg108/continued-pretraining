@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=pre-cp-diet-pathmnist
 #SBATCH --partition=nvidia
+#SBATCH --qos=medium
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
