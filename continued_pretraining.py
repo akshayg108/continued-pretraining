@@ -8,7 +8,10 @@ Supports two orthogonal axes:
 The ``--no-cp`` flag skips CP training entirely, useful for baseline
 evaluation (KNN + Linear Probe + SFT) on a pretrained or random backbone.
 """
-import argparse, json, os
+
+import argparse
+import json
+import os
 from pathlib import Path
 
 import lightning as pl
@@ -28,12 +31,17 @@ from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
 from stable_cp.evaluation.sft_eval import sft_evaluate
 from stable_cp.utils.backbone import BACKBONE_DIMS
 from stable_cp.data import DATASETS, get_dataset_config
-from stable_cp.data import create_data_loaders, create_transforms
+from stable_cp.data import (
+    create_eval_loaders,
+    create_train_datamodule,
+    create_transforms,
+)
 
 
 # ============================================================
 # Shared helper functions
 # ============================================================
+
 
 def create_base_parser(description="Continued Pretraining"):
     parser = argparse.ArgumentParser(description=description)
@@ -55,8 +63,12 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--project", type=str, default=None)
-    parser.add_argument("--run-name", type=str, default=None,
-                        help="Override Wandb run name (default: auto-generated)")
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+        help="Override Wandb run name (default: auto-generated)",
+    )
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     return parser
@@ -130,6 +142,7 @@ def create_optim_config(args, warmup_epochs):
 # Evaluation phases
 # ============================================================
 
+
 def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger):
     """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
@@ -189,6 +202,7 @@ def run_final_eval(
 # CP training
 # ============================================================
 
+
 def run_training(
     module,
     data,
@@ -236,6 +250,7 @@ def run_training(
 # ============================================================
 # Unified CLI
 # ============================================================
+
 
 def main():
     from stable_cp.methods.simclr.simclr_cp import setup_simclr
@@ -327,13 +342,15 @@ def main():
     # ---- Wandb logger ----
     if args.no_cp:
         project = args.project or f"{args.dataset}-sft-eval"
-        run_name = (f"sft_eval_{init_tag}_n{args.n_samples}_s{args.seed}")
+        run_name = f"sft_eval_{init_tag}_n{args.n_samples}_s{args.seed}"
     else:
         method_cfg = METHODS[args.cp_method]
         project = args.project or f"{args.dataset}-{args.cp_method}-cp"
-        run_name = (f"{args.cp_method}_{init_tag}_n{args.n_samples}"
-                    f"_ep{args.epochs}_frz{freeze_epochs}"
-                    f"_blk{args.num_trained_blocks}_s{args.seed}")
+        run_name = (
+            f"{args.cp_method}_{init_tag}_n{args.n_samples}"
+            f"_ep{args.epochs}_frz{freeze_epochs}"
+            f"_blk{args.num_trained_blocks}_s{args.seed}"
+        )
     if args.run_name:
         run_name = args.run_name
     logger = WandbLogger(project=project, name=run_name, log_model=False)
@@ -344,14 +361,22 @@ def main():
     sft_data = None
     cp_data = None
 
-    # SFT data (n_views=1, standard augmentation) — also provides
-    # the shared eval_train_loader and test_loader for KNN/LP.
+    # Shared evaluation loaders (KNN/LP + SFT test evaluation)
+    _, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+    test_loader, eval_train_loader, indices = create_eval_loaders(
+        args, ds_cfg, eval_tf, data_dir
+    )
+
+    # SFT data (n_views=1, standard augmentation)
     if args.pre_cp_sft or args.post_cp_sft:
-        sft_train_tf, sft_val_tf = create_transforms(
-            ds_cfg, n_views=1, strong_aug=False
-        )
-        sft_data, test_loader, eval_train_loader, indices = create_data_loaders(
-            args, ds_cfg, sft_train_tf, sft_val_tf, data_dir
+        sft_train_tf, _ = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+        sft_data, _ = create_train_datamodule(
+            args,
+            ds_cfg,
+            sft_train_tf,
+            eval_tf,
+            data_dir,
+            indices=indices,
         )
         print(f"SFT data created: {len(indices)} train samples")
 
@@ -359,34 +384,22 @@ def main():
     if not args.no_cp:
         method_cfg = METHODS[args.cp_method]
         n_views = (
-            args.n_views
-            if args.cp_method == "lejepa"
-            else method_cfg.get("n_views", 1)
+            args.n_views if args.cp_method == "lejepa" else method_cfg.get("n_views", 1)
         )
         cp_train_tf, cp_val_tf = create_transforms(
             ds_cfg, n_views, method_cfg.get("strong_aug", False)
         )
-        cp_data, cp_test_loader, cp_eval_train_loader, cp_indices = (
-            create_data_loaders(args, ds_cfg, cp_train_tf, cp_val_tf, data_dir)
+        cp_data, _ = create_train_datamodule(
+            args,
+            ds_cfg,
+            cp_train_tf,
+            cp_val_tf,
+            data_dir,
+            indices=indices,
         )
-        # If no SFT flags, use CP's eval loaders for KNN/LP
-        if sft_data is None:
-            test_loader = cp_test_loader
-            eval_train_loader = cp_eval_train_loader
-            indices = cp_indices
         print(
             f"{args.cp_method.upper()} CP: {args.dataset} | {args.backbone} | "
             f"views={n_views} freeze={freeze_epochs} warmup={warmup_epochs}"
-        )
-
-    # Fallback: --no-cp without SFT flags still needs eval loaders
-    # for baseline KNN/LP evaluation
-    if sft_data is None and args.no_cp:
-        base_train_tf, base_val_tf = create_transforms(
-            ds_cfg, n_views=1, strong_aug=False
-        )
-        _, test_loader, eval_train_loader, indices = create_data_loaders(
-            args, ds_cfg, base_train_tf, base_val_tf, data_dir
         )
 
     # ================================================================
@@ -405,9 +418,8 @@ def main():
         sft_pre_dir = checkpoint_dir / "sft_pre"
         sft_pre_dir.mkdir(parents=True, exist_ok=True)
         sft_ckpt = str(
-            sft_pre_dir
-            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-              f"_n{args.n_samples}_s{args.seed}.ckpt"
+            sft_pre_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+            f"_n{args.n_samples}_s{args.seed}.ckpt"
         )
         sft_pre_results = sft_evaluate(
             backbone,
@@ -450,7 +462,10 @@ def main():
         if args.cp_method == "mae_cp":
             with torch.no_grad():
                 test_input = torch.zeros(
-                    1, 3, ds_cfg["input_size"], ds_cfg["input_size"],
+                    1,
+                    3,
+                    ds_cfg["input_size"],
+                    ds_cfg["input_size"],
                     device=next(backbone.parameters()).device,
                 )
                 tokens = backbone.forward_features(test_input)
@@ -463,20 +478,23 @@ def main():
                 mask_ratio=args.mask_ratio,
             )
 
-        module = method_cfg["setup"](
-            backbone, embed_dim, optim_config, **kwargs
-        )
+        module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
 
         cp_dir = checkpoint_dir / "cp"
         cp_dir.mkdir(parents=True, exist_ok=True)
         cp_ckpt_path = str(
-            cp_dir
-            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-              f"_n{args.n_samples}_s{args.seed}.ckpt"
+            cp_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+            f"_n{args.n_samples}_s{args.seed}.ckpt"
         )
         run_training(
-            module, cp_data, args, ds_cfg, embed_dim, freeze_epochs,
-            logger, cp_ckpt_path,
+            module,
+            cp_data,
+            args,
+            ds_cfg,
+            embed_dim,
+            freeze_epochs,
+            logger,
+            cp_ckpt_path,
         )
 
     # ================================================================
@@ -487,8 +505,13 @@ def main():
 
     if not args.skip_final_eval and not args.no_cp:
         final_eval_results = run_final_eval(
-            backbone, eval_train_loader, test_loader, device,
-            args, logger, baseline_results,
+            backbone,
+            eval_train_loader,
+            test_loader,
+            device,
+            args,
+            logger,
+            baseline_results,
         )
 
     if args.post_cp_sft:
@@ -496,9 +519,8 @@ def main():
         sft_post_dir = checkpoint_dir / "sft_post"
         sft_post_dir.mkdir(parents=True, exist_ok=True)
         sft_post_ckpt = str(
-            sft_post_dir
-            / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-              f"_n{args.n_samples}_s{args.seed}.ckpt"
+            sft_post_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+            f"_n{args.n_samples}_s{args.seed}.ckpt"
         )
         sft_post_results = sft_evaluate(
             backbone,

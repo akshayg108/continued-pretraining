@@ -10,6 +10,8 @@ from .datasets import (
 from .loaders import (
     CPSubset,
     create_transforms,
+    create_eval_loaders,
+    create_train_datamodule,
     create_data_loaders,
 )
 
@@ -21,5 +23,7 @@ __all__ = [
     "get_dataset",
     "CPSubset",
     "create_transforms",
+    "create_eval_loaders",
+    "create_train_datamodule",
     "create_data_loaders",
 ]
