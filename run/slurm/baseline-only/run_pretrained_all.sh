@@ -113,7 +113,7 @@ DINOV3_EXPERIMENTS=(
     # "galaxy10 14188"
 
     # Food101 (MAX=75750)
-    "food101 100"
+    "food101 101"
     "food101 500"
     "food101 1000"
     "food101 10000"

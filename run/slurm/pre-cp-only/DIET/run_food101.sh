@@ -70,7 +70,7 @@ BACKBONE_TIMM_NAMES=(
 # Experiment lists per backbone: n_samples only
 # Food101 MAX=75750
 # ============================================================
-DINOV3_NSAMPLES=(100 500 1000 10000 25000 75750)
+DINOV3_NSAMPLES=(101 500 1000 10000 25000 75750)
 MAE_NSAMPLES=(1000 75750)
 CLIP_NSAMPLES=(1000 75750)
 
