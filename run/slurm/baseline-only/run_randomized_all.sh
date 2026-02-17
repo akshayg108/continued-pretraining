@@ -65,46 +65,46 @@ BACKBONE_TIMM="vit_base_patch16_224"
 # ============================================================
 EXPERIMENTS=(
     # DermaMNIST (MAX=7007)
-    # "dermamnist 100"
-    # "dermamnist 500"
-    # "dermamnist 1000"
-    # "dermamnist 7007"
+    "dermamnist 100"
+    "dermamnist 500"
+    "dermamnist 1000"
+    "dermamnist 7007"
 
     # BreastMNIST (MAX=546)
-    # "breastmnist 100"
-    # "breastmnist 500"
-    # "breastmnist 546"
+    "breastmnist 100"
+    "breastmnist 500"
+    "breastmnist 546"
 
     # OCTMNIST (MAX=97477)
-    # "octmnist 100"
-    # "octmnist 500"
-    # "octmnist 1000"
-    # "octmnist 10000"
-    # "octmnist 25000"
-    # "octmnist 97477"
+    "octmnist 100"
+    "octmnist 500"
+    "octmnist 1000"
+    "octmnist 10000"
+    "octmnist 25000"
+    "octmnist 97477"
 
     # OrganAMNIST (MAX=34561)
-    # "organamnist 100"
-    # "organamnist 500"
-    # "organamnist 1000"
-    # "organamnist 10000"
-    # "organamnist 25000"
-    # "organamnist 34561"
+    "organamnist 100"
+    "organamnist 500"
+    "organamnist 1000"
+    "organamnist 10000"
+    "organamnist 25000"
+    "organamnist 34561"
 
     # PathMNIST (MAX=89996)
-    # "pathmnist 100"
-    # "pathmnist 500"
-    # "pathmnist 1000"
-    # "pathmnist 10000"
-    # "pathmnist 25000"
-    # "pathmnist 89996"
+    "pathmnist 100"
+    "pathmnist 500"
+    "pathmnist 1000"
+    "pathmnist 10000"
+    "pathmnist 25000"
+    "pathmnist 89996"
 
     # Galaxy10 (MAX=14188)
-    # "galaxy10 100"
-    # "galaxy10 500"
-    # "galaxy10 1000"
-    # "galaxy10 10000"
-    # "galaxy10 14188"
+    "galaxy10 100"
+    "galaxy10 500"
+    "galaxy10 1000"
+    "galaxy10 10000"
+    "galaxy10 14188"
 
     # Food101 (MAX=75750)
     "food101 101"
@@ -115,10 +115,10 @@ EXPERIMENTS=(
     "food101 75750"
 
     # FGVC_Aircraft (MAX=3400)
-    # "fgvc_aircraft 100"
-    # "fgvc_aircraft 500"
-    # "fgvc_aircraft 1000"
-    # "fgvc_aircraft 3400"
+    "fgvc_aircraft 100"
+    "fgvc_aircraft 500"
+    "fgvc_aircraft 1000"
+    "fgvc_aircraft 3400"
 )
 
 # ============================================================
