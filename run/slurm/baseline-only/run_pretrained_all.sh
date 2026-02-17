@@ -114,11 +114,11 @@ DINOV3_EXPERIMENTS=(
 
     # Food101 (MAX=75750)
     "food101 101"
-    "food101 500"
-    "food101 1000"
-    "food101 10000"
-    "food101 25000"
-    "food101 75750"
+    # "food101 500"
+    # "food101 1000"
+    # "food101 10000"
+    # "food101 25000"
+    # "food101 75750"
 
     # FGVC_Aircraft (MAX=3400)
     # "fgvc_aircraft 100"
@@ -140,8 +140,8 @@ MAE_EXPERIMENTS=(
     # "pathmnist 89996"
     # "galaxy10 1000"
     # "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
+    # "food101 1000"
+    # "food101 75750"
     # "fgvc_aircraft 1000"
     # "fgvc_aircraft 3400"
 )
@@ -159,8 +159,8 @@ CLIP_EXPERIMENTS=(
     # "pathmnist 89996"
     # "galaxy10 1000"
     # "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
+    # "food101 1000"
+    # "food101 75750"
     # "fgvc_aircraft 1000"
     # "fgvc_aircraft 3400"
 )
