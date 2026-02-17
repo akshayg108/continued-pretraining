@@ -3,7 +3,6 @@ import torch
 import hashlib
 import numpy as np
 from PIL import Image
-from sklearn.model_selection import train_test_split
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
@@ -93,30 +92,34 @@ class CPSubset(torch.utils.data.Dataset):
 
 
 def _sample_train_indices(args, dataset):
-    """Sample training indices with stratification.
+    """Sample training indices with deterministic random permutation.
+
+    This mirrors the original CP sampling behavior and avoids any class-
+    stratification assumptions.
 
     Args:
         args: Command-line arguments containing n_samples and seed.
-        dataset: Dataset with ``hf_dataset['label']`` available.
+        dataset: Dataset to sample from.
 
     Returns:
         list[int]: Selected indices.
     """
-    all_labels = np.array(dataset.hf_dataset["label"]).ravel()
-    all_indices = np.arange(len(dataset))
-    if args.n_samples >= len(dataset):
-        return all_indices.tolist()
+    generator = torch.Generator()
+    generator.manual_seed(args.seed)
 
-    indices, _ = train_test_split(
-        all_indices,
-        train_size=args.n_samples,
-        stratify=all_labels,
-        random_state=args.seed,
-    )
-    return indices.tolist()
+    n_total = len(dataset)
+    n_select = min(args.n_samples, n_total)
+    return torch.randperm(n_total, generator=generator)[:n_select].tolist()
 
 
-def create_eval_loaders(args, ds_cfg, val_transform, data_dir, indices=None):
+def create_eval_loaders(
+    args,
+    ds_cfg,
+    val_transform,
+    data_dir,
+    indices=None,
+    remap_sample_idx=True,
+):
     """Create evaluation loaders used by KNN/LP and SFT test evaluation.
 
     Args:
@@ -125,6 +128,7 @@ def create_eval_loaders(args, ds_cfg, val_transform, data_dir, indices=None):
         val_transform: Non-augmented transform for evaluation.
         data_dir: Cache directory for datasets.
         indices: Optional predefined train indices for eval-train subset.
+        remap_sample_idx: If True, rewrite sample_idx to subset-local range.
 
     Returns:
         tuple: (test_loader, eval_train_loader, indices)
@@ -184,8 +188,13 @@ def create_eval_loaders(args, ds_cfg, val_transform, data_dir, indices=None):
     if indices is None:
         indices = _sample_train_indices(args, eval_train)
 
+    eval_subset = (
+        CPSubset(eval_train, indices)
+        if remap_sample_idx
+        else torch.utils.data.Subset(eval_train, indices)
+    )
     eval_train_loader = torch.utils.data.DataLoader(
-        CPSubset(eval_train, indices),
+        eval_subset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
     )
@@ -199,7 +208,13 @@ def create_eval_loaders(args, ds_cfg, val_transform, data_dir, indices=None):
 
 
 def create_train_datamodule(
-    args, ds_cfg, train_transform, val_transform, data_dir, indices=None
+    args,
+    ds_cfg,
+    train_transform,
+    val_transform,
+    data_dir,
+    indices=None,
+    remap_sample_idx=True,
 ):
     """Create a training DataModule for CP or SFT.
 
@@ -210,6 +225,7 @@ def create_train_datamodule(
         val_transform: Transform for validation split.
         data_dir: Cache directory for datasets.
         indices: Optional predefined train indices to reuse.
+        remap_sample_idx: If True, rewrite sample_idx to subset-local range.
 
     Returns:
         tuple: (data_module, indices)
@@ -235,7 +251,11 @@ def create_train_datamodule(
     if indices is None:
         indices = _sample_train_indices(args, full_train)
 
-    train_subset = CPSubset(full_train, indices)
+    train_subset = (
+        CPSubset(full_train, indices)
+        if remap_sample_idx
+        else torch.utils.data.Subset(full_train, indices)
+    )
     train_loader = torch.utils.data.DataLoader(
         train_subset,
         batch_size=args.batch_size,
@@ -253,7 +273,14 @@ def create_train_datamodule(
     return data, indices
 
 
-def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
+def create_data_loaders(
+    args,
+    ds_cfg,
+    train_transform,
+    val_transform,
+    data_dir,
+    remap_sample_idx=True,
+):
     """Create data loaders using stable-datasets.
 
     Args:
@@ -263,6 +290,7 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
             - n_samples: Number of training samples to use
             - batch_size: Batch size for data loaders
             - num_workers: Number of workers for data loading
+        remap_sample_idx: If True, rewrite sample_idx to subset-local range.
         ds_cfg: Dataset configuration from get_dataset_config() containing:
             - splits: List of [train_split, val_split, test_split]
         train_transform: Transform for training data
@@ -282,6 +310,7 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
         val_transform,
         data_dir,
         indices=None,
+        remap_sample_idx=remap_sample_idx,
     )
     data, _ = create_train_datamodule(
         args,
@@ -290,6 +319,7 @@ def create_data_loaders(args, ds_cfg, train_transform, val_transform, data_dir):
         val_transform,
         data_dir,
         indices=indices,
+        remap_sample_idx=remap_sample_idx,
     )
 
     print(f"Data: train={len(indices)}")
