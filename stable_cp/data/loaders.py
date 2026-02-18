@@ -3,6 +3,7 @@ import torch
 import hashlib
 import numpy as np
 from PIL import Image
+from sklearn.model_selection import train_test_split
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
@@ -91,25 +92,30 @@ class CPSubset(torch.utils.data.Dataset):
         return sample
 
 
-def _sample_train_indices(args, dataset):
-    """Sample training indices with deterministic random permutation.
+def _sample_shared_train_indices_by_class(args, dataset):
+    """Sample shared CP/SFT train indices stratified by class labels.
 
-    This mirrors the original CP sampling behavior and avoids any class-
-    stratification assumptions.
-
-    Args:
-        args: Command-line arguments containing n_samples and seed.
-        dataset: Dataset to sample from.
-
-    Returns:
-        list[int]: Selected indices.
+    The selected indices are intended to be reused across CP and SFT so both
+    stages see the same train subset, while preserving class balance.
     """
-    generator = torch.Generator()
-    generator.manual_seed(args.seed)
-
     n_total = len(dataset)
-    n_select = min(args.n_samples, n_total)
-    return torch.randperm(n_total, generator=generator)[:n_select].tolist()
+    if args.n_samples >= n_total:
+        return list(range(n_total))
+
+    all_indices = np.arange(n_total)
+
+    # HFDatasetWrapper path used in this repository.
+    labels_source = dataset.hf_dataset if hasattr(dataset, "hf_dataset") else dataset
+    all_labels = np.array(labels_source["label"]).ravel()
+
+    selected_indices, _ = train_test_split(
+        all_indices,
+        train_size=args.n_samples,
+        stratify=all_labels,
+        random_state=args.seed,
+    )
+
+    return selected_indices.tolist()
 
 
 def create_eval_loaders(
@@ -128,6 +134,7 @@ def create_eval_loaders(
         val_transform: Non-augmented transform for evaluation.
         data_dir: Cache directory for datasets.
         indices: Optional predefined train indices for eval-train subset.
+            If None, indices are sampled stratified by class labels.
         remap_sample_idx: If True, rewrite sample_idx to subset-local range.
 
     Returns:
@@ -186,7 +193,7 @@ def create_eval_loaders(
         )
 
     if indices is None:
-        indices = _sample_train_indices(args, eval_train)
+        indices = _sample_shared_train_indices_by_class(args, eval_train)
 
     eval_subset = (
         CPSubset(eval_train, indices)
@@ -225,6 +232,7 @@ def create_train_datamodule(
         val_transform: Transform for validation split.
         data_dir: Cache directory for datasets.
         indices: Optional predefined train indices to reuse.
+            If None, indices are sampled stratified by class labels.
         remap_sample_idx: If True, rewrite sample_idx to subset-local range.
 
     Returns:
@@ -249,7 +257,7 @@ def create_train_datamodule(
     )
 
     if indices is None:
-        indices = _sample_train_indices(args, full_train)
+        indices = _sample_shared_train_indices_by_class(args, full_train)
 
     train_subset = (
         CPSubset(full_train, indices)
