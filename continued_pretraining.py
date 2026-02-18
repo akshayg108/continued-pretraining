@@ -11,7 +11,6 @@ evaluation (KNN + Linear Probe + SFT) on a pretrained or random backbone.
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 import lightning as pl
@@ -138,6 +137,105 @@ def create_optim_config(args, warmup_epochs):
     }
 
 
+def _get_methods():
+    from stable_cp.methods.simclr.simclr_cp import setup_simclr
+    from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
+    from stable_cp.methods.mae.mae_cp import setup_mae_cp
+    from stable_cp.methods.diet.diet_cp import setup_diet
+
+    return {
+        "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
+        "diet": {"n_views": 1, "setup": setup_diet},
+        "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
+        "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
+    }
+
+
+def _create_shared_eval_data(args, ds_cfg, data_dir):
+    """Create shared eval loaders and the shared sampled train indices."""
+    _, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+    test_loader, eval_train_loader, indices = create_eval_loaders(
+        args, ds_cfg, eval_tf, data_dir
+    )
+    return eval_tf, test_loader, eval_train_loader, indices
+
+
+def _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices):
+    """Create SFT datamodule over the shared train indices."""
+    sft_train_tf, _ = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+    sft_data, _ = create_train_datamodule(
+        args,
+        ds_cfg,
+        sft_train_tf,
+        eval_tf,
+        data_dir,
+        indices=indices,
+    )
+    return sft_data
+
+
+def _create_cp_data(args, ds_cfg, data_dir, indices, method_cfg):
+    """Create CP datamodule over the shared train indices."""
+    n_views = (
+        args.n_views if args.cp_method == "lejepa" else method_cfg.get("n_views", 1)
+    )
+    cp_train_tf, cp_val_tf = create_transforms(
+        ds_cfg,
+        n_views,
+        method_cfg.get("strong_aug", False),
+    )
+    cp_data, _ = create_train_datamodule(
+        args,
+        ds_cfg,
+        cp_train_tf,
+        cp_val_tf,
+        data_dir,
+        indices=indices,
+    )
+    return cp_data, n_views
+
+
+def _run_sft_phase(
+    backbone,
+    sft_data,
+    test_loader,
+    device,
+    ds_cfg,
+    embed_dim,
+    indices,
+    args,
+    checkpoint_dir,
+    logger,
+    prefix,
+    subdir,
+):
+    """Run one SFT evaluation phase and mirror results into wandb summary."""
+    sft_dir = checkpoint_dir / subdir
+    sft_dir.mkdir(parents=True, exist_ok=True)
+    sft_ckpt = str(
+        sft_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+        f"_n{args.n_samples}_s{args.seed}.ckpt"
+    )
+
+    results = sft_evaluate(
+        backbone,
+        sft_data,
+        test_loader,
+        device,
+        num_classes=ds_cfg["num_classes"],
+        embed_dim=embed_dim,
+        n_samples=len(indices),
+        pool_strategy=args.pool_strategy,
+        seed=args.seed,
+        ckpt_path=sft_ckpt,
+        logger=logger,
+        prefix=prefix,
+    )
+    for key, value in results.items():
+        logger.experiment.summary[key] = value
+    return results
+
+
 # ============================================================
 # Evaluation phases
 # ============================================================
@@ -192,7 +290,8 @@ def run_final_eval(
                 delta = final_results[key] - baseline_results[key]
                 logger.experiment.summary[f"delta/{key}"] = delta
                 print(
-                    f"  {key}: {baseline_results[key]:.4f} -> {final_results[key]:.4f} ({delta:+.4f})"
+                    f"  {key}: {baseline_results[key]:.4f} -> "
+                    f"{final_results[key]:.4f} ({delta:+.4f})"
                 )
 
     return final_results
@@ -253,17 +352,7 @@ def run_training(
 
 
 def main():
-    from stable_cp.methods.simclr.simclr_cp import setup_simclr
-    from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
-    from stable_cp.methods.mae.mae_cp import setup_mae_cp
-    from stable_cp.methods.diet.diet_cp import setup_diet
-
-    METHODS = {
-        "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
-        "diet": {"n_views": 1, "setup": setup_diet},
-        "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
-        "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
-    }
+    METHODS = _get_methods()
 
     parser = create_base_parser("Continued Pretraining CLI")
 
@@ -362,41 +451,21 @@ def main():
     cp_data = None
 
     # Shared evaluation loaders (KNN/LP + SFT test evaluation)
-    _, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
-    test_loader, eval_train_loader, indices = create_eval_loaders(
-        args, ds_cfg, eval_tf, data_dir
+    eval_tf, test_loader, eval_train_loader, indices = _create_shared_eval_data(
+        args,
+        ds_cfg,
+        data_dir,
     )
 
     # SFT data (n_views=1, standard augmentation)
     if args.pre_cp_sft or args.post_cp_sft:
-        sft_train_tf, _ = create_transforms(ds_cfg, n_views=1, strong_aug=False)
-        sft_data, _ = create_train_datamodule(
-            args,
-            ds_cfg,
-            sft_train_tf,
-            eval_tf,
-            data_dir,
-            indices=indices,
-        )
+        sft_data = _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices)
         print(f"SFT data created: {len(indices)} train samples")
 
     # CP data (method-specific multi-view transforms)
     if not args.no_cp:
         method_cfg = METHODS[args.cp_method]
-        n_views = (
-            args.n_views if args.cp_method == "lejepa" else method_cfg.get("n_views", 1)
-        )
-        cp_train_tf, cp_val_tf = create_transforms(
-            ds_cfg, n_views, method_cfg.get("strong_aug", False)
-        )
-        cp_data, _ = create_train_datamodule(
-            args,
-            ds_cfg,
-            cp_train_tf,
-            cp_val_tf,
-            data_dir,
-            indices=indices,
-        )
+        cp_data, n_views = _create_cp_data(args, ds_cfg, data_dir, indices, method_cfg)
         print(
             f"{args.cp_method.upper()} CP: {args.dataset} | {args.backbone} | "
             f"views={n_views} freeze={freeze_epochs} warmup={warmup_epochs}"
@@ -415,28 +484,20 @@ def main():
 
     if args.pre_cp_sft:
         # SFT evaluation (deep-copies backbone internally)
-        sft_pre_dir = checkpoint_dir / "sft_pre"
-        sft_pre_dir.mkdir(parents=True, exist_ok=True)
-        sft_ckpt = str(
-            sft_pre_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-            f"_n{args.n_samples}_s{args.seed}.ckpt"
-        )
-        sft_pre_results = sft_evaluate(
+        sft_pre_results = _run_sft_phase(
             backbone,
             sft_data,
             test_loader,
             device,
-            num_classes=ds_cfg["num_classes"],
-            embed_dim=embed_dim,
-            n_samples=len(indices),
-            pool_strategy=args.pool_strategy,
-            seed=args.seed,
-            ckpt_path=sft_ckpt,
-            logger=logger,
-            prefix="pre_sft",
+            ds_cfg,
+            embed_dim,
+            indices,
+            args,
+            checkpoint_dir,
+            logger,
+            "pre_sft",
+            "sft_pre",
         )
-        for k, v in sft_pre_results.items():
-            logger.experiment.summary[k] = v
 
     # ================================================================
     # Phase 2: Continued Pretraining
@@ -516,28 +577,20 @@ def main():
 
     if args.post_cp_sft:
         # SFT evaluation on CP-trained backbone (deep-copies internally)
-        sft_post_dir = checkpoint_dir / "sft_post"
-        sft_post_dir.mkdir(parents=True, exist_ok=True)
-        sft_post_ckpt = str(
-            sft_post_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-            f"_n{args.n_samples}_s{args.seed}.ckpt"
-        )
-        sft_post_results = sft_evaluate(
+        sft_post_results = _run_sft_phase(
             backbone,
             sft_data,
             test_loader,
             device,
-            num_classes=ds_cfg["num_classes"],
-            embed_dim=embed_dim,
-            n_samples=len(indices),
-            pool_strategy=args.pool_strategy,
-            seed=args.seed,
-            ckpt_path=sft_post_ckpt,
-            logger=logger,
-            prefix="post_sft",
+            ds_cfg,
+            embed_dim,
+            indices,
+            args,
+            checkpoint_dir,
+            logger,
+            "post_sft",
+            "sft_post",
         )
-        for k, v in sft_post_results.items():
-            logger.experiment.summary[k] = v
 
     # ================================================================
     # Save results to JSON
@@ -580,7 +633,7 @@ def main():
 
         results_path = Path(args.results_json)
         results_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(results_path, "w") as f:
+        with results_path.open("w", encoding="utf-8") as f:
             json.dump(results_json, f, indent=2)
         print(f"Results saved to {results_path}")
 
