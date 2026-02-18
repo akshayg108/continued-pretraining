@@ -6,6 +6,10 @@ from typing import Tuple
 
 # Known backbone embedding dimensions
 BACKBONE_DIMS = {
+    # Base ViT models (TIMM)
+    "vit_base_patch16_224": 768,
+    "vit_large_patch16_224": 1024,
+    "vit_huge_patch14_224": 1280,
     # DINOv2 models (TIMM)
     "vit_small_patch14_dinov2.lvd142m": 384,
     "vit_base_patch14_dinov2.lvd142m": 768,
@@ -18,14 +22,18 @@ BACKBONE_DIMS = {
     "vit_large_patch16_dinov3.sat493m": 1024,
     "vit_huge_plus_patch16_dinov3.lvd1689m": 1536,
     "vit_7b_patch16_dinov3.lvd1689m": 4096,
-    # Base ViT models (TIMM)
-    "vit_base_patch16_224": 768,
-    "vit_large_patch16_224": 1024,
-    "vit_huge_patch14_224": 1280,
     # MAE models (TIMM)
     "vit_base_patch16_224.mae": 768,
     "vit_large_patch16_224.mae": 1024,
     "vit_huge_patch14_224.mae": 1280,
+    # CLIP models (TIMM - OpenAI)
+    "vit_base_patch16_clip_224.openai": 768,
+    "vit_base_patch32_clip_224.openai": 768,
+    "vit_large_patch14_clip_224.openai": 1024,
+    # CLIP models (TIMM - LAION/OpenCLIP)
+    "vit_base_patch16_clip_224.laion2b": 768,
+    "vit_large_patch14_clip_224.laion2b": 1024,
+    "vit_huge_patch14_clip_224.laion2b": 1280,
 }
 
 

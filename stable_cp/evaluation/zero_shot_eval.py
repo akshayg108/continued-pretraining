@@ -422,6 +422,99 @@ def zero_shot_eval(
     return results
 
 
+def finetune_evaluate(
+    backbone: nn.Module,
+    classifier: nn.Module,
+    test_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    pool_strategy: str = "cls",
+    verbose: bool = True,
+) -> dict:
+    """Evaluate a fine-tuned model (backbone + classifier) on test data.
+
+    Unlike knn/linear probe which only use frozen backbone features,
+    this evaluates the actual trained classification head.
+
+    Args:
+        backbone: Trained backbone network
+        classifier: Trained classification head (nn.Linear)
+        test_loader: Test data loader
+        device: Device to use
+        pool_strategy: 'cls' or 'mean' for ViT embedding extraction
+        verbose: Whether to print progress
+
+    Returns:
+        dict: Results with finetune_acc, finetune_f1, finetune_auroc
+    """
+    backbone = backbone.to(device)
+    classifier = classifier.to(device)
+    backbone.eval()
+    classifier.eval()
+
+    all_preds = []
+    all_proba = []
+    all_labels = []
+
+    iterator = tqdm(test_loader, desc="Finetune evaluation") if verbose else test_loader
+
+    with torch.no_grad():
+        for batch in iterator:
+            if isinstance(batch, dict):
+                images = batch["image"].to(device)
+                labels = batch["label"]
+            elif isinstance(batch, (list, tuple)):
+                images = batch[0].to(device)
+                labels = batch[1]
+            else:
+                raise ValueError(f"Unexpected batch type: {type(batch)}")
+
+            features = backbone.forward_features(images)
+            if features.dim() == 3:
+                if pool_strategy == "mean":
+                    features = features[:, 1:, :].mean(dim=1)
+                else:
+                    features = features[:, 0, :]  # CLS token
+
+            logits = classifier(features)
+            proba = torch.softmax(logits, dim=1)
+            preds = logits.argmax(dim=1)
+
+            all_preds.append(preds.cpu())
+            all_proba.append(proba.cpu())
+            all_labels.append(
+                labels if isinstance(labels, torch.Tensor) else torch.tensor(labels)
+            )
+
+    pred_t = torch.cat(all_preds)
+    proba_t = torch.cat(all_proba)
+    target_t = torch.cat(all_labels)
+
+    num_classes = proba_t.shape[1]
+
+    results = {
+        "finetune_acc": MulticlassAccuracy(num_classes=num_classes)(
+            pred_t, target_t
+        ).item(),
+        "finetune_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
+            pred_t, target_t
+        ).item(),
+    }
+
+    try:
+        results["finetune_auroc"] = MulticlassAUROC(
+            num_classes=num_classes, average="macro"
+        )(proba_t, target_t).item()
+    except ValueError:
+        results["finetune_auroc"] = 0.0
+
+    if verbose:
+        print(
+            f"  Finetune Accuracy: {results['finetune_acc']:.4f}, F1: {results['finetune_f1']:.4f}"
+        )
+
+    return results
+
+
 def evaluate_model(
     model: nn.Module,
     train_loader: torch.utils.data.DataLoader,

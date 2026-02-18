@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torchmetrics
 from typing import List, Optional, Union
