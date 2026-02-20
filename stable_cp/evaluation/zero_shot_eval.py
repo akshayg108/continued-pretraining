@@ -98,9 +98,10 @@ def extract_features(
     model: nn.Module,
     loader: torch.utils.data.DataLoader,
     device: torch.device,
+    pool_strategy: str = "cls",
     verbose: bool = True,
 ) -> tuple:
-    # Extract features from a data loader
+    # Extract features from a data loader using forward_features
     features, labels = [], []
     model.eval()
 
@@ -108,7 +109,6 @@ def extract_features(
 
     with torch.no_grad():
         for batch in iterator:
-            # Handle stable-pretraining dict format and standard tuple format
             if isinstance(batch, dict):
                 x = batch["image"]
                 y = batch["label"]
@@ -119,12 +119,13 @@ def extract_features(
                 raise ValueError(f"Unexpected batch type: {type(batch)}")
 
             x = x.to(device)
-            feat = model(x)
+            feat = model.forward_features(x)
 
-            # Handle sequence outputs (e.g., ViT) - take CLS token or mean pool
             if feat.dim() == 3:
-                feat = feat[:, 0]  # CLS token
-            # Otherwise assume it's already pooled (2D tensor)
+                if pool_strategy == "mean":
+                    feat = feat[:, 1:, :].mean(dim=1)
+                else:
+                    feat = feat[:, 0, :]  # CLS token
 
             features.append(feat.cpu().numpy())
             labels.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
@@ -342,6 +343,7 @@ def zero_shot_eval(
     linear_probe_method: str = "both",
     linear_pytorch_steps: int = 20000,
     linear_pytorch_lr: float = 1e-3,
+    pool_strategy: str = "cls",
     verbose: bool = True,
 ) -> dict:
     # Full zero-shot evaluation pipeline
@@ -351,9 +353,11 @@ def zero_shot_eval(
     if verbose:
         print("Extracting features...")
     train_features, train_labels = extract_features(
-        model, train_loader, device, verbose
+        model, train_loader, device, pool_strategy=pool_strategy, verbose=verbose
     )
-    test_features, test_labels = extract_features(model, test_loader, device, verbose)
+    test_features, test_labels = extract_features(
+        model, test_loader, device, pool_strategy=pool_strategy, verbose=verbose
+    )
 
     if verbose:
         print(f"Train: {train_features.shape}, Test: {test_features.shape}")
@@ -522,5 +526,4 @@ def evaluate_model(
     device: torch.device,
     **kwargs,
 ) -> dict:
-    # Convenience alias for zero_shot_eval
     return zero_shot_eval(model, train_loader, test_loader, device, **kwargs)

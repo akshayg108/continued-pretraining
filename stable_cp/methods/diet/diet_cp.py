@@ -51,9 +51,6 @@ def main():
     parser.add_argument("--cutmix-alpha", type=float, default=1.0)
     parser.add_argument("--mixup-cutmix-prob", type=float, default=0.8)
     parser.add_argument("--mixup-cutmix-switch-prob", type=float, default=0.5)
-    parser.add_argument(
-        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
-    )
     args = parser.parse_args()
 
     data_dir, checkpoint_dir = setup_paths(args)

@@ -46,7 +46,7 @@ def diet_forward(self, batch, stage):
 
     # Extract embedding (pool_strategy: "cls" for DINOv2/MAE, "mean" for I-JEPA)
     pool_strategy = getattr(self, "pool_strategy", "cls")
-    embedding = _extract_embedding(self.backbone(images), pool_strategy)
+    embedding = _extract_embedding(self.backbone.forward_features(images), pool_strategy)
     out["embedding"] = embedding
 
     if "label" in batch:

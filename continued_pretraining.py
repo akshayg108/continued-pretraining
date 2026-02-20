@@ -70,6 +70,9 @@ def create_base_parser(description="Continued Pretraining"):
     )
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
+    parser.add_argument(
+        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
+    )
     return parser
 
 
@@ -253,6 +256,7 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
         device,
         k_neighbors=args.knn_k,
         linear_probe_method="both",
+        pool_strategy=args.pool_strategy,
         verbose=True,
     )
     logger.experiment.log({f"baseline/{k}": v for k, v in results.items()}, step=0)
@@ -278,6 +282,7 @@ def run_final_eval(
         device,
         k_neighbors=args.knn_k,
         linear_probe_method="both",
+        pool_strategy=args.pool_strategy,
         verbose=True,
     )
     for k, v in final_results.items():
@@ -371,9 +376,6 @@ def main():
     parser.add_argument("--cutmix-alpha", type=float, default=1.0)
     parser.add_argument("--mixup-cutmix-prob", type=float, default=0.8)
     parser.add_argument("--mixup-cutmix-switch-prob", type=float, default=0.5)
-    parser.add_argument(
-        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
-    )
     parser.add_argument("--temperature", type=float, default=0.5)
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)

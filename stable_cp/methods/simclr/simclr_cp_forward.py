@@ -1,15 +1,15 @@
 import torch
 
 
-def _extract_embedding(embedding):
-    # Extract embedding from backbone output (handles ViT and CNN)
-    if embedding.dim() == 3:
-        return embedding[:, 0, :]  # TIMM ViT CLS token
-    return embedding  # Already 2D (ResNet or pooled)
+def _extract_embedding(backbone_output, pool_strategy="cls"):
+    if backbone_output.ndim == 3:
+        if pool_strategy == "mean":
+            return backbone_output[:, 1:, :].mean(dim=1)
+        return backbone_output[:, 0, :]  # CLS token
+    return backbone_output
 
 
 def _get_views_list(batch):
-    # Convert multi-view batch to list of views
     if isinstance(batch, list):
         return batch
     elif isinstance(batch, dict) and "image" not in batch:
@@ -19,15 +19,18 @@ def _get_views_list(batch):
 
 
 def simclr_cp_forward(self, batch, stage):
-    # SimCLR forward with ViT backbone support (CLS token extraction)
     out = {}
     views = _get_views_list(batch)
+    pool_strategy = getattr(self, "pool_strategy", "cls")
 
     if views is not None:
         if len(views) != 2:
             raise ValueError(f"SimCLR requires 2 views, got {len(views)}")
 
-        embeddings = [_extract_embedding(self.backbone(v["image"])) for v in views]
+        embeddings = [
+            _extract_embedding(self.backbone.forward_features(v["image"]), pool_strategy)
+            for v in views
+        ]
         out["embedding"] = torch.cat(embeddings, dim=0)
 
         if "label" in views[0]:
@@ -44,7 +47,9 @@ def simclr_cp_forward(self, batch, stage):
                 sync_dist=True,
             )
     else:
-        out["embedding"] = _extract_embedding(self.backbone(batch["image"]))
+        out["embedding"] = _extract_embedding(
+            self.backbone.forward_features(batch["image"]), pool_strategy
+        )
         if "label" in batch:
             out["label"] = batch["label"]
 

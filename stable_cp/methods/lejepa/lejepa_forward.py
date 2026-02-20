@@ -19,24 +19,27 @@ def _get_views_list(batch):
     return None
 
 
-def _extract_embedding(embedding):
-    # Extract CLS token from TIMM ViT output
-    if embedding.dim() == 3:
-        return embedding[:, 0, :]  # CLS token
-    return embedding  # Already 2D (pooled)
+def _extract_embedding(backbone_output, pool_strategy="cls"):
+    if backbone_output.ndim == 3:
+        if pool_strategy == "mean":
+            return backbone_output[:, 1:, :].mean(dim=1)
+        return backbone_output[:, 0, :]  # CLS token
+    return backbone_output
 
 
 def lejepa_forward(self, batch, stage):
     out = {}
     views = _get_views_list(batch)
+    pool_strategy = getattr(self, "pool_strategy", "cls")
 
     if views is not None:
-        # Multi-view training
         V, N = len(views), views[0]["image"].size(0)
 
         # Single forward pass for all views
         all_images = torch.cat([view["image"] for view in views], dim=0)
-        all_emb = _extract_embedding(self.backbone(all_images))
+        all_emb = _extract_embedding(
+            self.backbone.forward_features(all_images), pool_strategy
+        )
         out["embedding"] = all_emb
 
         if "label" in views[0]:
@@ -44,7 +47,7 @@ def lejepa_forward(self, batch, stage):
 
         if self.training:
             all_proj = self.projector(all_emb)
-            proj_stacked = all_proj.reshape(V, N, -1)  # (V, N, proj_dim)
+            proj_stacked = all_proj.reshape(V, N, -1)
 
             # Invariance loss: compare each view to mean
             view_mean = proj_stacked.mean(0)
@@ -80,8 +83,9 @@ def lejepa_forward(self, batch, stage):
                 sync_dist=True,
             )
     else:
-        # Single-view (validation)
-        out["embedding"] = _extract_embedding(self.backbone(batch["image"]))
+        out["embedding"] = _extract_embedding(
+            self.backbone.forward_features(batch["image"]), pool_strategy
+        )
         if "label" in batch:
             out["label"] = batch["label"]
 

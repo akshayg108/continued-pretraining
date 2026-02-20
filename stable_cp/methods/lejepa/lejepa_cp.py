@@ -107,6 +107,7 @@ def build_sigreg_loss(args):
 
 
 def setup_lejepa(backbone, embed_dim, optim_config, sigreg_loss, **kwargs):
+    pool_strategy = kwargs.get("pool_strategy", "cls")
     return spt.Module(
         backbone=backbone,
         projector=build_lejepa_projector(
@@ -114,6 +115,7 @@ def setup_lejepa(backbone, embed_dim, optim_config, sigreg_loss, **kwargs):
         ),
         sigreg_loss=sigreg_loss,
         lamb=kwargs["lamb"],
+        pool_strategy=pool_strategy,
         forward=lejepa_forward,
         optim=optim_config,
     )
@@ -218,6 +220,7 @@ def main():
         proj_dim=args.proj_dim,
         hidden_dim=args.hidden_dim,
         lamb=args.lamb,
+        pool_strategy=args.pool_strategy,
     )
 
     ckpt_path = str(
