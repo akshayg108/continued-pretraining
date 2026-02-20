@@ -115,6 +115,7 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
+        --pool-strategy cls \
         --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
         --project simclr-cp-dinov3-food101 \
