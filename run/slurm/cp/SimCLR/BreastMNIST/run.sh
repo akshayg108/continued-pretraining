@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-path-25k
+#SBATCH --job-name=simclr-breast
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-breastmnist-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-breastmnist-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,26 +40,24 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/DINOv3/25k"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/DINOv3/25k"
+BASE_CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/BreastMNIST"
+BASE_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/BreastMNIST"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
-mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
+mkdir -p ${DATA_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="pathmnist"
-DISPLAY_NAME="PathMNIST"
+DATASET="breastmnist"
+DISPLAY_NAME="BreastMNIST"
 MODEL_SIZE="ViT-B"
-BACKBONE_TAG="DINOv3"
-BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
 
 EPOCHS=150
 BATCH_SIZE=32
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
-NUM_TRAINED_BLOCKS=4
+NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
@@ -69,34 +67,54 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-# n_samples
-NSAMPLES=(25000)
+# ============================================================
+# Backbone definitions
+# ============================================================
+declare -A BACKBONE_TIMMS
+BACKBONE_TIMMS[DINOv3]="vit_base_patch16_dinov3.lvd1689m"
+BACKBONE_TIMMS[MAE]="vit_base_patch16_224.mae"
+BACKBONE_TIMMS[CLIP]="vit_base_patch16_clip_224.openai"
+
+declare -A BACKBONE_NSAMPLES
+BACKBONE_NSAMPLES[DINOv3]="100 500 546"
+BACKBONE_NSAMPLES[MAE]="100 546"
+BACKBONE_NSAMPLES[CLIP]="100 546"
+
+BACKBONES=(DINOv3 MAE CLIP)
 
 # ============================================================
 # Run a single experiment
 # ============================================================
 run_single() {
-    local n_samples=$1
-    local seed=$2
+    local backbone_tag=$1
+    local backbone_timm=$2
+    local n_samples=$3
+    local seed=$4
 
-    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
+    local ckpt_dir="${BASE_CKPT_DIR}/${backbone_tag}"
+    local log_dir="${BASE_LOG_DIR}/${backbone_tag}"
+    mkdir -p "${ckpt_dir}" "${log_dir}"
+
+    local results_file="${log_dir}/${backbone_tag}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
-        echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
+        echo "[SKIP] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
         return 0
     fi
 
     echo "=========================================="
-    echo "[RUN] SimCLR-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] SimCLR-CP ${backbone_tag} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
     echo "  Start: $(date)"
     echo "=========================================="
+
+    local wandb_project="simclr-cp-$(echo ${backbone_tag} | tr '[:upper:]' '[:lower:]')-${DATASET}"
 
     python -u continued_pretraining.py \
         --cp-method simclr \
         --post-cp-sft \
         --dataset ${DATASET} \
-        --backbone ${BACKBONE_TIMM} \
+        --backbone ${backbone_timm} \
         --n-samples ${n_samples} \
         --epochs ${EPOCHS} \
         --batch-size ${BATCH_SIZE} \
@@ -109,10 +127,10 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
-        --checkpoint-dir ${CKPT_DIR} \
+        --checkpoint-dir ${ckpt_dir} \
         --cache-dir ${DATA_DIR} \
-        --project simclr-cp-dinov3-${DATASET} \
-        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
+        --project ${wandb_project} \
+        --run-name "${backbone_tag}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
 
@@ -121,7 +139,7 @@ run_single() {
     echo "  End: $(date)"
 
     if [ $exit_code -ne 0 ]; then
-        echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
+        echo "[FAIL] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed}"
     fi
 
     return $exit_code
@@ -131,14 +149,16 @@ run_single() {
 # Aggregate results across seeds
 # ============================================================
 aggregate_results() {
-    local n_samples=$1
-    local csv_file=$2
+    local backbone_tag=$1
+    local n_samples=$2
+    local csv_file=$3
+    local log_dir="${BASE_LOG_DIR}/${backbone_tag}"
 
     python3 << PYEOF
 import json, os, statistics
 
-log_dir = "${LOG_DIR}"
-backbone_tag = "${BACKBONE_TAG}"
+log_dir = "${log_dir}"
+backbone_tag = "${backbone_tag}"
 dataset = "${DATASET}"
 n_samples = "${n_samples}"
 display_name = "${DISPLAY_NAME}"
@@ -213,46 +233,58 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (n=25000)"
-echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME} (All Backbones)"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
-CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
-if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
-fi
-echo "CSV file: ${CSV_FILE}"
-
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
 
-for n_samples in "${NSAMPLES[@]}"; do
+for backbone_tag in "${BACKBONES[@]}"; do
+    backbone_timm="${BACKBONE_TIMMS[${backbone_tag}]}"
+    nsamples_str="${BACKBONE_NSAMPLES[${backbone_tag}]}"
+    read -ra nsamples_arr <<< "${nsamples_str}"
+
+    log_dir="${BASE_LOG_DIR}/${backbone_tag}"
+    mkdir -p "${log_dir}"
+
+    CSV_FILE="${log_dir}/${backbone_tag}_simclr_cp_results.csv"
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+
     echo ""
-    echo "============================================================"
-    echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
-    echo "============================================================"
+    echo "############################################################"
+    echo "# Backbone: ${backbone_tag} (${backbone_timm})"
+    echo "# n_samples: ${nsamples_str}"
+    echo "############################################################"
+    echo "CSV file: ${CSV_FILE}"
 
-    for seed in "${SEEDS[@]}"; do
-        run_single ${n_samples} ${seed}
-        if [ $? -eq 0 ]; then
-            TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
-        else
-            TOTAL_FAIL=$((TOTAL_FAIL + 1))
-        fi
+    for n_samples in "${nsamples_arr[@]}"; do
+        echo ""
+        echo "============================================================"
+        echo "Experiment: ${backbone_tag} | ${DISPLAY_NAME} | n_samples=${n_samples}"
+        echo "============================================================"
+
+        for seed in "${SEEDS[@]}"; do
+            run_single ${backbone_tag} ${backbone_timm} ${n_samples} ${seed}
+            if [ $? -eq 0 ]; then
+                TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
+            else
+                TOTAL_FAIL=$((TOTAL_FAIL + 1))
+            fi
+        done
+
+        echo "--- Aggregating results for ${backbone_tag} n=${n_samples} ---"
+        aggregate_results ${backbone_tag} ${n_samples} ${CSV_FILE}
     done
-
-    echo "--- Aggregating results for n=${n_samples} ---"
-    aggregate_results ${n_samples} ${CSV_FILE}
 done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} n=25000 experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
-echo "  Results: ${LOG_DIR}/"
+echo "  Results: ${BASE_LOG_DIR}/"
 echo "  End Time: $(date)"
 echo "=========================================="

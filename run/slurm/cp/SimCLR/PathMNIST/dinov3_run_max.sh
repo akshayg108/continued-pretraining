@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-path-max
+#SBATCH --job-name=d-path-max
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -40,8 +40,8 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/max_all"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/max_all"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/DINOv3/all"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/DINOv3/all"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 

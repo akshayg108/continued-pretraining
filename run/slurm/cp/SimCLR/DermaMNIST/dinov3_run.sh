@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-path-25k
+#SBATCH --job-name=d-derm
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-dermamnist-dinov3-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-dermamnist-dinov3-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,16 +40,16 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/DINOv3/25k"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/DINOv3/25k"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/DermaMNIST/DINOv3"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/DermaMNIST/DINOv3"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="pathmnist"
-DISPLAY_NAME="PathMNIST"
+DATASET="dermamnist"
+DISPLAY_NAME="DermaMNIST"
 MODEL_SIZE="ViT-B"
 BACKBONE_TAG="DINOv3"
 BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
@@ -59,7 +59,7 @@ BATCH_SIZE=32
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
-NUM_TRAINED_BLOCKS=4
+NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
@@ -69,8 +69,7 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-# n_samples
-NSAMPLES=(25000)
+NSAMPLES=(100 500 1000 7007)
 
 # ============================================================
 # Run a single experiment
@@ -213,17 +212,16 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (n=25000)"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME}"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
+echo "n_samples: ${NSAMPLES[*]}"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
-if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
-fi
+echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 echo "CSV file: ${CSV_FILE}"
 
 TOTAL_SUCCESS=0
@@ -250,7 +248,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} n=25000 experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"

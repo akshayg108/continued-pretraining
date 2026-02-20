@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-path-small
+#SBATCH --job-name=c-path-max
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-small-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-small-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-clip-max-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-clip-max-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,8 +40,8 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/small_1"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/small_1"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/CLIP/all"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/CLIP/all"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
@@ -51,15 +51,15 @@ mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 DATASET="pathmnist"
 DISPLAY_NAME="PathMNIST"
 MODEL_SIZE="ViT-B"
-BACKBONE_TAG="DINOv3"
-BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
+BACKBONE_TAG="CLIP"
+BACKBONE_TIMM="vit_base_patch16_clip_224.openai"
 
 EPOCHS=150
 BATCH_SIZE=32
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
-NUM_TRAINED_BLOCKS=1
+NUM_TRAINED_BLOCKS=-1
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
@@ -69,8 +69,8 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-# n_samples for small runs
-NSAMPLES=(100 500 1000)
+# n_samples (MAX=89996)
+NSAMPLES=(89996)
 
 # ============================================================
 # Run a single experiment
@@ -79,13 +79,7 @@ run_single() {
     local n_samples=$1
     local seed=$2
 
-    local dataset_log_dir="${LOG_DIR}"
-    mkdir -p "${dataset_log_dir}"
-
-    local results_file="${dataset_log_dir}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
-
-    local dataset_ckpt_dir="${CKPT_DIR}"
-    mkdir -p "${dataset_ckpt_dir}"
+    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
         echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
@@ -94,7 +88,7 @@ run_single() {
 
     echo "=========================================="
     echo "[RUN] SimCLR-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
-    echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
+    echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS} (all blocks)"
     echo "  Start: $(date)"
     echo "=========================================="
 
@@ -115,10 +109,10 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
-        --checkpoint-dir ${dataset_ckpt_dir} \
+        --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project simclr-cp-dinov3-${DATASET}_compare \
-        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
+        --project simclr-cp-clip-${DATASET} \
+        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blkALL_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
 
@@ -219,15 +213,17 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (small: n=100,500,1000)"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME} (CLIP, n=89996, MAX)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
-echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
+echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS} (all blocks)"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
-echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+if [ ! -f "${CSV_FILE}" ]; then
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+fi
 echo "CSV file: ${CSV_FILE}"
 
 TOTAL_SUCCESS=0
@@ -254,7 +250,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} small experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} CLIP MAX experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"

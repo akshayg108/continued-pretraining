@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-path-25k
+#SBATCH --job-name=d-food-10k
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-25k-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-food101-10k-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-food101-10k-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,16 +40,16 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/DINOv3/25k"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/DINOv3/25k"
+CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/Food101/DINOv3/10k"
+LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/Food101/DINOv3/10k"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="pathmnist"
-DISPLAY_NAME="PathMNIST"
+DATASET="food101"
+DISPLAY_NAME="Food101"
 MODEL_SIZE="ViT-B"
 BACKBONE_TAG="DINOv3"
 BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
@@ -70,7 +70,7 @@ PROJ_DIM=128
 HIDDEN_DIM=2048
 
 # n_samples
-NSAMPLES=(25000)
+NSAMPLES=(10000)
 
 # ============================================================
 # Run a single experiment
@@ -111,7 +111,7 @@ run_single() {
         --hidden-dim ${HIDDEN_DIM} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project simclr-cp-dinov3-${DATASET} \
+        --project simclr-cp-dinov3-food101 \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
@@ -213,7 +213,7 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (n=25000)"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME} (n=10000)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
@@ -250,7 +250,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} n=25000 experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} n=10000 experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"
