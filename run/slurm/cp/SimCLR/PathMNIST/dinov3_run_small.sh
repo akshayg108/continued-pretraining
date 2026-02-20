@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-path-small
+#SBATCH --job-name=d-path-s
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-small-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-small-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-pathmnist-small-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-pathmnist-small-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -26,7 +26,7 @@ echo "Python: $(which python)"
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
-cd /scratch/gs4133/zhd/Continued-Pretraining/continued-pretraining
+cd /scratch/gs4133/zhd/CP/continued-pretraining
 export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -39,10 +39,10 @@ nvidia-smi
 # ============================================================
 # Paths
 # ============================================================
-DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/small_2"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/small_2"
-SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
+DATA_DIR="/scratch/gs4133/zhd/CP/data"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/PathMNIST/DINOv3/small"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/PathMNIST/DINOv3/small"
+SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================

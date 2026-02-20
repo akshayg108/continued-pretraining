@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-path-10k
+#SBATCH --job-name=c-fgvc
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-10k-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log/simclr-pathmnist-10k-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-fgvc_aircraft-clip-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-fgvc_aircraft-clip-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -26,7 +26,7 @@ echo "Python: $(which python)"
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
-cd /scratch/gs4133/zhd/Continued-Pretraining/continued-pretraining
+cd /scratch/gs4133/zhd/CP/continued-pretraining
 export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -39,20 +39,20 @@ nvidia-smi
 # ============================================================
 # Paths
 # ============================================================
-DATA_DIR="/scratch/gs4133/zhd/Continued-Pretraining/data"
-CKPT_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/ckpts/cp/SimCLR/PathMNIST/10k_2"
-LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/logs/cp/SimCLR/PathMNIST/10k_2"
-SLURM_LOG_DIR="/scratch/gs4133/zhd/Continued-Pretraining/outputs/slurm-log"
+DATA_DIR="/scratch/gs4133/zhd/CP/data"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/FGVC_Aircraft/CLIP"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/FGVC_Aircraft/CLIP"
+SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="pathmnist"
-DISPLAY_NAME="PathMNIST"
+DATASET="fgvc_aircraft"
+DISPLAY_NAME="FGVC_Aircraft"
 MODEL_SIZE="ViT-B"
-BACKBONE_TAG="DINOv3"
-BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
+BACKBONE_TAG="CLIP"
+BACKBONE_TIMM="vit_base_patch16_clip_224.openai"
 
 EPOCHS=150
 BATCH_SIZE=32
@@ -69,8 +69,7 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-# n_samples
-NSAMPLES=(10000)
+NSAMPLES=(1000 3400)
 
 # ============================================================
 # Run a single experiment
@@ -111,7 +110,7 @@ run_single() {
         --hidden-dim ${HIDDEN_DIM} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project simclr-cp-dinov3-${DATASET}_compare \
+        --project simclr-cp-clip-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
@@ -213,17 +212,16 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (n=10000)"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME}"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
+echo "n_samples: ${NSAMPLES[*]}"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
-if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
-fi
+echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 echo "CSV file: ${CSV_FILE}"
 
 TOTAL_SUCCESS=0
@@ -250,7 +248,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} n=10000 experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"

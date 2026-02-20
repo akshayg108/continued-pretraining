@@ -36,7 +36,7 @@ def lejepa_forward(self, batch, stage):
 
         # Single forward pass for all views
         all_images = torch.cat([view["image"] for view in views], dim=0)
-        all_emb = _extract_embedding(self.backbone(all_images))
+        all_emb = _extract_embedding(self.backbone.forward_features(all_images))
         out["embedding"] = all_emb
 
         if "label" in views[0]:
@@ -81,7 +81,7 @@ def lejepa_forward(self, batch, stage):
             )
     else:
         # Single-view (validation)
-        out["embedding"] = _extract_embedding(self.backbone(batch["image"]))
+        out["embedding"] = _extract_embedding(self.backbone.forward_features(batch["image"]))
         if "label" in batch:
             out["label"] = batch["label"]
 
