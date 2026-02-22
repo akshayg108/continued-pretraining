@@ -73,6 +73,11 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument(
         "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
     )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="Resume training from existing checkpoint. Default behaviour "
+             "starts fresh and overwrites any previous checkpoint.",
+    )
     return parser
 
 
@@ -220,6 +225,10 @@ def _run_sft_phase(
         f"_n{args.n_samples}_s{args.seed}.ckpt"
     )
 
+    if not getattr(args, "resume", False) and Path(sft_ckpt).exists():
+        print(f"[resume=False] Removing old SFT checkpoint: {sft_ckpt}")
+        Path(sft_ckpt).unlink()
+
     results = sft_evaluate(
         backbone,
         sft_data,
@@ -339,6 +348,10 @@ def run_training(
     ]
     if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
+    if not getattr(args, "resume", False) and Path(ckpt_path).exists():
+        print(f"[resume=False] Removing old checkpoint: {ckpt_path}")
+        Path(ckpt_path).unlink()
+
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         num_sanity_val_steps=0,
