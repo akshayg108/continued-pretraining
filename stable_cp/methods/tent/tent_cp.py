@@ -12,7 +12,7 @@ from continued_pretraining import (
     load_backbone,
     create_optim_config,
     run_baseline,
-    run_training,
+    run_continued_pretraining,
     run_final_eval,
 )
 from stable_cp.data import create_transforms, create_data_loaders
@@ -147,7 +147,7 @@ def main():
         effective_freeze_epochs = freeze_epochs
         effective_num_trained_blocks = args.num_trained_blocks
 
-    run_training(
+    run_continued_pretraining(
         module,
         data,
         args,

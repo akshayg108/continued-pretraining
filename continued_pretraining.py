@@ -16,7 +16,7 @@ from pathlib import Path
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 
 import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_timm
@@ -69,6 +69,15 @@ def create_base_parser(description="Continued Pretraining"):
         help="Override Wandb run name (default: auto-generated)",
     )
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
+    parser.add_argument(
+        "--checkpoint-every-n-epochs",
+        type=int,
+        default=0,
+        help=(
+            "Save intermediate checkpoints every N epochs. "
+            "Use 0 to disable intermediate checkpointing and keep only final checkpoint."
+        ),
+    )
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     return parser
 
@@ -302,7 +311,7 @@ def run_final_eval(
 # ============================================================
 
 
-def run_training(
+def run_continued_pretraining(
     module,
     data,
     args,
@@ -332,18 +341,40 @@ def run_training(
         ),
         LearningRateMonitor(logging_interval="step"),
     ]
+
+    checkpoint_every_n_epochs = max(getattr(args, "checkpoint_every_n_epochs", 0), 0)
+    if checkpoint_every_n_epochs > 0:
+        ckpt_path_obj = Path(ckpt_path)
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=str(ckpt_path_obj.parent),
+                filename=f"{ckpt_path_obj.stem}-ep{{epoch:03d}}",
+                every_n_epochs=checkpoint_every_n_epochs,
+                save_top_k=-1,
+                save_last=True,
+                monitor=None,
+                auto_insert_metric_name=False,
+            )
+        )
+
     if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
+
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         num_sanity_val_steps=0,
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
+        enable_checkpointing=checkpoint_every_n_epochs > 0,
     )
     spt.Manager(
         trainer=trainer, module=module, data=data, ckpt_path=ckpt_path, seed=args.seed
     )()
+
+    if checkpoint_every_n_epochs == 0:
+        trainer.save_checkpoint(ckpt_path)
+        print(f"Saved final checkpoint: {ckpt_path}")
 
 
 # ============================================================
@@ -547,7 +578,7 @@ def main():
             cp_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
             f"_n{args.n_samples}_s{args.seed}.ckpt"
         )
-        run_training(
+        run_continued_pretraining(
             module,
             cp_data,
             args,

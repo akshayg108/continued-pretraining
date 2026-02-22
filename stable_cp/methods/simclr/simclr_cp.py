@@ -13,7 +13,7 @@ from continued_pretraining import (
     load_backbone,
     create_optim_config,
     run_baseline,
-    run_training,
+    run_continued_pretraining,
     run_final_eval,
 )
 from stable_cp.data import create_transforms, create_data_loaders
@@ -88,7 +88,7 @@ def main():
         checkpoint_dir
         / f"simclr_cp_{args.dataset}_{args.backbone.replace('/', '_')}.ckpt"
     )
-    run_training(
+    run_continued_pretraining(
         module, data, args, ds_cfg, embed_dim, freeze_epochs, logger, ckpt_path
     )
     run_final_eval(

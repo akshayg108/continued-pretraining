@@ -8,6 +8,7 @@ Usage from continued_pretraining.py:
     from stable_cp.evaluation.sft_eval import sft_evaluate
     results = sft_evaluate(backbone, sft_data, test_loader, device, ...)
 """
+
 import copy
 
 import lightning as pl
@@ -34,6 +35,7 @@ SFT_LABEL_SMOOTHING = 0.0
 # ---------------------------------------------------------------------------
 # Forward & Module helpers (moved from stable_cp/methods/supervised/)
 # ---------------------------------------------------------------------------
+
 
 def _extract_embedding(backbone_output, pool_strategy="cls"):
     """Extract embedding from backbone output (handles ViT and CNN).
@@ -92,9 +94,15 @@ def _sft_forward(self, batch, stage):
     return out
 
 
-def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
-                      label_smoothing=SFT_LABEL_SMOOTHING, pool_strategy="cls",
-                      metric_prefix="sft"):
+def _setup_sft_module(
+    backbone,
+    embed_dim,
+    optim_config,
+    num_classes,
+    label_smoothing=SFT_LABEL_SMOOTHING,
+    pool_strategy="cls",
+    metric_prefix="sft",
+):
     """Create an ``spt.Module`` configured for supervised fine-tuning."""
     classifier = nn.Linear(embed_dim, num_classes)
     return spt.Module(
@@ -111,6 +119,7 @@ def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
 # ---------------------------------------------------------------------------
 # Main evaluation entry-point
 # ---------------------------------------------------------------------------
+
 
 def sft_evaluate(
     backbone: nn.Module,
@@ -161,8 +170,10 @@ def sft_evaluate(
     """
     if verbose:
         print("=" * 50)
-        print(f"SFT Evaluation [{prefix}]: {num_classes} classes | "
-              f"{SFT_EPOCHS} ep | lr={SFT_LR} | bs={SFT_BATCH_SIZE}")
+        print(
+            f"SFT Evaluation [{prefix}]: {num_classes} classes | "
+            f"{SFT_EPOCHS} ep | lr={SFT_LR} | bs={SFT_BATCH_SIZE}"
+        )
         print("=" * 50)
 
     # Deep-copy backbone so the original is never modified
@@ -206,6 +217,7 @@ def sft_evaluate(
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
+        enable_checkpointing=False,
     )
     spt.Manager(
         trainer=trainer,
@@ -214,6 +226,11 @@ def sft_evaluate(
         ckpt_path=ckpt_path,
         seed=seed,
     )()
+
+    if ckpt_path:
+        trainer.save_checkpoint(ckpt_path)
+        if verbose:
+            print(f"SFT [{prefix}] final checkpoint saved: {ckpt_path}")
 
     # ---- final evaluation on test set ----
     if verbose:
@@ -235,7 +252,9 @@ def sft_evaluate(
     }
 
     if verbose:
-        print(f"SFT [{prefix}] Results: acc={results[f'{prefix}_acc']:.4f}  "
-              f"f1={results[f'{prefix}_f1']:.4f}")
+        print(
+            f"SFT [{prefix}] Results: acc={results[f'{prefix}_acc']:.4f}  "
+            f"f1={results[f'{prefix}_f1']:.4f}"
+        )
 
     return results
