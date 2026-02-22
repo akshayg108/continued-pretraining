@@ -341,8 +341,8 @@ def run_training(
             embed_dim,
             include_f1=True,
             include_auroc=True,
-            knn_queue_length=args.n_samples,
-            knn_k=args.knn_k,
+            knn_queue_length=max(args.n_samples, 1000),
+            knn_k=min(args.knn_k, args.n_samples),
         ),
         LearningRateMonitor(logging_interval="step"),
     ]
