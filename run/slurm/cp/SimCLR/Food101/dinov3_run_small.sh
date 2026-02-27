@@ -70,7 +70,7 @@ PROJ_DIM=128
 HIDDEN_DIM=2048
 
 # n_samples for small runs
-NSAMPLES=(100 500 1000)
+NSAMPLES=(101 500 1000)
 
 # ============================================================
 # Run a single experiment
