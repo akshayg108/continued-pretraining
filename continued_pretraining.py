@@ -161,9 +161,9 @@ def _get_methods():
 
 def _create_shared_eval_data(args, ds_cfg, data_dir):
     """Create shared eval loaders and the shared sampled train indices."""
-    _, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+    train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
     test_loader, eval_train_loader, indices = create_eval_loaders(
-        args, ds_cfg, eval_tf, data_dir
+        args, ds_cfg, train_tf, eval_tf, data_dir
     )
     return eval_tf, test_loader, eval_train_loader, indices
 
@@ -272,7 +272,7 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
     for k, v in results.items():
         logger.experiment.summary[f"baseline/{k}"] = v
     print(
-        f"Baseline: knn_f1={results['knn_f1']:.4f} linear_f1={results['linear_f1']:.4f}"
+        f"Baseline: knn_f1={results['knn_f1']:.4f} linear_f1={results['linear_pytorch_f1']:.4f}"
     )
     return results
 
@@ -299,7 +299,7 @@ def run_final_eval(
 
     if baseline_results:
         print("Improvement:")
-        for key in ["knn_f1", "linear_f1", "knn_acc", "linear_acc"]:
+        for key in ["knn_f1", "linear_pytorch_f1", "knn_acc", "linear_pytorch_acc"]:
             if key in baseline_results and key in final_results:
                 delta = final_results[key] - baseline_results[key]
                 logger.experiment.summary[f"delta/{key}"] = delta
@@ -613,9 +613,9 @@ def main():
         # Pre-CP KNN / Linear Probe
         if baseline_results:
             results_json["pre_knn_f1"] = baseline_results.get("knn_f1", None)
-            results_json["pre_linear_f1"] = baseline_results.get("linear_f1", None)
+            results_json["pre_linear_f1"] = baseline_results.get("linear_pytorch_f1", None)
             results_json["pre_knn_acc"] = baseline_results.get("knn_acc", None)
-            results_json["pre_linear_acc"] = baseline_results.get("linear_acc", None)
+            results_json["pre_linear_acc"] = baseline_results.get("linear_pytorch_acc", None)
 
         # Pre-CP SFT
         if sft_pre_results:
@@ -625,9 +625,9 @@ def main():
         # Post-CP KNN / Linear Probe
         if final_eval_results:
             results_json["post_knn_f1"] = final_eval_results.get("knn_f1", None)
-            results_json["post_linear_f1"] = final_eval_results.get("linear_f1", None)
+            results_json["post_linear_f1"] = final_eval_results.get("linear_pytorch_f1", None)
             results_json["post_knn_acc"] = final_eval_results.get("knn_acc", None)
-            results_json["post_linear_acc"] = final_eval_results.get("linear_acc", None)
+            results_json["post_linear_acc"] = final_eval_results.get("linear_pytorch_acc", None)
 
         # Post-CP SFT
         if sft_post_results:

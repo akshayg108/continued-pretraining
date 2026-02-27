@@ -121,6 +121,7 @@ def _sample_shared_train_indices_by_class(args, dataset):
 def create_eval_loaders(
     args,
     ds_cfg,
+    eval_train_transform,
     val_transform,
     data_dir,
     indices=None,
@@ -131,7 +132,10 @@ def create_eval_loaders(
     Args:
         args: Command-line arguments (dataset, batch_size, num_workers, seed, n_samples).
         ds_cfg: Dataset configuration containing split names.
-        val_transform: Non-augmented transform for evaluation.
+        eval_train_transform: Transform for the eval-train subset (augmented,
+            matching the DIET_Tuning protocol where LP/KNN train features
+            are extracted from augmented inputs).
+        val_transform: Non-augmented transform for test/val evaluation.
         data_dir: Cache directory for datasets.
         indices: Optional predefined train indices for eval-train subset.
             If None, indices are sampled stratified by class labels.
@@ -146,7 +150,7 @@ def create_eval_loaders(
     eval_train = get_dataset(
         args.dataset,
         split=train_split,
-        transform=val_transform,
+        transform=eval_train_transform,
         cache_dir=data_dir,
         seed=args.seed,
     )
@@ -309,12 +313,13 @@ def create_data_loaders(
         tuple: (data_module, test_loader, eval_train_loader, indices)
             - data_module: spt.data.DataModule with train and val loaders
             - test_loader: DataLoader for test set
-            - eval_train_loader: DataLoader for evaluation on train set (with val transform)
+            - eval_train_loader: DataLoader for evaluation on train set (with train transform)
             - indices: List of training sample indices used
     """
     test_loader, eval_train_loader, indices = create_eval_loaders(
         args,
         ds_cfg,
+        train_transform,
         val_transform,
         data_dir,
         indices=None,

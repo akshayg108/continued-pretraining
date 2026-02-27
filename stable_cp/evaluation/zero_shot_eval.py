@@ -242,8 +242,8 @@ def linear_probe_pytorch_evaluate(
     test_labels: np.ndarray,
     device: torch.device = "cuda",
     lr: float = 1e-3,
-    num_steps: int = 20000,
-    batch_size: int = 256,
+    num_steps: int = 10000,
+    batch_size: int = 512,
     verbose: bool = True,
 ) -> dict:
     # Evaluate using PyTorch linear probe (DIET-CP reference protocol)
@@ -265,15 +265,23 @@ def linear_probe_pytorch_evaluate(
     optimizer = torch.optim.Adam(clf.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
-    # Training loop
+    # Epoch-based mini-batch training (matching DIET_Tuning protocol)
     clf.train()
     n_samples = len(train_features_t)
+    n_batches = (n_samples + batch_size - 1) // batch_size
+    indices = torch.randperm(n_samples, device=device)
 
     for step in range(num_steps):
-        # Random batch
-        idx = torch.randint(0, n_samples, (min(batch_size, n_samples),))
-        batch_features = train_features_t[idx]
-        batch_labels = train_labels_t[idx]
+        if step % n_batches == 0:
+            indices = torch.randperm(n_samples, device=device)
+
+        batch_idx = step % n_batches
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, n_samples)
+        batch_indices = indices[start_idx:end_idx]
+
+        batch_features = train_features_t[batch_indices]
+        batch_labels = train_labels_t[batch_indices]
 
         optimizer.zero_grad()
         logits = clf(batch_features)
