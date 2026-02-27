@@ -111,6 +111,10 @@ class FreezeBackboneCallback(pl.Callback):
         if hasattr(backbone, "model") and hasattr(backbone.model, "blocks"):
             return backbone.model.blocks
 
+        # MaskedEncoder (MAE CP): backbone is MaskedEncoder with .vit
+        if hasattr(backbone, "vit") and hasattr(backbone.vit, "blocks"):
+            return backbone.vit.blocks
+
         # ResNet layers
         if hasattr(backbone, "layer4"):
             # Return list of ResNet layers

@@ -536,19 +536,7 @@ def main():
         )
 
         if args.cp_method == "mae_cp":
-            with torch.no_grad():
-                test_input = torch.zeros(
-                    1,
-                    3,
-                    ds_cfg["input_size"],
-                    ds_cfg["input_size"],
-                    device=next(backbone.parameters()).device,
-                )
-                tokens = backbone.forward_features(test_input)
-                num_tokens = tokens.shape[1] - 1
             kwargs.update(
-                image_size=ds_cfg["input_size"],
-                num_tokens=num_tokens,
                 decoder_dim=args.decoder_dim,
                 decoder_depth=args.decoder_depth,
                 mask_ratio=args.mask_ratio,

@@ -1,76 +1,57 @@
 import torch
-import stable_pretraining as spt
 
 
-def patchify(imgs, patch_size):
-    """Convert images to patches.
+def _extract_embedding(encoded_tokens, num_prefix_tokens, pool_strategy="cls"):
+    """Extract a single embedding vector from encoder output tokens.
 
     Args:
-        imgs: (B, 3, H, W)
-        patch_size: int, size of each patch
-
-    Returns:
-        patches: (B, N, patch_size^2 * 3)
+        encoded_tokens: [B, num_prefix + N_tokens, D] from MaskedEncoder
+        num_prefix_tokens: number of prefix tokens (CLS + registers)
+        pool_strategy: 'cls' for CLS token, 'mean' for mean of patch tokens
     """
-    B, C, H, W = imgs.shape
-    assert H == W and H % patch_size == 0, (
-        f"Image size {H} must be divisible by patch_size {patch_size}"
-    )
-
-    h = w = H // patch_size
-    x = imgs.reshape(B, C, h, patch_size, w, patch_size)
-    x = torch.einsum("nchpwq->nhwpqc", x)
-    x = x.reshape(B, h * w, patch_size**2 * C)
-    return x
+    if pool_strategy == "mean":
+        return encoded_tokens[:, num_prefix_tokens:, :].mean(dim=1)
+    return encoded_tokens[:, 0, :]
 
 
 def mae_cp_forward(self, batch, stage):
     """MAE Continued Pretraining forward pass.
 
-    Pipeline:
-    1. Encoder outputs tokens (remove CLS token)
-    2. Randomly mask a portion of patches
-    3. Decoder reconstructs masked patches from visible patches
-    4. Compute reconstruction loss only on masked positions
+    Training:
+        1. MaskedEncoder masks patches at image level, encodes only visible patches
+        2. MAEDecoder reconstructs all patches from visible patch embeddings
+        3. MAELoss computes MSE on masked patches against original pixel values
+
+    Eval:
+        MaskedEncoder runs without masking (full image), producing standard
+        embeddings for KNN / linear-probe evaluation callbacks.
     """
-    # 1. Encoder forward (remove CLS token)
-    # Use forward_features to get token sequence from TIMM models
-    backbone_out = self.backbone.forward_features(batch["image"])
-    # Remove CLS token (index 0), keep only patch tokens
-    tokens = backbone_out[:, 1:]
-    B, T, D = tokens.shape
+    out = {}
+    images = batch["image"]
+    pool_strategy = getattr(self, "pool_strategy", "mean")
 
-    # 2. Random masking (MAE convention: 1=masked, 0=visible)
-    num_mask = int(T * self.mask_ratio)
-    num_keep = T - num_mask
+    enc_out = self.backbone(images)
 
-    noise = torch.rand(B, T, device=tokens.device)
-    ids_shuffle = torch.argsort(noise, dim=1)
+    out["embedding"] = _extract_embedding(
+        enc_out.encoded, self.backbone.num_prefix_tokens, pool_strategy
+    )
 
-    # Create binary mask: 1 = masked, 0 = visible
-    mask = torch.zeros(B, T, device=tokens.device)
-    mask.scatter_(1, ids_shuffle[:, num_keep:], 1)
+    if "label" in batch:
+        out["label"] = batch["label"]
 
-    # 3. Decoder forward
-    # Pass full sequence; decoder will automatically extract visible tokens
-    # This is simpler than manual extraction and verified to produce identical results
-    pred = self.decoder(tokens, mask, output_masked_only=False)  # [B, T, output_dim]
-
-    # 4. Store embedding for evaluation callbacks (KNN, linear probe)
-    batch["embedding"] = tokens.mean(dim=1)
-
-    # 5. Compute reconstruction loss on masked patches
     if self.training:
-        # Patchify: convert image to patches
-        target = patchify(batch["image"], self.patch_size)  # [B, T, patch_size^2 * 3]
-
-        # Loss: compute MSE only on mask=1 positions
-        batch["loss"] = spt.losses.mae(
-            target=target, pred=pred, mask=mask, norm_pix_loss=False
+        encoded_patches = enc_out.encoded[:, self.backbone.num_prefix_tokens :]
+        predictions = self.decoder(
+            encoded_patches,
+            enc_out.mask,
+            ids_keep=enc_out.ids_keep,
+            output_masked_only=False,
         )
-
+        out["loss"] = self.loss_fn(
+            predictions, images.to(predictions.dtype), enc_out.mask
+        )
         self.log(
-            f"{stage}/loss", batch["loss"], on_step=True, on_epoch=True, sync_dist=True
+            f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True
         )
 
-    return batch
+    return out
