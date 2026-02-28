@@ -51,7 +51,7 @@ DATASETS = {
         "splits": ["train", "validation", "test"],
         "manual_split": True,  # Force manual splitting from full dataset (avoid data leakage)
     },
-    # MedMNIST datasets
+    # MedMNIST datasets (size=224 for native high-resolution images)
     "bloodmnist": {
         "dataset_class": stable_ds.MedMNIST,
         "config_name": "bloodmnist",
@@ -59,6 +59,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "bloodmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "tissuemnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -67,6 +68,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "tissuemnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "pathmnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -75,6 +77,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "pathmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "dermamnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -83,6 +86,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "dermamnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "octmnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -91,6 +95,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "octmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "pneumoniamnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -99,6 +104,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "pneumoniamnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "retinamnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -107,6 +113,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "retinamnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "breastmnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -115,6 +122,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "breastmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "organamnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -123,6 +131,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "organamnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "organcmnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -131,6 +140,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "organcmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
     "organsmnist": {
         "dataset_class": stable_ds.MedMNIST,
@@ -139,6 +149,7 @@ DATASETS = {
         "input_size": 224,
         "normalization": "organsmnist",
         "splits": ["train", "validation", "test"],
+        "dataset_kwargs": {"size": 224},
     },
 }
 
@@ -240,6 +251,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
 
     dataset_class = cfg["dataset_class"]
     config_name = cfg["config_name"]
+    extra_kwargs = cfg.get("dataset_kwargs", {})
 
     # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
     # load the "train" split and split manually to avoid data leakage
@@ -250,12 +262,14 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 config_name=config_name,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
         else:
             hf_ds_full = dataset_class(
                 split="train",
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
         hf_ds = _split_single_dataset(hf_ds_full, split, seed)
         return HFDatasetWrapper(hf_ds, transform=transform)
@@ -269,6 +283,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 config_name=config_name,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
         except (ValueError, KeyError):
             # If requested split doesn't exist, load all and split manually
@@ -277,6 +292,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 config_name=config_name,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
             hf_ds = _handle_split_from_dict(hf_ds, split, seed)
     else:
@@ -286,6 +302,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 split=split,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
         except (ValueError, KeyError):
             # If requested split doesn't exist, load all and split manually
@@ -293,6 +310,7 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
                 split=None,
                 download_dir=str(download_dir),
                 processed_cache_dir=str(processed_cache_dir),
+                **extra_kwargs,
             )
             hf_ds = _handle_split_from_dict(hf_ds, split, seed)
 
