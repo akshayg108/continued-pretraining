@@ -162,7 +162,6 @@ def _get_methods():
 def _create_shared_eval_data(args, ds_cfg, data_dir):
     """Create shared eval loaders and the shared sampled train indices."""
     train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
-    # Augmented train loader for LP
     test_loader, eval_train_loader, indices = create_eval_loaders(
         args, ds_cfg, train_tf, eval_tf, data_dir
     )
