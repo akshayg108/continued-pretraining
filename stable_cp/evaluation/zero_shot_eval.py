@@ -349,9 +349,10 @@ def zero_shot_eval(
     k_neighbors: int = 20,
     linear_max_iter: int = 1000,
     linear_probe_method: str = "both",
-    linear_pytorch_steps: int = 20000,
+    linear_pytorch_steps: int = 10000,
     linear_pytorch_lr: float = 1e-3,
     pool_strategy: str = "cls",
+    knn_train_loader: torch.utils.data.DataLoader = None,
     verbose: bool = True,
 ) -> dict:
     # Full zero-shot evaluation pipeline
@@ -367,6 +368,16 @@ def zero_shot_eval(
         model, test_loader, device, pool_strategy=pool_strategy, verbose=verbose
     )
 
+    # Extract clean train features for KNN if a separate loader is provided
+    if knn_train_loader is not None:
+        if verbose:
+            print("Extracting clean train features for k-NN...")
+        knn_train_features, knn_train_labels = extract_features(
+            model, knn_train_loader, device, pool_strategy=pool_strategy, verbose=verbose
+        )
+    else:
+        knn_train_features, knn_train_labels = train_features, train_labels
+
     if verbose:
         print(f"Train: {train_features.shape}, Test: {test_features.shape}")
 
@@ -377,7 +388,7 @@ def zero_shot_eval(
         print("Running k-NN evaluation...")
     results.update(
         knn_evaluate(
-            train_features, train_labels, test_features, test_labels, k=k_neighbors
+            knn_train_features, knn_train_labels, test_features, test_labels, k=k_neighbors
         )
     )
     if verbose:

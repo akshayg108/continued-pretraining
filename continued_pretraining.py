@@ -162,10 +162,15 @@ def _get_methods():
 def _create_shared_eval_data(args, ds_cfg, data_dir):
     """Create shared eval loaders and the shared sampled train indices."""
     train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
+    # Augmented train loader for LP
     test_loader, eval_train_loader, indices = create_eval_loaders(
         args, ds_cfg, train_tf, eval_tf, data_dir
     )
-    return eval_tf, test_loader, eval_train_loader, indices
+    # Clean train loader for KNN (same indices, no augmentation)
+    _, knn_train_loader, _ = create_eval_loaders(
+        args, ds_cfg, eval_tf, eval_tf, data_dir, indices=indices
+    )
+    return eval_tf, test_loader, eval_train_loader, knn_train_loader, indices
 
 
 def _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices):
@@ -253,7 +258,8 @@ def _run_sft_phase(
 # ============================================================
 
 
-def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger):
+def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger,
+                  knn_train_loader=None):
     """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
         return None
@@ -266,6 +272,7 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
         k_neighbors=args.knn_k,
         linear_probe_method="both",
         pool_strategy=args.pool_strategy,
+        knn_train_loader=knn_train_loader,
         verbose=True,
     )
     logger.experiment.log({f"baseline/{k}": v for k, v in results.items()}, step=0)
@@ -278,7 +285,8 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
 
 
 def run_final_eval(
-    backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
+    backbone, eval_train_loader, test_loader, device, args, logger, baseline_results,
+    knn_train_loader=None,
 ):
     """Post-CP evaluation: KNN + Linear Probe."""
     if args.skip_final_eval:
@@ -292,6 +300,7 @@ def run_final_eval(
         k_neighbors=args.knn_k,
         linear_probe_method="both",
         pool_strategy=args.pool_strategy,
+        knn_train_loader=knn_train_loader,
         verbose=True,
     )
     for k, v in final_results.items():
@@ -466,7 +475,7 @@ def main():
     cp_data = None
 
     # Shared evaluation loaders (KNN/LP + SFT test evaluation)
-    eval_tf, test_loader, eval_train_loader, indices = _create_shared_eval_data(
+    eval_tf, test_loader, eval_train_loader, knn_train_loader, indices = _create_shared_eval_data(
         args,
         ds_cfg,
         data_dir,
@@ -494,7 +503,8 @@ def main():
 
     if not args.skip_baseline:
         baseline_results = run_baseline(
-            backbone, eval_train_loader, test_loader, device, args, logger
+            backbone, eval_train_loader, test_loader, device, args, logger,
+            knn_train_loader=knn_train_loader,
         )
 
     if args.pre_cp_sft:
@@ -576,6 +586,7 @@ def main():
             args,
             logger,
             baseline_results,
+            knn_train_loader=knn_train_loader,
         )
 
     if args.post_cp_sft:
