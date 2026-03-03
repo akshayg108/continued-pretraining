@@ -100,6 +100,7 @@ run_single() {
         --project simclr-cp-clip-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
     local exit_code=$?
     echo "  Exit Code: ${exit_code}  End: $(date)"

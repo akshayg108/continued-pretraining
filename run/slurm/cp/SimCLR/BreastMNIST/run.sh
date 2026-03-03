@@ -139,6 +139,7 @@ run_single() {
         --project ${wandb_project} \
         --run-name "${backbone_tag}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?

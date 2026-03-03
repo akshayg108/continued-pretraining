@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rand-pre-cp-diet
+#SBATCH --job-name=rand-pre-food-25000
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-cp-diet-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-cp-diet-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-food101-25000-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-food101-25000-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,127 +40,43 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP-MAE/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/ckpts/random-pre-cp-only/DIET"
-LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/logs/random-pre-cp-only/DIET"
+CKPT_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/ckpts/random-pre-cp-only/Food101/SCRATCH/25000"
+LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/logs/random-pre-cp-only/Food101/SCRATCH/25000"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
+DATASET="food101"
+DISPLAY_NAME="Food101"
 MODEL_SIZE="ViT-B"
+BACKBONE_TAG="SCRATCH"
+BACKBONE_TIMM="vit_base_patch16_224"
+
 BATCH_SIZE=32
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
 
-# ============================================================
-# Backbone definition (randomly initialized)
-# ============================================================
-BACKBONE_TAG="SCRATCH"
-BACKBONE_TIMM="vit_base_patch16_224"
-
-# ============================================================
-# Experiment list (from results.csv Baselines group)
-# ============================================================
-EXPERIMENTS=(
-    # DermaMNIST (MAX=7007)
-    "dermamnist 100"
-    "dermamnist 500"
-    "dermamnist 1000"
-    "dermamnist 7007"
-
-    # BreastMNIST (MAX=546)
-    "breastmnist 100"
-    "breastmnist 500"
-    "breastmnist 546"
-
-    # OCTMNIST (MAX=97477)
-    "octmnist 100"
-    "octmnist 500"
-    "octmnist 1000"
-    "octmnist 10000"
-    "octmnist 25000"
-    "octmnist 97477"
-
-    # OrganAMNIST (MAX=34561)
-    "organamnist 100"
-    "organamnist 500"
-    "organamnist 1000"
-    "organamnist 10000"
-    "organamnist 25000"
-    "organamnist 34561"
-
-    # PathMNIST (MAX=89996)
-    "pathmnist 100"
-    "pathmnist 500"
-    "pathmnist 1000"
-    "pathmnist 10000"
-    "pathmnist 25000"
-    "pathmnist 89996"
-
-    # Galaxy10 (MAX=14188)
-    "galaxy10 100"
-    "galaxy10 500"
-    "galaxy10 1000"
-    "galaxy10 10000"
-    "galaxy10 14188"
-
-    # Food101 (MAX=75750)
-    "food101 101"
-    "food101 500"
-    "food101 1000"
-    "food101 10000"
-    "food101 25000"
-    "food101 75750"
-
-    # FGVC_Aircraft (MAX=3400)
-    "fgvc_aircraft 100"
-    "fgvc_aircraft 500"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
-)
-
-# ============================================================
-# CSV column name mapping
-# ============================================================
-get_display_name() {
-    case "$1" in
-        dermamnist)     echo "DermaMNIST" ;;
-        breastmnist)    echo "BreastMNIST" ;;
-        octmnist)       echo "OCTMNIST" ;;
-        organamnist)    echo "OrganAMNIST" ;;
-        pathmnist)      echo "PathMNIST" ;;
-        galaxy10)       echo "Galaxy10" ;;
-        food101)        echo "Food101" ;;
-        fgvc_aircraft)  echo "FGVC_Aircraft" ;;
-        *)              echo "$1" ;;
-    esac
-}
+NSAMPLES=(25000)
 
 # ============================================================
 # Run a single experiment
 # ============================================================
 run_single() {
-    local dataset=$1
-    local n_samples=$2
-    local seed=$3
+    local n_samples=$1
+    local seed=$2
 
-    local dataset_results_dir="${LOG_DIR}/${dataset}"
-    mkdir -p "${dataset_results_dir}"
-
-    local results_file="${dataset_results_dir}/${BACKBONE_TAG}_${dataset}_n${n_samples}_seed${seed}.json"
-
-    local dataset_ckpt_dir="${CKPT_DIR}/${dataset}"
-    mkdir -p "${dataset_ckpt_dir}"
+    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
-        echo "[SKIP] ${BACKBONE_TAG} | ${dataset} n=${n_samples} seed=${seed} (results file exists)"
+        echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
         return 0
     fi
 
     echo "=========================================="
-    echo "[RUN] ${BACKBONE_TAG} | ${dataset} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] Pre-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  Start: $(date)"
     echo "=========================================="
 
@@ -169,17 +85,18 @@ run_single() {
         --no-cp \
         --random-init \
         --pre-cp-sft \
-        --dataset ${dataset} \
+        --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
         --batch-size ${BATCH_SIZE} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
-        --checkpoint-dir ${dataset_ckpt_dir} \
+        --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project rand-pre-cp-diet-scratch-${dataset} \
-        --run-name "${BACKBONE_TAG}_${dataset}_n${n_samples}_s${seed}" \
+        --project rand-pre-cp-scratch-${DATASET} \
+        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_s${seed}" \
         --seed ${seed} \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?
@@ -187,7 +104,7 @@ run_single() {
     echo "  End: $(date)"
 
     if [ $exit_code -ne 0 ]; then
-        echo "[FAIL] ${BACKBONE_TAG} | ${dataset} n=${n_samples} seed=${seed}"
+        echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
     fi
 
     return $exit_code
@@ -197,21 +114,17 @@ run_single() {
 # Aggregate results across seeds
 # ============================================================
 aggregate_results() {
-    local dataset=$1
-    local n_samples=$2
-    local display_name=$(get_display_name ${dataset})
-    local csv_file=$3
-
-    local dataset_results_dir="${LOG_DIR}/${dataset}"
+    local n_samples=$1
+    local csv_file=$2
 
     python3 << PYEOF
 import json, os, statistics
 
-results_dir = "${dataset_results_dir}"
+log_dir = "${LOG_DIR}"
 backbone_tag = "${BACKBONE_TAG}"
-dataset = "${dataset}"
+dataset = "${DATASET}"
 n_samples = "${n_samples}"
-display_name = "${display_name}"
+display_name = "${DISPLAY_NAME}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
@@ -221,7 +134,7 @@ linear_f1s = []
 sft_f1s = []
 
 for i, seed in enumerate(seeds):
-    results_file = os.path.join(results_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
+    results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
         print(f"  Warning: {results_file} not found, skipping seed {seed}")
         continue
@@ -273,34 +186,29 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Random Pre-CP-Only Evaluation (DIET group, Randomly Initialized)"
+echo "Starting Random Pre-CP-Only: ${DISPLAY_NAME} (SCRATCH, n=25000)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_pre_cp_results.csv"
+if [ ! -f "${CSV_FILE}" ]; then
+    echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
+fi
+echo "CSV file: ${CSV_FILE}"
+
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
 
-for exp in "${EXPERIMENTS[@]}"; do
-    read -r dataset n_samples <<< "$exp"
-    display_name=$(get_display_name ${dataset})
-
-    dataset_log_dir="${LOG_DIR}/${dataset}"
-    mkdir -p "${dataset_log_dir}"
-    CSV_FILE="${dataset_log_dir}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
-    if [ ! -f "${CSV_FILE}" ]; then
-        echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
-    fi
-    echo "CSV file: ${CSV_FILE}"
-
+for n_samples in "${NSAMPLES[@]}"; do
     echo ""
     echo "============================================================"
-    echo "Experiment: ${BACKBONE_TAG} | ${display_name} | n_samples=${n_samples}"
+    echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
     echo "============================================================"
 
     for seed in "${SEEDS[@]}"; do
-        run_single ${dataset} ${n_samples} ${seed}
+        run_single ${n_samples} ${seed}
         if [ $? -eq 0 ]; then
             TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
         else
@@ -308,15 +216,15 @@ for exp in "${EXPERIMENTS[@]}"; do
         fi
     done
 
-    echo "--- Aggregating results for ${BACKBONE_TAG} | ${display_name} n=${n_samples} ---"
-    aggregate_results ${dataset} ${n_samples} ${CSV_FILE}
+    echo "--- Aggregating results for n=${n_samples} ---"
+    aggregate_results ${n_samples} ${CSV_FILE}
 done
 
 echo ""
 echo "=========================================="
-echo "All experiments completed!"
+echo "All Pre-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
-echo "  Results: ${LOG_DIR}/{dataset}/"
+echo "  Results: ${LOG_DIR}/"
 echo "  End Time: $(date)"
 echo "=========================================="

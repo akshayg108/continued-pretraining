@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rand-pre-galaxy10
+#SBATCH --job-name=rand-pre-derma-all
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=72:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-cp-diet-galaxy10-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-cp-diet-galaxy10-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-dermamnist-all-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log/rand-pre-dermamnist-all-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,32 +40,26 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP-MAE/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/ckpts/random-pre-cp-only/DIET"
-LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/logs/random-pre-cp-only/DIET"
+CKPT_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/ckpts/random-pre-cp-only/DermaMNIST/SCRATCH/all"
+LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/logs/random-pre-cp-only/DermaMNIST/SCRATCH/all"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP-MAE/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="galaxy10"
-DISPLAY_NAME="Galaxy10"
+DATASET="dermamnist"
+DISPLAY_NAME="DermaMNIST"
 MODEL_SIZE="ViT-B"
+BACKBONE_TAG="SCRATCH"
+BACKBONE_TIMM="vit_base_patch16_224"
+
 BATCH_SIZE=32
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
 
-# ============================================================
-# Backbone definition (randomly initialized)
-# ============================================================
-BACKBONE_TAG="SCRATCH"
-BACKBONE_TIMM="vit_base_patch16_224"
-
-# ============================================================
-# n_samples list (Galaxy10 MAX=14188)
-# ============================================================
-NSAMPLES=(100 500 1000 10000 14188)
+NSAMPLES=(100 500 1000 7007)
 
 # ============================================================
 # Run a single experiment
@@ -74,13 +68,7 @@ run_single() {
     local n_samples=$1
     local seed=$2
 
-    local dataset_results_dir="${LOG_DIR}/${DATASET}"
-    mkdir -p "${dataset_results_dir}"
-
-    local results_file="${dataset_results_dir}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
-
-    local dataset_ckpt_dir="${CKPT_DIR}/${DATASET}"
-    mkdir -p "${dataset_ckpt_dir}"
+    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
         echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
@@ -88,7 +76,7 @@ run_single() {
     fi
 
     echo "=========================================="
-    echo "[RUN] ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] Pre-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  Start: $(date)"
     echo "=========================================="
 
@@ -103,11 +91,12 @@ run_single() {
         --batch-size ${BATCH_SIZE} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
-        --checkpoint-dir ${dataset_ckpt_dir} \
+        --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project rand-pre-cp-diet-scratch-${DATASET} \
+        --project rand-pre-cp-scratch-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_s${seed}" \
         --seed ${seed} \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?
@@ -128,12 +117,10 @@ aggregate_results() {
     local n_samples=$1
     local csv_file=$2
 
-    local dataset_results_dir="${LOG_DIR}/${DATASET}"
-
     python3 << PYEOF
 import json, os, statistics
 
-results_dir = "${dataset_results_dir}"
+log_dir = "${LOG_DIR}"
 backbone_tag = "${BACKBONE_TAG}"
 dataset = "${DATASET}"
 n_samples = "${n_samples}"
@@ -147,7 +134,7 @@ linear_f1s = []
 sft_f1s = []
 
 for i, seed in enumerate(seeds):
-    results_file = os.path.join(results_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
+    results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
         print(f"  Warning: {results_file} not found, skipping seed {seed}")
         continue
@@ -199,19 +186,20 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Random Pre-CP-Only Evaluation: ${DISPLAY_NAME}"
+echo "Starting Random Pre-CP-Only: ${DISPLAY_NAME} (SCRATCH, all: 100,500,1000,7007)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_pre_cp_results.csv"
+if [ ! -f "${CSV_FILE}" ]; then
+    echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
+fi
+echo "CSV file: ${CSV_FILE}"
+
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
-
-CSV_FILE="${LOG_DIR}/${DATASET}/${BACKBONE_TAG}_pre_cp_only_diet_results.csv"
-mkdir -p "${LOG_DIR}/${DATASET}"
-echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
-echo "CSV file: ${CSV_FILE}"
 
 for n_samples in "${NSAMPLES[@]}"; do
     echo ""
@@ -228,15 +216,15 @@ for n_samples in "${NSAMPLES[@]}"; do
         fi
     done
 
-    echo "--- Aggregating results for ${BACKBONE_TAG} | ${DISPLAY_NAME} n=${n_samples} ---"
+    echo "--- Aggregating results for n=${n_samples} ---"
     aggregate_results ${n_samples} ${CSV_FILE}
 done
 
 echo ""
 echo "=========================================="
-echo "All ${DISPLAY_NAME} experiments completed!"
+echo "All Pre-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
-echo "  Results: ${LOG_DIR}/${DATASET}/"
+echo "  Results: ${LOG_DIR}/"
 echo "  End Time: $(date)"
 echo "=========================================="

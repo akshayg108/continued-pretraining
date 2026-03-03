@@ -115,6 +115,7 @@ run_single() {
         --project simclr-cp-dinov3-food101 \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blkALL_s${seed}" \
         --seed ${seed} \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?
