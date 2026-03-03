@@ -242,7 +242,8 @@ def linear_probe_pytorch_evaluate(
     test_labels: np.ndarray,
     device: torch.device = "cuda",
     lr: float = 1e-3,
-    num_steps: int = 10000,
+    min_epochs: int = 150,
+    min_steps: int = 10000,
     batch_size: int = 512,
     verbose: bool = True,
 ) -> dict:
@@ -269,8 +270,14 @@ def linear_probe_pytorch_evaluate(
     clf.train()
     n_samples = len(train_features_t)
     n_batches = (n_samples + batch_size - 1) // batch_size
+    num_steps = max(min_steps, min_epochs * n_batches)
     indices = torch.randperm(n_samples, device=device)
 
+    if verbose:
+        effective_epochs = num_steps / n_batches
+        print(f"    LP training: {num_steps} steps ({effective_epochs:.0f} epochs, {n_samples} samples)")
+
+    log_interval = max(num_steps // 5, 1)
     for step in range(num_steps):
         if step % n_batches == 0:
             indices = torch.randperm(n_samples, device=device)
@@ -289,7 +296,7 @@ def linear_probe_pytorch_evaluate(
         loss.backward()
         optimizer.step()
 
-        if verbose and (step + 1) % 5000 == 0:
+        if verbose and (step + 1) % log_interval == 0:
             print(f"    Step {step + 1}/{num_steps}, Loss: {loss.item():.4f}")
 
     # Evaluation
@@ -349,7 +356,7 @@ def zero_shot_eval(
     k_neighbors: int = 20,
     linear_max_iter: int = 1000,
     linear_probe_method: str = "both",
-    linear_pytorch_steps: int = 10000,
+    linear_pytorch_min_steps: int = 10000,
     linear_pytorch_lr: float = 1e-3,
     pool_strategy: str = "cls",
     knn_train_loader: torch.utils.data.DataLoader = None,
@@ -415,9 +422,7 @@ def zero_shot_eval(
     # Linear probe evaluation - PyTorch (DIET-CP reference protocol)
     if linear_probe_method in ["pytorch", "both"]:
         if verbose:
-            print(
-                f"Running linear probe evaluation (PyTorch, {linear_pytorch_steps} steps)..."
-            )
+            print("Running linear probe evaluation (PyTorch)...")
         results.update(
             linear_probe_pytorch_evaluate(
                 train_features,
@@ -426,7 +431,7 @@ def zero_shot_eval(
                 test_labels,
                 device=device,
                 lr=linear_pytorch_lr,
-                num_steps=linear_pytorch_steps,
+                min_steps=linear_pytorch_min_steps,
                 verbose=verbose,
             )
         )
