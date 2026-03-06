@@ -94,7 +94,6 @@ run_single() {
 
     python -u continued_pretraining.py \
         --cp-method simclr \
-        --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
@@ -152,8 +151,6 @@ pre_knn_f1s = []
 pre_linear_f1s = []
 post_knn_f1s = []
 post_linear_f1s = []
-post_sft_f1s = []
-
 for i, seed in enumerate(seeds):
     results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
@@ -168,7 +165,6 @@ for i, seed in enumerate(seeds):
         ("pre_linear_f1", pre_linear_f1s),
         ("post_knn_f1", post_knn_f1s),
         ("post_linear_f1", post_linear_f1s),
-        ("post_sft_f1", post_sft_f1s),
     ]:
         val = data.get(key)
         if val is not None:
@@ -180,8 +176,7 @@ for i, seed in enumerate(seeds):
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
                 f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
-                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
-                f"{fmt(data.get('post_sft_f1'))},\n")
+                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},\n")
 
 def mean_std(vals):
     if len(vals) == 0:
@@ -190,20 +185,19 @@ def mean_std(vals):
     s = statistics.stdev(vals) if len(vals) > 1 else 0.0
     return f"{m:.6f}", f"{s:.6f}"
 
-if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s, post_sft_f1s]):
+if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s]):
     pk_m, pk_s = mean_std(pre_knn_f1s)
     pl_m, pl_s = mean_std(pre_linear_f1s)
     ok_m, ok_s = mean_std(post_knn_f1s)
     ol_m, ol_s = mean_std(post_linear_f1s)
-    sf_m, sf_s = mean_std(post_sft_f1s)
 
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
-                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},{sf_m},{sf_s}\n")
+                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s}\n")
 
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
           f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
-          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={sf_m}+-{sf_s}")
+          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
 
@@ -224,7 +218,7 @@ echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std" > ${CSV_FILE}
 fi
 echo "CSV file: ${CSV_FILE}"
 
