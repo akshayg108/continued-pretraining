@@ -82,6 +82,7 @@ run_single() {
 
     python -u continued_pretraining.py \
         --cp-method simclr \
+        --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
@@ -126,7 +127,7 @@ display_name = "${DISPLAY_NAME}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
-metrics = {k: [] for k in ["pre_knn_f1","pre_linear_f1","post_knn_f1","post_linear_f1"]}
+metrics = {k: [] for k in ["pre_knn_f1","pre_linear_f1","post_knn_f1","post_linear_f1","post_sft_f1"]}
 for i, seed in enumerate(seeds):
     rf = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(rf):
@@ -141,7 +142,8 @@ for i, seed in enumerate(seeds):
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
                 f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
-                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},\n")
+                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
+                f"{fmt(data.get('post_sft_f1'))},\n")
 def mean_std(vals):
     if not vals: return "", ""
     m = statistics.mean(vals)
@@ -154,7 +156,8 @@ if any(len(v) > 0 for v in metrics.values()):
                 f"{ms['pre_knn_f1'][0]},{ms['pre_knn_f1'][1]},"
                 f"{ms['pre_linear_f1'][0]},{ms['pre_linear_f1'][1]},"
                 f"{ms['post_knn_f1'][0]},{ms['post_knn_f1'][1]},"
-                f"{ms['post_linear_f1'][0]},{ms['post_linear_f1'][1]}\n")
+                f"{ms['post_linear_f1'][0]},{ms['post_linear_f1'][1]},"
+                f"{ms['post_sft_f1'][0]},{ms['post_sft_f1'][1]}\n")
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: aggregated")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
@@ -170,7 +173,7 @@ echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
-echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std" > ${CSV_FILE}
+echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
