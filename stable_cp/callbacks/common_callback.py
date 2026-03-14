@@ -61,6 +61,13 @@ class FreezeBackboneCallback(pl.Callback):
             ):
                 module.eval()
 
+        # For MaskedEncoder (MAE CP): re-enable training flags on the encoder
+        # and its masking module so patch masking still runs during frozen epochs.
+        # Direct flag assignment avoids propagating to children (ViT stays in eval).
+        if hasattr(pl_module.backbone, "masking") and pl_module.backbone.masking is not None:
+            pl_module.backbone.training = True
+            pl_module.backbone.masking.training = True
+
     def _apply_selective_unfreezing(self, pl_module):
         # Unfreeze backbone based on num_trained_blocks setting
         if not hasattr(pl_module, "backbone"):
