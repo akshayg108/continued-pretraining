@@ -2,7 +2,7 @@
 """Unified CLI for Continued Pretraining (CP) experiments.
 
 Supports two orthogonal axes:
-  1. **CP methods**: lejepa, diet, simclr, mae_cp  (--cp-method)
+  1. **CP methods**: lejepa, diet, simclr, mae  (--cp-method)
   2. **SFT evaluation**: fine-tune + evaluate before/after CP  (--pre-cp-sft / --post-cp-sft)
 
 The ``--no-cp`` flag skips CP training entirely, useful for baseline
@@ -148,14 +148,14 @@ def create_optim_config(args, warmup_epochs):
 def _get_methods():
     from stable_cp.methods.simclr.simclr_cp import setup_simclr
     from stable_cp.methods.lejepa.lejepa_cp import setup_lejepa
-    from stable_cp.methods.mae.mae_cp import setup_mae_cp
+    from stable_cp.methods.mae.mae_cp import setup_mae
     from stable_cp.methods.diet.diet_cp import setup_diet
 
     return {
         "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
         "diet": {"n_views": 1, "setup": setup_diet},
         "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
-        "mae_cp": {"n_views": 1, "setup": setup_mae_cp},
+        "mae": {"n_views": 1, "setup": setup_mae},
     }
 
 
@@ -544,7 +544,7 @@ def main():
             pool_strategy=args.pool_strategy,
         )
 
-        if args.cp_method == "mae_cp":
+        if args.cp_method == "mae":
             kwargs.update(
                 decoder_dim=args.decoder_dim,
                 decoder_depth=args.decoder_depth,

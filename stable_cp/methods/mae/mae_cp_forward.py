@@ -14,7 +14,7 @@ def _extract_embedding(encoded_tokens, num_prefix_tokens, pool_strategy="cls"):
     return encoded_tokens[:, 0, :]
 
 
-def mae_cp_forward(self, batch, stage):
+def mae_forward(self, batch, stage):
     """MAE Continued Pretraining forward pass.
 
     Training:

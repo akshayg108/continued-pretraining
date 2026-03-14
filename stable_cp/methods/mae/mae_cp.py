@@ -11,10 +11,10 @@ from stable_pretraining.backbone import MaskedEncoder, PatchMasking
 from stable_pretraining.backbone.vit import MAEDecoder
 from stable_pretraining.utils import MAELoss
 
-from .mae_cp_forward import mae_cp_forward
+from .mae_cp_forward import mae_forward
 
 
-def setup_mae_cp(backbone, embed_dim, optim_config, **kwargs):
+def setup_mae(backbone, embed_dim, optim_config, **kwargs):
     mask_ratio = kwargs.get("mask_ratio", 0.75)
     decoder_dim = kwargs.get("decoder_dim", 512)
     decoder_depth = kwargs.get("decoder_depth", 4)
@@ -48,6 +48,6 @@ def setup_mae_cp(backbone, embed_dim, optim_config, **kwargs):
         decoder=decoder,
         loss_fn=loss_fn,
         pool_strategy=pool_strategy,
-        forward=mae_cp_forward,
+        forward=mae_forward,
         optim=optim_config,
     )

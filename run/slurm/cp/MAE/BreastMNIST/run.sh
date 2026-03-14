@@ -259,7 +259,7 @@ for backbone_tag in "${BACKBONES[@]}"; do
     log_dir="${BASE_LOG_DIR}/${backbone_tag}"
     mkdir -p "${log_dir}"
 
-    CSV_FILE="${log_dir}/${backbone_tag}_mae_cp_results.csv"
+    CSV_FILE="${log_dir}/${backbone_tag}_mae_results.csv"
     echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 
     echo ""
