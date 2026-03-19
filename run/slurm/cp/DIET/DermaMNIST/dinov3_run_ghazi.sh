@@ -1,36 +1,31 @@
-#!/bin/bash
-#SBATCH --job-name=d-derm
-#SBATCH --partition=nvidia
-#SBATCH --account=civil
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:v100:1
-#SBATCH --mem=64G
-#SBATCH --time=96:00:00
-#SBATCH --output=/home/ja-am/outputs/continued-pretraining/slurm-log/diet-dermamnist-dinov3-%j.out
-#SBATCH --error=/home/ja-am/outputs/continued-pretraining/slurm-log/diet-dermamnist-dinov3-%j.err
+#!/usr/bin/env bash
+set -u
 
 echo "=========================================="
-echo "SLURM Job ID: $SLURM_JOB_ID"
-echo "Job Name: $SLURM_JOB_NAME"
-echo "Node: $SLURM_NODELIST"
-echo "Start Time: $(date)"
+echo "Local run started: $(date)"
+echo "Host: $(hostname)"
 echo "=========================================="
 
-module load miniconda/3-4.11.0
-source $(conda info --base)/etc/profile.d/conda.sh
-conda activate env
+# Optional conda activation for local environments.
+# Usage: CP_CONDA_ENV=myenv ./dinov3_run_ghazi.sh
+if command -v conda >/dev/null 2>&1 && [ -n "${CP_CONDA_ENV:-}" ]; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate "${CP_CONDA_ENV}"
+fi
 
 echo "Python: $(which python)"
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
-cd /scratch/gs4133/zhd/CP/continued-pretraining
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
+cd "${REPO_ROOT}"
 export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
 export WANDB_CONSOLE="wrap"
+
+PYTHON_BIN="${PYTHON_BIN:-python}"
 
 echo "Working directory: $(pwd)"
 echo "=========================================="
@@ -42,8 +37,8 @@ nvidia-smi
 DATA_DIR="/home/ja-am/temp"
 CKPT_DIR="/home/ja-am/outputs/continued-pretraining/ckpts/cp/DIET/DermaMNIST/DINOv3"
 LOG_DIR="/home/ja-am/outputs/continued-pretraining/logs/cp/DIET/DermaMNIST/DINOv3"
-SLURM_LOG_DIR="/home/ja-am/outputs/continued-pretraining/slurm-log"
-mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
+RUN_LOG_DIR="/home/ja-am/outputs/continued-pretraining/logs/local"
+mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${RUN_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
@@ -79,6 +74,7 @@ run_single() {
     local seed=$2
 
     local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
+    local run_log_file="${RUN_LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.log"
 
     if [ -f "$results_file" ]; then
         echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
@@ -91,7 +87,7 @@ run_single() {
     echo "  Start: $(date)"
     echo "=========================================="
 
-    python -u continued_pretraining.py \
+    ${PYTHON_BIN} -u continued_pretraining.py \
         --cp-method diet \
         --post-cp-sft \
         --dataset ${DATASET} \
@@ -113,11 +109,12 @@ run_single() {
         --project diet-cp-dinov3-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
-        --results-json ${results_file} 2>&1
+        --results-json ${results_file} 2>&1 | tee -a "${run_log_file}"
 
-    local exit_code=$?
+    local exit_code=${PIPESTATUS[0]}
     echo "  Exit Code: ${exit_code}"
     echo "  End: $(date)"
+    echo "  Log: ${run_log_file}"
 
     if [ $exit_code -ne 0 ]; then
         echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
@@ -133,7 +130,7 @@ aggregate_results() {
     local n_samples=$1
     local csv_file=$2
 
-    python3 << PYEOF
+    ${PYTHON_BIN} << PYEOF
 import json, os, statistics
 
 log_dir = "${LOG_DIR}"
