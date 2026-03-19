@@ -20,7 +20,6 @@ python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
 cd "${REPO_ROOT}"
-export PYTHONPATH=$(pwd):$(pwd)/..:$PYTHONPATH
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
 export WANDB_CONSOLE="wrap"
