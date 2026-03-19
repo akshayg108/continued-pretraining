@@ -18,8 +18,13 @@ python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.
 python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 cd "${REPO_ROOT}"
+if [ ! -f "${REPO_ROOT}/continued_pretraining.py" ]; then
+    echo "[ERROR] continued_pretraining.py not found at ${REPO_ROOT}"
+    echo "[ERROR] Set REPO_ROOT manually or run from a valid checkout."
+    exit 1
+fi
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
 export WANDB_CONSOLE="wrap"
