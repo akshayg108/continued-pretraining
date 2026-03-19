@@ -74,8 +74,8 @@ def create_base_parser(description="Continued Pretraining"):
         type=int,
         default=0,
         help=(
-            "Save intermediate checkpoints every N epochs. "
-            "Use 0 to disable intermediate checkpointing and keep only final checkpoint."
+            "Checkpoint save interval in epochs. "
+            "Use 0 to save only once at the final epoch."
         ),
     )
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
@@ -343,19 +343,23 @@ def run_continued_pretraining(
     ]
 
     checkpoint_every_n_epochs = max(getattr(args, "checkpoint_every_n_epochs", 0), 0)
-    if checkpoint_every_n_epochs > 0:
-        ckpt_path_obj = Path(ckpt_path)
-        callbacks.append(
-            ModelCheckpoint(
-                dirpath=str(ckpt_path_obj.parent),
-                filename=f"{ckpt_path_obj.stem}-ep{{epoch:03d}}",
-                every_n_epochs=checkpoint_every_n_epochs,
-                save_top_k=-1,
-                save_last=True,
-                monitor=None,
-                auto_insert_metric_name=False,
-            )
+    checkpoint_interval = (
+        args.epochs if checkpoint_every_n_epochs == 0 else checkpoint_every_n_epochs
+    )
+    ckpt_path_obj = Path(ckpt_path)
+    callbacks.append(
+        ModelCheckpoint(
+            dirpath=str(ckpt_path_obj.parent),
+            filename=ckpt_path_obj.stem,
+            every_n_epochs=checkpoint_interval,
+            save_top_k=1,
+            save_last=False,
+            save_on_train_epoch_end=True,
+            monitor=None,
+            auto_insert_metric_name=False,
+            enable_version_counter=False,
         )
+    )
 
     if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
@@ -366,15 +370,14 @@ def run_continued_pretraining(
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
-        enable_checkpointing=checkpoint_every_n_epochs > 0,
     )
     spt.Manager(
-        trainer=trainer, module=module, data=data, ckpt_path=ckpt_path, seed=args.seed
+        trainer=trainer,
+        module=module,
+        data=data,
+        ckpt_path=ckpt_path,
+        seed=args.seed,
     )()
-
-    if checkpoint_every_n_epochs == 0:
-        trainer.save_checkpoint(ckpt_path)
-        print(f"Saved final checkpoint: {ckpt_path}")
 
 
 # ============================================================

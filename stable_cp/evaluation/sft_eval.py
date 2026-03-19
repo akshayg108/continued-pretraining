@@ -14,7 +14,8 @@ import copy
 import lightning as pl
 import torch
 import torch.nn as nn
-from lightning.pytorch.callbacks import LearningRateMonitor
+from pathlib import Path
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 
 import stable_pretraining as spt
 
@@ -211,13 +212,27 @@ def sft_evaluate(
 
     # ---- train (minimal callbacks – no KNN/LP probes) ----
     callbacks = [LearningRateMonitor(logging_interval="step")]
+    if ckpt_path:
+        ckpt_path_obj = Path(ckpt_path)
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=str(ckpt_path_obj.parent),
+                filename=ckpt_path_obj.stem,
+                every_n_epochs=SFT_EPOCHS,
+                save_top_k=1,
+                save_last=False,
+                save_on_train_epoch_end=True,
+                monitor=None,
+                auto_insert_metric_name=False,
+                enable_version_counter=False,
+            )
+        )
     trainer = pl.Trainer(
         max_epochs=SFT_EPOCHS,
         num_sanity_val_steps=0,
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
-        enable_checkpointing=False,
     )
     spt.Manager(
         trainer=trainer,
@@ -226,11 +241,6 @@ def sft_evaluate(
         ckpt_path=ckpt_path,
         seed=seed,
     )()
-
-    if ckpt_path:
-        trainer.save_checkpoint(ckpt_path)
-        if verbose:
-            print(f"SFT [{prefix}] final checkpoint saved: {ckpt_path}")
 
     # ---- final evaluation on test set ----
     if verbose:
