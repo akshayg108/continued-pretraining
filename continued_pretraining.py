@@ -152,7 +152,7 @@ def _get_methods():
     from stable_cp.methods.diet.diet_cp import setup_diet
 
     return {
-        "lejepa": {"n_views": 4, "setup": setup_lejepa, "strong_aug": True},
+        "lejepa": {"n_views": 8, "setup": setup_lejepa, "strong_aug": True},
         "diet": {"n_views": 1, "setup": setup_diet},
         "simclr": {"n_views": 2, "setup": setup_simclr, "strong_aug": True},
         "mae": {"n_views": 1, "setup": setup_mae},
@@ -382,22 +382,67 @@ def main():
 
     parser = create_base_parser("Continued Pretraining CLI")
 
-    # ---- CP method (not required when --no-cp) ----
+    # ---- CP method  ----
     parser.add_argument(
         "--cp-method", type=str, required=True, choices=list(METHODS.keys())
     )
 
-    # ---- CP method hyper-parameters ----
-    parser.add_argument("--n-views", type=int, default=4)
+    # ---- Shared CP hyper-parameters ----
+    parser.add_argument("--n-views", type=int, default=8)
     parser.add_argument("--proj-dim", type=int, default=128)
     parser.add_argument("--hidden-dim", type=int, default=2048)
+
+    # ---- SimCLR ----
+    parser.add_argument("--temperature", type=float, default=0.5)
+
+    # ---- LeJEPA ----
     parser.add_argument("--lamb", type=float, default=0.02)
+    parser.add_argument(
+        "--multivariate-test", type=str, default="slicing",
+        choices=["slicing", "bhep", "bhep_m", "comb", "hv", "hz"],
+    )
+    parser.add_argument(
+        "--univariate-test", type=str, default="epps_pulley",
+        choices=[
+            "epps_pulley", "anderson_darling", "cramer_von_mises", "watson",
+            "entropy", "shapiro_wilk", "jarque_bera", "vcreg", "nll", "moments",
+        ],
+    )
+    parser.add_argument("--t-max", type=float, default=3.0)
+    parser.add_argument("--n-points", type=int, default=17)
+    parser.add_argument("--num-slices", type=int, default=1000)
+    parser.add_argument(
+        "--reduction", type=str, default="mean", choices=["mean", "sum", "none"],
+    )
+    parser.add_argument("--clip-value", type=float, default=None)
+    parser.add_argument("--bhep-beta", type=float, default=0.1)
+    parser.add_argument("--bhep-m-beta", type=float, default=10)
+    parser.add_argument("--comb-gamma", type=float, default=0.1)
+    parser.add_argument("--hv-gamma", type=float, default=1.0)
+    parser.add_argument("--entropy-m", type=int, default=1)
+    parser.add_argument(
+        "--entropy-method", type=str, default="centered",
+        choices=["centered", "right"],
+    )
+    parser.add_argument("--moments-k-max", type=int, default=4)
+    parser.add_argument(
+        "--sw-expectation", type=str, default="elfving",
+        choices=["elfving", "blom", "rahman"],
+    )
+    parser.add_argument(
+        "--sw-covariance", type=str, default="shapiro_francia",
+        choices=["shapiro_francia", "rahman"],
+    )
+    parser.add_argument("--nll-alpha", type=float, default=0.5)
+
+    # ---- DIET ----
     parser.add_argument("--label-smoothing", type=float, default=0.3)
     parser.add_argument("--mixup-alpha", type=float, default=1.0)
     parser.add_argument("--cutmix-alpha", type=float, default=1.0)
     parser.add_argument("--mixup-cutmix-prob", type=float, default=0.8)
     parser.add_argument("--mixup-cutmix-switch-prob", type=float, default=0.5)
-    parser.add_argument("--temperature", type=float, default=0.5)
+
+    # ---- MAE ----
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)
     parser.add_argument("--mask-ratio", type=float, default=0.75)
@@ -551,7 +596,17 @@ def main():
                 mask_ratio=args.mask_ratio,
             )
 
-        module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
+        if args.cp_method == "lejepa":
+            from stable_cp.methods.lejepa.lejepa_cp import build_sigreg_loss
+
+            if getattr(args, "reduction", None) == "none":
+                args.reduction = None
+            sigreg_loss = build_sigreg_loss(args)
+            module = method_cfg["setup"](
+                backbone, embed_dim, optim_config, sigreg_loss, **kwargs
+            )
+        else:
+            module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
 
         cp_dir = checkpoint_dir / "cp"
         cp_dir.mkdir(parents=True, exist_ok=True)

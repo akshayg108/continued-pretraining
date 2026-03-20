@@ -96,7 +96,7 @@ def build_sigreg_loss(args):
     elif mtest == "bhep":
         return BHEP(beta=args.bhep_beta)
     elif mtest == "bhep_m":
-        return BHEP_M(beta=args.bhep_beta)
+        return BHEP_M(beta=args.bhep_m_beta)
     elif mtest == "comb":
         return COMB(gamma=args.comb_gamma)
     elif mtest == "hv":
@@ -124,59 +124,43 @@ def setup_lejepa(backbone, embed_dim, optim_config, sigreg_loss, **kwargs):
 def main():
     parser = create_base_parser("LeJEPA Continued Pretraining")
     # Projector
-    parser.add_argument("--n-views", type=int, default=4)
+    parser.add_argument("--n-views", type=int, default=8)
     parser.add_argument("--proj-dim", type=int, default=128)
     parser.add_argument("--hidden-dim", type=int, default=2048)
     parser.add_argument("--lamb", type=float, default=0.02)
-    # Test selection
     parser.add_argument(
-        "--multivariate-test",
-        type=str,
-        default="slicing",
+        "--multivariate-test", type=str, default="slicing",
         choices=list(MULTIVARIATE_TESTS.keys()),
     )
     parser.add_argument(
-        "--univariate-test",
-        type=str,
-        default="epps_pulley",
+        "--univariate-test", type=str, default="epps_pulley",
         choices=list(UNIVARIATE_TESTS.keys()),
     )
-    # EppsPulley
     parser.add_argument("--t-max", type=float, default=3.0)
     parser.add_argument("--n-points", type=int, default=17)
-    # Slicing
-    parser.add_argument("--num-slices", type=int, default=256)
+    parser.add_argument("--num-slices", type=int, default=1000)
     parser.add_argument(
-        "--reduction", type=str, default="mean", choices=["mean", "sum", "none"]
+        "--reduction", type=str, default="mean", choices=["mean", "sum", "none"],
     )
     parser.add_argument("--clip-value", type=float, default=None)
-    # BHEP
     parser.add_argument("--bhep-beta", type=float, default=0.1)
-    # COMB
+    parser.add_argument("--bhep-m-beta", type=float, default=10)
     parser.add_argument("--comb-gamma", type=float, default=0.1)
-    # HV
     parser.add_argument("--hv-gamma", type=float, default=1.0)
-    # Entropy
     parser.add_argument("--entropy-m", type=int, default=1)
     parser.add_argument(
-        "--entropy-method", type=str, default="centered", choices=["centered", "right"]
+        "--entropy-method", type=str, default="centered",
+        choices=["centered", "right"],
     )
-    # Moments
     parser.add_argument("--moments-k-max", type=int, default=4)
-    # ShapiroWilk
     parser.add_argument(
-        "--sw-expectation",
-        type=str,
-        default="elfving",
+        "--sw-expectation", type=str, default="elfving",
         choices=["elfving", "blom", "rahman"],
     )
     parser.add_argument(
-        "--sw-covariance",
-        type=str,
-        default="shapiro_francia",
+        "--sw-covariance", type=str, default="shapiro_francia",
         choices=["shapiro_francia", "rahman"],
     )
-    # NLL
     parser.add_argument("--nll-alpha", type=float, default=0.5)
 
     args = parser.parse_args()
