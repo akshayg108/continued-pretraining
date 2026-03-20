@@ -109,6 +109,7 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
+        --pool-strategy mean \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
         --project simclr-cp-mae-${DATASET} \

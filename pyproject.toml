@@ -39,8 +39,8 @@ dependencies = [
     "numpy>=1.20.0",
     "tqdm>=4.60.0",
     "pillow>=9.0.0",
-    "stable-pretraining @ git+https://github.com/galilai-group/stable-pretraining.git",
-    "stable-datasets @ git+https://github.com/haodongzhang0118/stable-datasets.git",
+    "stable-pretraining @ git+https://github.com/haodongzhang0118/stable-pretraining",
+    "stable-datasets @ git+https://github.com/galilai-group/stable-datasets",
 ]
 
 [project.optional-dependencies]

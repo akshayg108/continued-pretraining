@@ -80,6 +80,11 @@ BACKBONE_NSAMPLES[DINOv3]="100 500 546"
 BACKBONE_NSAMPLES[MAE]="100 546"
 BACKBONE_NSAMPLES[CLIP]="100 546"
 
+declare -A POOL_STRATEGIES
+POOL_STRATEGIES[DINOv3]="cls"
+POOL_STRATEGIES[MAE]="mean"
+POOL_STRATEGIES[CLIP]="cls"
+
 BACKBONES=(DINOv3 MAE CLIP)
 
 # ============================================================
@@ -90,6 +95,7 @@ run_single() {
     local backbone_timm=$2
     local n_samples=$3
     local seed=$4
+    local pool_strategy=$5
 
     local ckpt_dir="${BASE_CKPT_DIR}/${backbone_tag}"
     local log_dir="${BASE_LOG_DIR}/${backbone_tag}"
@@ -127,6 +133,7 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
+        --pool-strategy ${pool_strategy} \
         --checkpoint-dir ${ckpt_dir} \
         --cache-dir ${DATA_DIR} \
         --project ${wandb_project} \
@@ -245,6 +252,7 @@ TOTAL_FAIL=0
 for backbone_tag in "${BACKBONES[@]}"; do
     backbone_timm="${BACKBONE_TIMMS[${backbone_tag}]}"
     nsamples_str="${BACKBONE_NSAMPLES[${backbone_tag}]}"
+    pool_strategy="${POOL_STRATEGIES[${backbone_tag}]}"
     read -ra nsamples_arr <<< "${nsamples_str}"
 
     log_dir="${BASE_LOG_DIR}/${backbone_tag}"
@@ -267,7 +275,7 @@ for backbone_tag in "${BACKBONES[@]}"; do
         echo "============================================================"
 
         for seed in "${SEEDS[@]}"; do
-            run_single ${backbone_tag} ${backbone_timm} ${n_samples} ${seed}
+            run_single ${backbone_tag} ${backbone_timm} ${n_samples} ${seed} ${pool_strategy}
             if [ $? -eq 0 ]; then
                 TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
             else

@@ -34,10 +34,12 @@ def setup_simclr(backbone, embed_dim, optim_config, **kwargs):
     proj_dim = kwargs.get("proj_dim", 128)
     hidden_dim = kwargs.get("hidden_dim", 2048)
     temperature = kwargs.get("temperature", 0.5)
+    pool_strategy = kwargs.get("pool_strategy", "cls")
     return spt.Module(
         backbone=backbone,
         projector=build_simclr_projector(embed_dim, hidden_dim, proj_dim),
         simclr_loss=NTXEntLoss(temperature=temperature),
+        pool_strategy=pool_strategy,
         forward=simclr_cp_forward,
         optim=optim_config,
     )
@@ -82,6 +84,7 @@ def main():
         proj_dim=args.proj_dim,
         hidden_dim=args.hidden_dim,
         temperature=args.temperature,
+        pool_strategy=args.pool_strategy,
     )
 
     ckpt_path = str(

@@ -70,7 +70,7 @@ PROJ_DIM=128
 HIDDEN_DIM=2048
 
 # n_samples for small runs
-NSAMPLES=(100 500 1000)
+NSAMPLES=(101 500 1000)
 
 # ============================================================
 # Run a single experiment
@@ -115,6 +115,7 @@ run_single() {
         --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
+        --pool-strategy cls \
         --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
         --project simclr-cp-dinov3-food101 \

@@ -79,6 +79,15 @@ def create_base_parser(description="Continued Pretraining"):
         ),
     )
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
+    parser.add_argument(
+        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from existing checkpoint. Default behaviour "
+        "starts fresh and overwrites any previous checkpoint.",
+    )
     return parser
 
 
@@ -226,6 +235,10 @@ def _run_sft_phase(
         f"_n{args.n_samples}_s{args.seed}.ckpt"
     )
 
+    if not getattr(args, "resume", False) and Path(sft_ckpt).exists():
+        print(f"[resume=False] Removing old SFT checkpoint: {sft_ckpt}")
+        Path(sft_ckpt).unlink()
+
     results = sft_evaluate(
         backbone,
         sft_data,
@@ -262,6 +275,7 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger)
         device,
         k_neighbors=args.knn_k,
         linear_probe_method="both",
+        pool_strategy=args.pool_strategy,
         verbose=True,
     )
     logger.experiment.log({f"baseline/{k}": v for k, v in results.items()}, step=0)
@@ -287,6 +301,7 @@ def run_final_eval(
         device,
         k_neighbors=args.knn_k,
         linear_probe_method="both",
+        pool_strategy=args.pool_strategy,
         verbose=True,
     )
     for k, v in final_results.items():
@@ -336,8 +351,8 @@ def run_continued_pretraining(
             embed_dim,
             include_f1=True,
             include_auroc=True,
-            knn_queue_length=args.n_samples,
-            knn_k=args.knn_k,
+            knn_queue_length=max(args.n_samples, 5000),
+            knn_k=min(args.knn_k, args.n_samples),
         ),
         LearningRateMonitor(logging_interval="step"),
     ]
@@ -363,6 +378,9 @@ def run_continued_pretraining(
 
     if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
+    if not getattr(args, "resume", False) and Path(ckpt_path).exists():
+        print(f"[resume=False] Removing old checkpoint: {ckpt_path}")
+        Path(ckpt_path).unlink()
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
@@ -405,9 +423,6 @@ def main():
     parser.add_argument("--cutmix-alpha", type=float, default=1.0)
     parser.add_argument("--mixup-cutmix-prob", type=float, default=0.8)
     parser.add_argument("--mixup-cutmix-switch-prob", type=float, default=0.5)
-    parser.add_argument(
-        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
-    )
     parser.add_argument("--temperature", type=float, default=0.5)
     parser.add_argument("--decoder-dim", type=int, default=512)
     parser.add_argument("--decoder-depth", type=int, default=4)

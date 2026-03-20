@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.err
 
@@ -191,6 +191,7 @@ run_single() {
     local dataset=$3
     local n_samples=$4
     local seed=$5
+    local pool_strategy=$6
 
     local dataset_results_dir="${LOG_DIR}/${dataset}"
     mkdir -p "${dataset_results_dir}"
@@ -221,6 +222,7 @@ run_single() {
         --batch-size ${BATCH_SIZE} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
+        --pool-strategy ${pool_strategy} \
         --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
         --project baseline-pretrained \
@@ -334,9 +336,9 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
     echo ""
 
     case "$BACKBONE_TAG" in
-        DINOv3) CURRENT_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}") ;;
-        MAE)    CURRENT_EXPERIMENTS=("${MAE_EXPERIMENTS[@]}") ;;
-        CLIP)   CURRENT_EXPERIMENTS=("${CLIP_EXPERIMENTS[@]}") ;;
+        DINOv3) CURRENT_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}"); POOL_STRATEGY="cls" ;;
+        MAE)    CURRENT_EXPERIMENTS=("${MAE_EXPERIMENTS[@]}"); POOL_STRATEGY="mean" ;;
+        CLIP)   CURRENT_EXPERIMENTS=("${CLIP_EXPERIMENTS[@]}"); POOL_STRATEGY="cls" ;;
     esac
 
     for exp in "${CURRENT_EXPERIMENTS[@]}"; do
@@ -358,7 +360,7 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
         echo "============================================================"
 
         for seed in "${SEEDS[@]}"; do
-            run_single ${BACKBONE_TAG} ${BACKBONE_TIMM} ${dataset} ${n_samples} ${seed}
+            run_single ${BACKBONE_TAG} ${BACKBONE_TIMM} ${dataset} ${n_samples} ${seed} ${POOL_STRATEGY}
             if [ $? -eq 0 ]; then
                 TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
             else
