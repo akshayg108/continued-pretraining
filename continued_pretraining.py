@@ -213,6 +213,16 @@ def _create_cp_data(args, ds_cfg, data_dir, indices, method_cfg):
     return cp_data, n_views
 
 
+def _prepare_trainer_root(root_dir: Path, resume: bool) -> Path:
+    """Prepare a per-phase trainer root used by stable_pretraining callbacks."""
+    root_dir.mkdir(parents=True, exist_ok=True)
+    if not resume:
+        for pattern in ("environment*.json", "requirements_frozen*.txt"):
+            for path in root_dir.glob(pattern):
+                path.unlink()
+    return root_dir
+
+
 def _run_sft_phase(
     backbone,
     sft_data,
@@ -234,6 +244,10 @@ def _run_sft_phase(
         sft_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
         f"_n{args.n_samples}_s{args.seed}.ckpt"
     )
+    trainer_root = _prepare_trainer_root(
+        sft_dir / Path(sft_ckpt).stem,
+        resume=getattr(args, "resume", False),
+    )
 
     if not getattr(args, "resume", False) and Path(sft_ckpt).exists():
         print(f"[resume=False] Removing old SFT checkpoint: {sft_ckpt}")
@@ -252,6 +266,7 @@ def _run_sft_phase(
         ckpt_path=sft_ckpt,
         logger=logger,
         prefix=prefix,
+        default_root_dir=trainer_root,
     )
     for key, value in results.items():
         logger.experiment.summary[key] = value
@@ -362,6 +377,10 @@ def run_continued_pretraining(
         args.epochs if checkpoint_every_n_epochs == 0 else checkpoint_every_n_epochs
     )
     ckpt_path_obj = Path(ckpt_path)
+    trainer_root = _prepare_trainer_root(
+        ckpt_path_obj.parent / ckpt_path_obj.stem,
+        resume=getattr(args, "resume", False),
+    )
     callbacks.append(
         ModelCheckpoint(
             dirpath=str(ckpt_path_obj.parent),
@@ -388,6 +407,7 @@ def run_continued_pretraining(
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
+        default_root_dir=str(trainer_root),
     )
     spt.Manager(
         trainer=trainer,

@@ -137,6 +137,7 @@ def sft_evaluate(
     logger=None,
     prefix: str = "sft",
     verbose: bool = True,
+    default_root_dir: Path | str | None = None,
 ) -> dict:
     """Run SFT evaluation: fine-tune a *copy* of the backbone, then evaluate.
 
@@ -233,6 +234,9 @@ def sft_evaluate(
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
+        default_root_dir=(
+            str(default_root_dir) if default_root_dir is not None else None
+        ),
     )
     spt.Manager(
         trainer=trainer,
