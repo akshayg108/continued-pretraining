@@ -37,6 +37,17 @@ echo "=========================================="
 nvidia-smi
 
 # ============================================================
+# Parse optional arguments (e.g., sbatch run.sh --seed 42)
+# ============================================================
+OVERRIDE_SEED=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --seed) OVERRIDE_SEED="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# ============================================================
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
@@ -63,6 +74,7 @@ NUM_TRAINED_BLOCKS=4
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
+if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # SimCLR hyperparameters
 TEMPERATURE=0.5

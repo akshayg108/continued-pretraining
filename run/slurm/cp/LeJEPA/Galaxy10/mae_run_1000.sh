@@ -36,6 +36,17 @@ echo "Working directory: $(pwd)"
 echo "=========================================="
 nvidia-smi
 
+# ============================================================
+# Parse optional arguments (e.g., sbatch run.sh --seed 42)
+# ============================================================
+OVERRIDE_SEED=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --seed) OVERRIDE_SEED="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
 CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/Galaxy10/MAE/1k"
 LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/Galaxy10/MAE/1k"
@@ -57,6 +68,7 @@ NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
+if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # LeJEPA hyperparameters
 LAMB=0.02
@@ -147,7 +159,9 @@ echo "=========================================="
 echo "Starting LeJEPA-CP: ${DISPLAY_NAME} (MAE, n=1000)"
 echo "=========================================="
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
-echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+if [ ! -f "${CSV_FILE}" ]; then
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+fi
 TOTAL_SUCCESS=0; TOTAL_FAIL=0
 for n_samples in "${NSAMPLES[@]}"; do
     for seed in "${SEEDS[@]}"; do

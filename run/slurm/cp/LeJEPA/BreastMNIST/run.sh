@@ -37,6 +37,17 @@ echo "=========================================="
 nvidia-smi
 
 # ============================================================
+# Parse optional arguments (e.g., sbatch run.sh --seed 42)
+# ============================================================
+OVERRIDE_SEED=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --seed) OVERRIDE_SEED="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# ============================================================
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
@@ -61,6 +72,7 @@ NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
+if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # LeJEPA hyperparameters
 LAMB=0.02
@@ -262,7 +274,9 @@ for backbone_tag in "${BACKBONES[@]}"; do
     mkdir -p "${log_dir}"
 
     CSV_FILE="${log_dir}/${backbone_tag}_lejepa_cp_results.csv"
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+    if [ ! -f "${CSV_FILE}" ]; then
+        echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+    fi
 
     echo ""
     echo "############################################################"
