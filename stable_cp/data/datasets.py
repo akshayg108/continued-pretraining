@@ -1,8 +1,42 @@
 # Dataset registry for continued pretraining (using stable-datasets)
 from pathlib import Path
 
+import medmnist
+import numpy as np
 import stable_pretraining as spt
+from medmnist import INFO as MEDMNIST_INFO
 from stable_datasets import images as stable_ds
+ 
+
+class MedMNISTPackageWrapper(spt.data.Dataset):
+    """Adapter from the official medmnist package to the stable-pretraining sample API."""
+
+    def __init__(self, dataset, transform=None):
+        super().__init__(transform)
+        self.dataset = dataset
+
+    def __getitem__(self, idx):
+        if isinstance(idx, str):
+            if idx == "image":
+                return self.dataset.imgs
+            if idx == "label":
+                return self.dataset.labels
+            if idx == "sample_idx":
+                return np.arange(len(self.dataset))
+            raise KeyError(idx)
+
+        image, label = self.dataset[idx]
+        if np.asarray(label).size == 1:
+            label = int(np.asarray(label).reshape(-1)[0])
+        sample = {"image": image, "label": label, "sample_idx": idx}
+        return self.process_sample(sample)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    @property
+    def column_names(self):
+        return ["image", "label", "sample_idx"]
 
 # Dataset configuration registry
 DATASETS = {
@@ -240,6 +274,20 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
 
     dataset_class = cfg["dataset_class"]
     config_name = cfg["config_name"]
+
+    if dataset_class is stable_ds.MedMNIST and config_name is not None:
+        split_name = "val" if split == "validation" else split
+        medmnist_root = cache_dir / "medmnist"
+        medmnist_root.mkdir(parents=True, exist_ok=True)
+        medmnist_class = getattr(medmnist, MEDMNIST_INFO[config_name]["python_class"])
+        medmnist_dataset = medmnist_class(
+            split=split_name,
+            root=str(medmnist_root),
+            download=True,
+            as_rgb=False,
+            mmap_mode="r",
+        )
+        return MedMNISTPackageWrapper(medmnist_dataset, transform=transform)
 
     # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
     # load the "train" split and split manually to avoid data leakage
