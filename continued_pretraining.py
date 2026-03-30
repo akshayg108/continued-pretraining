@@ -80,6 +80,15 @@ def create_base_parser(description="Continued Pretraining"):
     )
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     parser.add_argument(
+        "--wandb-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory for local Weights & Biases files. "
+            "Defaults to a sibling of --checkpoint-dir."
+        ),
+    )
+    parser.add_argument(
         "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
     )
     parser.add_argument(
@@ -99,6 +108,14 @@ def setup_paths(args):
     data_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     return data_dir, checkpoint_dir
+
+
+def get_wandb_dir(checkpoint_dir, args):
+    """Keep wandb metadata with experiment outputs instead of repo root."""
+    wandb_dir_arg = getattr(args, "wandb_dir", None)
+    wandb_dir = Path(wandb_dir_arg) if wandb_dir_arg else checkpoint_dir.parent / "wandb"
+    wandb_dir.mkdir(parents=True, exist_ok=True)
+    return wandb_dir
 
 
 def get_config(args):
@@ -488,6 +505,7 @@ def main():
 
     # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
+    wandb_dir = get_wandb_dir(checkpoint_dir, args)
     ds_cfg, embed_dim, freeze_epochs, warmup_epochs = get_config(args)
 
     # ---- Backbone ----
@@ -511,7 +529,12 @@ def main():
         )
     if args.run_name:
         run_name = args.run_name
-    logger = WandbLogger(project=project, name=run_name, log_model=False)
+    logger = WandbLogger(
+        project=project,
+        name=run_name,
+        log_model=False,
+        save_dir=str(wandb_dir),
+    )
 
     # ================================================================
     # Data creation

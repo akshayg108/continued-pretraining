@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -u
 
 echo "=========================================="
 echo "Local run started: $(date)"
@@ -32,6 +31,7 @@ export WANDB_CONSOLE="wrap"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 echo "Working directory: $(pwd)"
+echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-all}"
 echo "=========================================="
 nvidia-smi
 
@@ -39,10 +39,15 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/home/ja-am/temp"
-CKPT_DIR="/home/ja-am/outputs/continued-pretraining/ckpts/cp/DIET/DermaMNIST/DINOv3"
-LOG_DIR="/home/ja-am/outputs/continued-pretraining/logs/cp/DIET/DermaMNIST/DINOv3"
-RUN_LOG_DIR="/home/ja-am/outputs/continued-pretraining/logs/local"
-mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${RUN_LOG_DIR}
+OUTPUT_ROOT="/home/ja-am/outputs/continued-pretraining"
+CKPT_DIR="${OUTPUT_ROOT}/ckpts/cp/DIET/DermaMNIST/DINOv3"
+LOG_DIR="${OUTPUT_ROOT}/logs/cp/DIET/DermaMNIST/DINOv3"
+RUN_LOG_DIR="${OUTPUT_ROOT}/logs/local"
+WANDB_DIR="${OUTPUT_ROOT}/wandb"
+WANDB_CACHE_DIR="${OUTPUT_ROOT}/wandb-cache"
+WANDB_CONFIG_DIR="${OUTPUT_ROOT}/wandb-config"
+mkdir -p "${DATA_DIR}" "${CKPT_DIR}" "${LOG_DIR}" "${RUN_LOG_DIR}" "${WANDB_DIR}" "${WANDB_CACHE_DIR}" "${WANDB_CONFIG_DIR}"
+export WANDB_DIR WANDB_CACHE_DIR WANDB_CONFIG_DIR
 
 # ============================================================
 # Fixed parameters
@@ -110,6 +115,7 @@ run_single() {
         --hidden-dim ${HIDDEN_DIM} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
+        --wandb-dir ${WANDB_DIR} \
         --project diet-cp-dinov3-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
@@ -222,11 +228,15 @@ echo "=========================================="
 echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_diet_cp_results.csv"
-echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+if ! echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > "${CSV_FILE}"; then
+    echo "[ERROR] Unable to initialize CSV file: ${CSV_FILE}"
+    exit 1
+fi
 echo "CSV file: ${CSV_FILE}"
 
 TOTAL_SUCCESS=0
 TOTAL_FAIL=0
+TOTAL_AGG_FAIL=0
 
 for n_samples in "${NSAMPLES[@]}"; do
     echo ""
@@ -244,7 +254,10 @@ for n_samples in "${NSAMPLES[@]}"; do
     done
 
     echo "--- Aggregating results for n=${n_samples} ---"
-    aggregate_results ${n_samples} ${CSV_FILE}
+    if ! aggregate_results ${n_samples} ${CSV_FILE}; then
+        echo "[FAIL] Aggregation failed for n=${n_samples}"
+        TOTAL_AGG_FAIL=$((TOTAL_AGG_FAIL + 1))
+    fi
 done
 
 echo ""
@@ -252,6 +265,11 @@ echo "=========================================="
 echo "All DIET-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
+echo "  Aggregation failures: ${TOTAL_AGG_FAIL}"
 echo "  Results: ${LOG_DIR}/"
 echo "  End Time: $(date)"
 echo "=========================================="
+
+if [ ${TOTAL_FAIL} -ne 0 ] || [ ${TOTAL_AGG_FAIL} -ne 0 ]; then
+    exit 1
+fi
