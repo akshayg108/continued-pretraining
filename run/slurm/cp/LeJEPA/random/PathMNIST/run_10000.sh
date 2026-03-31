@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rj-path-10k
+#SBATCH --job-name=l-path-10k
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

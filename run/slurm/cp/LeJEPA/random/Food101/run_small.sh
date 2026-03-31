@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rj-food-s
+#SBATCH --job-name=l-food-s
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
