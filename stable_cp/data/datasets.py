@@ -1,11 +1,15 @@
 # Dataset registry for continued pretraining (using stable-datasets)
 from pathlib import Path
 
+import h5py
 import medmnist
 import numpy as np
+import requests
 import stable_pretraining as spt
 from medmnist import INFO as MEDMNIST_INFO
+from PIL import Image
 from stable_datasets import images as stable_ds
+from torchvision.datasets import FGVCAircraft, Food101
  
 
 class MedMNISTPackageWrapper(spt.data.Dataset):
@@ -37,6 +41,157 @@ class MedMNISTPackageWrapper(spt.data.Dataset):
     @property
     def column_names(self):
         return ["image", "label", "sample_idx"]
+
+
+class TorchvisionClassificationWrapper(spt.data.Dataset):
+    """Adapter from torchvision datasets to the stable-pretraining sample API."""
+
+    def __init__(self, dataset, labels, transform=None):
+        super().__init__(transform)
+        self.dataset = dataset
+        self.labels = np.asarray(labels)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, str):
+            if idx == "image":
+                return np.asarray(getattr(self.dataset, "_image_files"))
+            if idx == "label":
+                return self.labels
+            if idx == "sample_idx":
+                return np.arange(len(self.dataset))
+            raise KeyError(idx)
+
+        image, label = self.dataset[idx]
+        sample = {"image": image, "label": int(label), "sample_idx": idx}
+        return self.process_sample(sample)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    @property
+    def column_names(self):
+        return ["image", "label", "sample_idx"]
+
+
+class Galaxy10H5Wrapper(spt.data.Dataset):
+    """Adapter for Galaxy10 HDF5 data with split-local indexing."""
+
+    def __init__(self, h5_path, indices, labels, transform=None):
+        super().__init__(transform)
+        self.h5_path = str(h5_path)
+        self.indices = np.asarray(indices, dtype=np.int64)
+        self.labels = np.asarray(labels, dtype=np.int64)
+        self._h5_file = None
+        self._images = None
+
+    def _ensure_open(self):
+        if self._h5_file is None:
+            self._h5_file = h5py.File(self.h5_path, "r")
+            self._images = self._h5_file["images"]
+
+    def __getitem__(self, idx):
+        if isinstance(idx, str):
+            if idx == "label":
+                return self.labels[self.indices]
+            if idx == "sample_idx":
+                return np.arange(len(self.indices))
+            raise KeyError(idx)
+
+        self._ensure_open()
+        source_idx = int(self.indices[idx])
+        image = Image.fromarray(self._images[source_idx], mode="RGB")
+        sample = {
+            "image": image,
+            "label": int(self.labels[source_idx]),
+            "sample_idx": int(idx),
+        }
+        return self.process_sample(sample)
+
+    def __len__(self):
+        return len(self.indices)
+
+    @property
+    def column_names(self):
+        return ["image", "label", "sample_idx"]
+
+
+GALAXY10_URLS = [
+    "https://www.astro.utoronto.ca/~hleung/shared/Galaxy10/Galaxy10_DECals.h5",
+    "https://zenodo.org/records/10845026/files/Galaxy10_DECals.h5?download=1",
+    "https://zenodo.org/records/10845026/files/Galaxy10_DECals.h5",
+]
+
+
+def _download_file(url, destination):
+    with requests.get(url, stream=True, timeout=60) as response:
+        response.raise_for_status()
+        with destination.open("wb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
+
+
+def _ensure_galaxy10_h5(cache_dir):
+    galaxy10_root = cache_dir / "galaxy10"
+    galaxy10_root.mkdir(parents=True, exist_ok=True)
+    h5_path = galaxy10_root / "Galaxy10_DECals.h5"
+    if h5_path.exists() and h5_path.stat().st_size > 0:
+        return h5_path
+
+    last_error = None
+    tmp_path = h5_path.with_suffix(".download")
+    for url in GALAXY10_URLS:
+        try:
+            print(f"Downloading Galaxy10 from {url}")
+            _download_file(url, tmp_path)
+            tmp_path.replace(h5_path)
+            return h5_path
+        except Exception as exc:
+            last_error = exc
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    raise RuntimeError("Failed to download Galaxy10_DECals.h5") from last_error
+
+
+def _split_indices_stratified(labels, split, seed=42, val_ratio=0.1, test_ratio=0.1):
+    labels = np.asarray(labels)
+    all_indices = np.arange(len(labels))
+
+    rng = np.random.RandomState(seed)
+    train_indices = []
+    val_indices = []
+    test_indices = []
+
+    for label in np.unique(labels):
+        class_indices = all_indices[labels == label].copy()
+        rng.shuffle(class_indices)
+
+        n_class = len(class_indices)
+        n_val = max(1, int(round(n_class * val_ratio)))
+        n_test = max(1, int(round(n_class * test_ratio)))
+        if n_val + n_test >= n_class:
+            n_val = max(1, n_class // 10)
+            n_test = max(1, n_class // 10)
+        n_train = n_class - n_val - n_test
+        if n_train <= 0:
+            n_train = max(1, n_class - 2)
+            n_val = 1
+            n_test = n_class - n_train - n_val
+
+        train_indices.extend(class_indices[:n_train])
+        val_indices.extend(class_indices[n_train:n_train + n_val])
+        test_indices.extend(class_indices[n_train + n_val:n_train + n_val + n_test])
+
+    split_map = {
+        "train": np.array(train_indices, dtype=np.int64),
+        "validation": np.array(val_indices, dtype=np.int64),
+        "val": np.array(val_indices, dtype=np.int64),
+        "test": np.array(test_indices, dtype=np.int64),
+    }
+    if split not in split_map:
+        raise ValueError(f"Unsupported Galaxy10 split: {split}")
+    return split_map[split]
 
 # Dataset configuration registry
 DATASETS = {
@@ -288,6 +443,48 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
             mmap_mode="r",
         )
         return MedMNISTPackageWrapper(medmnist_dataset, transform=transform)
+
+    if name == "food101":
+        torchvision_root = cache_dir / "torchvision"
+        torchvision_root.mkdir(parents=True, exist_ok=True)
+        torchvision_dataset = Food101(
+            root=str(torchvision_root),
+            split=split,
+            download=True,
+        )
+        return TorchvisionClassificationWrapper(
+            torchvision_dataset,
+            labels=torchvision_dataset._labels,
+            transform=transform,
+        )
+
+    if name == "fgvc_aircraft":
+        torchvision_root = cache_dir / "torchvision"
+        torchvision_root.mkdir(parents=True, exist_ok=True)
+        split_name = "val" if split == "validation" else split
+        torchvision_dataset = FGVCAircraft(
+            root=str(torchvision_root),
+            split=split_name,
+            annotation_level=config_name or "variant",
+            download=True,
+        )
+        return TorchvisionClassificationWrapper(
+            torchvision_dataset,
+            labels=torchvision_dataset._labels,
+            transform=transform,
+        )
+
+    if name == "galaxy10":
+        h5_path = _ensure_galaxy10_h5(cache_dir)
+        with h5py.File(h5_path, "r") as handle:
+            labels = np.array(handle["ans"])
+        split_indices = _split_indices_stratified(labels, split, seed=seed)
+        return Galaxy10H5Wrapper(
+            h5_path=h5_path,
+            indices=split_indices,
+            labels=labels,
+            transform=transform,
+        )
 
     # For datasets that need manual splitting (e.g., Galaxy10 with only train split),
     # load the "train" split and split manually to avoid data leakage
