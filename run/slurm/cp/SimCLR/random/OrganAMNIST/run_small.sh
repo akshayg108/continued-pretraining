@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rs-org-s
+#SBATCH --job-name=s-org-s
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -70,7 +70,7 @@ BATCH_SIZE=32
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
-NUM_TRAINED_BLOCKS=2
+NUM_TRAINED_BLOCKS=-1
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
