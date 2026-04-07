@@ -51,8 +51,8 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/DermaMNIST/CLIP"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/MAE/DermaMNIST/CLIP"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/DermaMNIST/CLIP"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/MAE/pretrained/DermaMNIST/CLIP"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 

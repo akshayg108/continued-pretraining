@@ -48,8 +48,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/OrganAMNIST/CLIP/1k"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/OrganAMNIST/CLIP/1k"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/OrganAMNIST/CLIP/1k"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/pretrained/OrganAMNIST/CLIP/1k"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
