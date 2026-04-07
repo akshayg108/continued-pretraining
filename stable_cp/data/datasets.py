@@ -435,11 +435,14 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
         medmnist_root = cache_dir / "medmnist"
         medmnist_root.mkdir(parents=True, exist_ok=True)
         medmnist_class = getattr(medmnist, MEDMNIST_INFO[config_name]["python_class"])
+        if 224 not in medmnist_class.available_sizes:
+            raise ValueError(f"{config_name} does not support MedMNIST size=224")
         medmnist_dataset = medmnist_class(
             split=split_name,
             root=str(medmnist_root),
             download=True,
             as_rgb=False,
+            size=224,
             mmap_mode="r",
         )
         return MedMNISTPackageWrapper(medmnist_dataset, transform=transform)

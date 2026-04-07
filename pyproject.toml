@@ -41,7 +41,7 @@ dependencies = [
     "pillow>=9.0.0",
     "medmnist>=3.0.0",
     "stable-pretraining @ git+https://github.com/haodongzhang0118/stable-pretraining",
-    "stable-datasets @ git+https://github.com/galilai-group/stable-datasets",
+    "stable-datasets @ git+https://github.com/haodongzhang0118/stable-datasets.git",
 ]
 
 [project.optional-dependencies]
