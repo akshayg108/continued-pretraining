@@ -99,6 +99,10 @@ def _sample_shared_train_indices_by_class(args, dataset):
     stages see the same train subset, while preserving class balance.
     """
     n_total = len(dataset)
+    if args.n_samples > n_total:
+        raise ValueError(
+            f"--n-samples ({args.n_samples}) must be <= dataset size ({n_total})"
+        )
     if args.n_samples >= n_total:
         return list(range(n_total))
 
@@ -268,12 +272,19 @@ def create_train_datamodule(
         if remap_sample_idx
         else torch.utils.data.Subset(full_train, indices)
     )
+    steps_per_epoch = max(args.n_samples // args.batch_size, 1)
+    train_sampler = torch.utils.data.RandomSampler(
+        train_subset,
+        replacement=True,
+        num_samples=steps_per_epoch * args.batch_size,
+        generator=torch.Generator().manual_seed(args.seed),
+    )
     train_loader = torch.utils.data.DataLoader(
         train_subset,
         batch_size=args.batch_size,
+        sampler=train_sampler,
         num_workers=args.num_workers,
         drop_last=True,
-        shuffle=True,
     )
     val_loader = torch.utils.data.DataLoader(
         val_data,

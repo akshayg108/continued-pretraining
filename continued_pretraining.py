@@ -74,9 +74,10 @@ def create_base_parser(description="Continued Pretraining"):
         "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
     )
     parser.add_argument(
-        "--resume", action="store_true",
+        "--resume",
+        action="store_true",
         help="Resume training from existing checkpoint. Default behaviour "
-             "starts fresh and overwrites any previous checkpoint.",
+        "starts fresh and overwrites any previous checkpoint.",
     )
     return parser
 
@@ -125,8 +126,12 @@ def load_backbone(args, img_size=224, pretrained=True):
     return backbone, device
 
 
+def get_steps_per_epoch(n_samples, batch_size):
+    return max(n_samples // batch_size, 1)
+
+
 def create_optim_config(args, warmup_epochs):
-    steps_per_epoch = args.n_samples // args.batch_size
+    steps_per_epoch = get_steps_per_epoch(args.n_samples, args.batch_size)
     total_steps = args.epochs * steps_per_epoch
     warmup_steps = warmup_epochs * steps_per_epoch
     return {
@@ -257,8 +262,15 @@ def _run_sft_phase(
 # ============================================================
 
 
-def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger,
-                  knn_train_loader=None):
+def run_baseline(
+    backbone,
+    eval_train_loader,
+    test_loader,
+    device,
+    args,
+    logger,
+    knn_train_loader=None,
+):
     """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
         return None
@@ -284,7 +296,13 @@ def run_baseline(backbone, eval_train_loader, test_loader, device, args, logger,
 
 
 def run_final_eval(
-    backbone, eval_train_loader, test_loader, device, args, logger, baseline_results,
+    backbone,
+    eval_train_loader,
+    test_loader,
+    device,
+    args,
+    logger,
+    baseline_results,
     knn_train_loader=None,
 ):
     """Post-CP evaluation: KNN + Linear Probe."""
@@ -362,6 +380,7 @@ def run_training(
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
+        max_steps=args.epochs * get_steps_per_epoch(args.n_samples, args.batch_size),
         num_sanity_val_steps=0,
         callbacks=callbacks,
         precision="16-mixed",
@@ -398,21 +417,36 @@ def main():
     # ---- LeJEPA ----
     parser.add_argument("--lamb", type=float, default=0.02)
     parser.add_argument(
-        "--multivariate-test", type=str, default="slicing",
+        "--multivariate-test",
+        type=str,
+        default="slicing",
         choices=["slicing", "bhep", "bhep_m", "comb", "hv", "hz"],
     )
     parser.add_argument(
-        "--univariate-test", type=str, default="epps_pulley",
+        "--univariate-test",
+        type=str,
+        default="epps_pulley",
         choices=[
-            "epps_pulley", "anderson_darling", "cramer_von_mises", "watson",
-            "entropy", "shapiro_wilk", "jarque_bera", "vcreg", "nll", "moments",
+            "epps_pulley",
+            "anderson_darling",
+            "cramer_von_mises",
+            "watson",
+            "entropy",
+            "shapiro_wilk",
+            "jarque_bera",
+            "vcreg",
+            "nll",
+            "moments",
         ],
     )
     parser.add_argument("--t-max", type=float, default=3.0)
     parser.add_argument("--n-points", type=int, default=17)
     parser.add_argument("--num-slices", type=int, default=1000)
     parser.add_argument(
-        "--reduction", type=str, default="mean", choices=["mean", "sum", "none"],
+        "--reduction",
+        type=str,
+        default="mean",
+        choices=["mean", "sum", "none"],
     )
     parser.add_argument("--clip-value", type=float, default=None)
     parser.add_argument("--bhep-beta", type=float, default=0.1)
@@ -421,16 +455,22 @@ def main():
     parser.add_argument("--hv-gamma", type=float, default=1.0)
     parser.add_argument("--entropy-m", type=int, default=1)
     parser.add_argument(
-        "--entropy-method", type=str, default="centered",
+        "--entropy-method",
+        type=str,
+        default="centered",
         choices=["centered", "right"],
     )
     parser.add_argument("--moments-k-max", type=int, default=4)
     parser.add_argument(
-        "--sw-expectation", type=str, default="elfving",
+        "--sw-expectation",
+        type=str,
+        default="elfving",
         choices=["elfving", "blom", "rahman"],
     )
     parser.add_argument(
-        "--sw-covariance", type=str, default="shapiro_francia",
+        "--sw-covariance",
+        type=str,
+        default="shapiro_francia",
         choices=["shapiro_francia", "rahman"],
     )
     parser.add_argument("--nll-alpha", type=float, default=0.5)
@@ -519,10 +559,12 @@ def main():
     cp_data = None
 
     # Shared evaluation loaders (KNN/LP + SFT test evaluation)
-    eval_tf, test_loader, eval_train_loader, knn_train_loader, indices = _create_shared_eval_data(
-        args,
-        ds_cfg,
-        data_dir,
+    eval_tf, test_loader, eval_train_loader, knn_train_loader, indices = (
+        _create_shared_eval_data(
+            args,
+            ds_cfg,
+            data_dir,
+        )
     )
 
     # SFT data (n_views=1, standard augmentation)
@@ -547,7 +589,12 @@ def main():
 
     if not args.skip_baseline:
         baseline_results = run_baseline(
-            backbone, eval_train_loader, test_loader, device, args, logger,
+            backbone,
+            eval_train_loader,
+            test_loader,
+            device,
+            args,
+            logger,
             knn_train_loader=knn_train_loader,
         )
 
@@ -678,9 +725,13 @@ def main():
         # Pre-CP KNN / Linear Probe
         if baseline_results:
             results_json["pre_knn_f1"] = baseline_results.get("knn_f1", None)
-            results_json["pre_linear_f1"] = baseline_results.get("linear_pytorch_f1", None)
+            results_json["pre_linear_f1"] = baseline_results.get(
+                "linear_pytorch_f1", None
+            )
             results_json["pre_knn_acc"] = baseline_results.get("knn_acc", None)
-            results_json["pre_linear_acc"] = baseline_results.get("linear_pytorch_acc", None)
+            results_json["pre_linear_acc"] = baseline_results.get(
+                "linear_pytorch_acc", None
+            )
 
         # Pre-CP SFT
         if sft_pre_results:
@@ -690,9 +741,13 @@ def main():
         # Post-CP KNN / Linear Probe
         if final_eval_results:
             results_json["post_knn_f1"] = final_eval_results.get("knn_f1", None)
-            results_json["post_linear_f1"] = final_eval_results.get("linear_pytorch_f1", None)
+            results_json["post_linear_f1"] = final_eval_results.get(
+                "linear_pytorch_f1", None
+            )
             results_json["post_knn_acc"] = final_eval_results.get("knn_acc", None)
-            results_json["post_linear_acc"] = final_eval_results.get("linear_pytorch_acc", None)
+            results_json["post_linear_acc"] = final_eval_results.get(
+                "linear_pytorch_acc", None
+            )
 
         # Post-CP SFT
         if sft_post_results:
