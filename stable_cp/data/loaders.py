@@ -1,4 +1,6 @@
 # Data loading utilities for continued pretraining
+import math
+
 import torch
 import hashlib
 import numpy as np
@@ -8,6 +10,36 @@ import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
 from .datasets import get_dataset
+
+
+class BalancedRepeatSampler(torch.utils.data.Sampler):
+    """Sampler that guarantees every sample appears at least
+    floor(num_samples / dataset_size) times per epoch, with the remaining
+    slots filled by random sampling.  The final order is shuffled so that
+    duplicates are spread across batches.
+    """
+
+    def __init__(self, data_source, num_samples, generator=None):
+        self.n = len(data_source)
+        self.num_samples = num_samples
+        self.generator = generator
+
+    def __iter__(self):
+        full_repeats = self.num_samples // self.n
+        remainder = self.num_samples % self.n
+
+        indices = list(range(self.n)) * full_repeats
+
+        perm = torch.randperm(self.n, generator=self.generator).tolist()
+        indices += perm[:remainder]
+
+        shuffle_perm = torch.randperm(len(indices), generator=self.generator)
+        indices = [indices[i] for i in shuffle_perm.tolist()]
+
+        return iter(indices)
+
+    def __len__(self):
+        return self.num_samples
 
 
 def create_transforms(ds_cfg, n_views=1, strong_aug=False):
@@ -272,11 +304,11 @@ def create_train_datamodule(
         if remap_sample_idx
         else torch.utils.data.Subset(full_train, indices)
     )
-    steps_per_epoch = max(args.n_samples // args.batch_size, 1)
-    train_sampler = torch.utils.data.RandomSampler(
+    steps_per_epoch = max(math.ceil(args.n_samples / args.batch_size), 1)
+    num_samples = steps_per_epoch * args.batch_size
+    train_sampler = BalancedRepeatSampler(
         train_subset,
-        replacement=True,
-        num_samples=steps_per_epoch * args.batch_size,
+        num_samples=num_samples,
         generator=torch.Generator().manual_seed(args.seed),
     )
     train_loader = torch.utils.data.DataLoader(
@@ -284,7 +316,7 @@ def create_train_datamodule(
         batch_size=args.batch_size,
         sampler=train_sampler,
         num_workers=args.num_workers,
-        drop_last=True,
+        drop_last=False,
     )
     val_loader = torch.utils.data.DataLoader(
         val_data,

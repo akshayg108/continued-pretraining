@@ -127,7 +127,7 @@ def load_backbone(args, img_size=224, pretrained=True):
 
 
 def get_steps_per_epoch(n_samples, batch_size):
-    return max(n_samples // batch_size, 1)
+    return max((n_samples + batch_size - 1) // batch_size, 1)
 
 
 def create_optim_config(args, warmup_epochs):
