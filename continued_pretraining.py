@@ -390,7 +390,6 @@ def run_training(
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
-        max_steps=args.epochs * get_steps_per_epoch(args.n_samples, args.batch_size),
         num_sanity_val_steps=0,
         log_every_n_steps=10,
         callbacks=callbacks,
