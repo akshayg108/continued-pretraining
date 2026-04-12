@@ -13,7 +13,6 @@ import copy
 import lightning as pl
 import torch
 import torch.nn as nn
-from lightning.pytorch.callbacks import LearningRateMonitor
 
 import stable_pretraining as spt
 
@@ -109,6 +108,32 @@ def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
 
 
 # ---------------------------------------------------------------------------
+# Wandb callback (logger=False bypass)
+# ---------------------------------------------------------------------------
+
+class _SFTWandbCallback(pl.Callback):
+    """Log SFT loss/acc to wandb without Lightning's auto-logged epoch/lr.
+
+    Uses ``wandb.define_metric`` so SFT charts get their own x-axis
+    (``{prefix}_step``), completely independent from the CP charts.
+    """
+
+    def __init__(self, experiment, prefix):
+        self.experiment = experiment
+        self.prefix = prefix
+        self._step = 0
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        metrics = {f"{self.prefix}_step": self._step}
+        for key, value in trainer.callback_metrics.items():
+            if self.prefix in key:
+                metrics[key] = value.item() if hasattr(value, "item") else value
+        if len(metrics) > 1:  # more than just the step key
+            self.experiment.log(metrics)
+        self._step += 1
+
+
+# ---------------------------------------------------------------------------
 # Main evaluation entry-point
 # ---------------------------------------------------------------------------
 
@@ -188,7 +213,6 @@ def sft_evaluate(
             "eta_min": 0.0,
         },
         "interval": "step",
-        "name": "SFT",
     }
 
     # ---- build spt.Module ----
@@ -202,15 +226,21 @@ def sft_evaluate(
         metric_prefix=prefix,
     )
 
-    # ---- train (minimal callbacks – no KNN/LP probes) ----
-    callbacks = [LearningRateMonitor(logging_interval="step")]
+    callbacks = []
+    wandb_experiment = None
+    if logger is not None and hasattr(logger, "experiment"):
+        wandb_experiment = logger.experiment
+        wandb_experiment.define_metric(f"{prefix}_step")
+        wandb_experiment.define_metric(f"fit/{prefix}_*", step_metric=f"{prefix}_step")
+        callbacks.append(_SFTWandbCallback(wandb_experiment, prefix))
+
     trainer = pl.Trainer(
         max_epochs=SFT_EPOCHS,
         max_steps=total_steps,
         num_sanity_val_steps=0,
         callbacks=callbacks,
         precision="16-mixed",
-        logger=logger,
+        logger=False,
     )
     spt.Manager(
         trainer=trainer,

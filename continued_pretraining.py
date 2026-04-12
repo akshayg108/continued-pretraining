@@ -147,7 +147,6 @@ def create_optim_config(args, warmup_epochs):
             "eta_min": 0.0,
         },
         "interval": "step",
-        "name": "CP",
     }
 
 
@@ -393,6 +392,7 @@ def run_training(
         max_epochs=args.epochs,
         max_steps=args.epochs * get_steps_per_epoch(args.n_samples, args.batch_size),
         num_sanity_val_steps=0,
+        log_every_n_steps=10,
         callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
