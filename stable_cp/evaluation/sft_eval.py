@@ -136,11 +136,14 @@ def sft_evaluate(
 
     All training hyper-parameters (epochs, lr, weight_decay, etc.) are
     **fixed** module-level constants -- see ``SFT_*`` at the top of this file.
+    The caller must ensure that ``sft_data`` was built with
+    ``batch_size == SFT_BATCH_SIZE`` so the DataLoader step count matches
+    the scheduler configuration here.
 
     Args:
         backbone:       Backbone model to evaluate (will be deep-copied).
         sft_data:       ``spt.data.DataModule`` with augmented training data
-                        (single-view, ``n_views=1``).
+                        (single-view, ``n_views=1``, ``batch_size=SFT_BATCH_SIZE``).
         test_loader:    DataLoader for the test split (val transform).
         device:         Target device (e.g. ``torch.device("cuda")``).
         num_classes:    Number of target classes.
@@ -185,6 +188,7 @@ def sft_evaluate(
             "eta_min": 0.0,
         },
         "interval": "step",
+        "name": "SFT",
     }
 
     # ---- build spt.Module ----
@@ -202,6 +206,7 @@ def sft_evaluate(
     callbacks = [LearningRateMonitor(logging_interval="step")]
     trainer = pl.Trainer(
         max_epochs=SFT_EPOCHS,
+        max_steps=total_steps,
         num_sanity_val_steps=0,
         callbacks=callbacks,
         precision="16-mixed",

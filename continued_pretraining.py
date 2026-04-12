@@ -147,6 +147,7 @@ def create_optim_config(args, warmup_epochs):
             "eta_min": 0.0,
         },
         "interval": "step",
+        "name": "CP",
     }
 
 
@@ -178,10 +179,20 @@ def _create_shared_eval_data(args, ds_cfg, data_dir):
 
 
 def _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices):
-    """Create SFT datamodule over the shared train indices."""
+    """Create SFT datamodule over the shared train indices.
+
+    Uses the fixed SFT batch size (32) so the DataLoader step count
+    matches the SFT scheduler configuration in ``sft_eval.py``.
+    """
+    import copy
+    from stable_cp.evaluation.sft_eval import SFT_BATCH_SIZE
+
+    sft_args = copy.copy(args)
+    sft_args.batch_size = SFT_BATCH_SIZE
+
     sft_train_tf, _ = create_transforms(ds_cfg, n_views=1, strong_aug=False)
     sft_data, _ = create_train_datamodule(
-        args,
+        sft_args,
         ds_cfg,
         sft_train_tf,
         eval_tf,
