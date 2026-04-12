@@ -124,11 +124,14 @@ class _SFTWandbCallback(pl.Callback):
         self._step = 0
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        metrics = {f"{self.prefix}_step": self._step}
+        metrics = {
+            f"{self.prefix}_step": self._step,
+            f"fit/{self.prefix}_epoch": trainer.current_epoch,
+        }
         for key, value in trainer.callback_metrics.items():
             if self.prefix in key:
                 metrics[key] = value.item() if hasattr(value, "item") else value
-        if len(metrics) > 1:  # more than just the step key
+        if len(metrics) > 2:  # more than just step + epoch
             self.experiment.log(metrics)
         self._step += 1
 
