@@ -29,7 +29,7 @@ from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
 from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
 from stable_cp.evaluation.sft_eval import sft_evaluate
 from stable_cp.utils.backbone import BACKBONE_DIMS
-from stable_cp.data import DATASETS, get_dataset_config
+from stable_cp.data import DATASETS, get_dataset_config, get_dataset, CPSubset
 from stable_cp.data import (
     create_eval_loaders,
     create_train_datamodule,
@@ -178,27 +178,39 @@ def _create_shared_eval_data(args, ds_cfg, data_dir):
 
 
 def _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices):
-    """Create SFT datamodule over the shared train indices.
-
-    Uses the fixed SFT batch size (32) so the DataLoader step count
-    matches the SFT scheduler configuration in ``sft_eval.py``.
-    """
-    import copy
+    """Create SFT datamodule over the shared train indices."""
     from stable_cp.evaluation.sft_eval import SFT_BATCH_SIZE
 
-    sft_args = copy.copy(args)
-    sft_args.batch_size = SFT_BATCH_SIZE
+    splits = ds_cfg.get("splits", ["train", "validation", "test"])
+    train_split, val_split, _ = splits
+    data_dir = Path(args.cache_dir)
 
     sft_train_tf, _ = create_transforms(ds_cfg, n_views=1, strong_aug=False)
-    sft_data, _ = create_train_datamodule(
-        sft_args,
-        ds_cfg,
-        sft_train_tf,
-        eval_tf,
-        data_dir,
-        indices=indices,
+
+    full_train = get_dataset(
+        args.dataset, split=train_split, transform=sft_train_tf,
+        cache_dir=data_dir, seed=args.seed,
     )
-    return sft_data
+    val_data = get_dataset(
+        args.dataset, split=val_split, transform=eval_tf,
+        cache_dir=data_dir, seed=args.seed,
+    )
+
+    train_subset = CPSubset(full_train, indices)
+
+    train_loader = torch.utils.data.DataLoader(
+        train_subset,
+        batch_size=SFT_BATCH_SIZE,
+        shuffle=True,
+        drop_last=True,
+        num_workers=args.num_workers,
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_data,
+        batch_size=SFT_BATCH_SIZE,
+        num_workers=args.num_workers,
+    )
+    return spt.data.DataModule(train=train_loader, val=val_loader)
 
 
 def _create_cp_data(args, ds_cfg, data_dir, indices, method_cfg):
