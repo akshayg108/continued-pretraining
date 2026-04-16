@@ -35,6 +35,10 @@ from stable_cp.data import (
     create_train_datamodule,
     create_transforms,
 )
+from stable_cp.monkeypatches.stable_datasets_wget import apply_patch as apply_stable_datasets_patch
+
+
+apply_stable_datasets_patch()
 
 
 # ============================================================
