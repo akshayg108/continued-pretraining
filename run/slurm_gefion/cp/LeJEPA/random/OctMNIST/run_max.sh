@@ -3,7 +3,7 @@
 #SBATCH --account=iu_0092
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=12
 #SBATCH --gpus=1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
