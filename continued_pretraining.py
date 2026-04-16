@@ -55,6 +55,7 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--n-samples", type=int, default=1000)
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--accumulate-grad-batches", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--freeze-epochs", type=int, default=None)
@@ -410,6 +411,7 @@ def run_training(
         log_every_n_steps=10,
         callbacks=callbacks,
         precision="16-mixed",
+        accumulate_grad_batches=args.accumulate_grad_batches,
         logger=logger,
     )
     spt.Manager(

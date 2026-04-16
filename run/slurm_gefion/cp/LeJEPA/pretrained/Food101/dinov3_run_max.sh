@@ -61,7 +61,8 @@ BACKBONE_TAG="DINOv3"
 BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
 
 EPOCHS=150
-BATCH_SIZE=256
+BATCH_SIZE=128
+ACCUMULATE_GRAD_BATCHES=2
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
@@ -94,6 +95,7 @@ echo "=========================================="
 echo "Starting LeJEPA-CP: ${DISPLAY_NAME} (MAX: 75750)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS} (all blocks)"
+echo "batch_size=${BATCH_SIZE} accumulate_grad_batches=${ACCUMULATE_GRAD_BATCHES}"
 echo "Resolved seed: ${SEED}"
 echo "=========================================="
 
@@ -120,6 +122,7 @@ run_single() {
         --n-samples ${n_samples} \
         --epochs ${EPOCHS} \
         --batch-size ${BATCH_SIZE} \
+        --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --lr ${LR} \
         --weight-decay ${WEIGHT_DECAY} \
         --freeze-epochs ${FREEZE_EPOCHS} \
