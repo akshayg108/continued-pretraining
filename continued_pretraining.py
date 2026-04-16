@@ -97,6 +97,44 @@ def setup_paths(args):
     return data_dir, checkpoint_dir
 
 
+def get_runtime_dir(checkpoint_dir: Path) -> Path:
+    """Return a dedicated runtime-artifacts directory for Lightning/W&B side files."""
+    runtime_dir = checkpoint_dir / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return runtime_dir
+
+
+def sanitize_trainer_callbacks(trainer: pl.Trainer) -> None:
+    """Remove callbacks we do not want for these CP runs.
+
+    In particular:
+    - HuggingFace checkpoint export callback, which is crashing on symlink cleanup
+    - any callback from a `hf_models` module path
+    """
+    filtered_callbacks = []
+    removed = []
+
+    for callback in trainer.callbacks:
+        callback_name = callback.__class__.__name__
+        callback_module = callback.__class__.__module__
+
+        should_remove = (
+            callback_name == "HuggingFaceCheckpointCallback"
+            or callback_module.endswith(".hf_models")
+            or ".hf_models" in callback_module
+        )
+
+        if should_remove:
+            removed.append(f"{callback_module}.{callback_name}")
+            continue
+
+        filtered_callbacks.append(callback)
+
+    if removed:
+        print(f"Removing callbacks: {removed}")
+        trainer.callbacks = filtered_callbacks
+
+
 def get_config(args):
     ds_cfg = get_dataset_config(args.dataset)
     embed_dim = BACKBONE_DIMS.get(args.backbone, 384)
@@ -405,6 +443,8 @@ def run_training(
         print(f"[resume=False] Removing old checkpoint: {ckpt_path}")
         Path(ckpt_path).unlink()
 
+    runtime_dir = get_runtime_dir(Path(ckpt_path).parent)
+
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         num_sanity_val_steps=0,
@@ -412,8 +452,10 @@ def run_training(
         callbacks=callbacks,
         precision="16-mixed",
         accumulate_grad_batches=args.accumulate_grad_batches,
+        default_root_dir=str(runtime_dir),
         logger=logger,
     )
+    sanitize_trainer_callbacks(trainer)
     spt.Manager(
         trainer=trainer, module=module, data=data, ckpt_path=ckpt_path, seed=args.seed
     )()
@@ -578,7 +620,13 @@ def main():
         )
     if args.run_name:
         run_name = args.run_name
-    logger = WandbLogger(project=project, name=run_name, log_model=False)
+    runtime_dir = get_runtime_dir(checkpoint_dir)
+    logger = WandbLogger(
+        project=project,
+        name=run_name,
+        log_model=False,
+        save_dir=str(runtime_dir),
+    )
 
     # ================================================================
     # Data creation
