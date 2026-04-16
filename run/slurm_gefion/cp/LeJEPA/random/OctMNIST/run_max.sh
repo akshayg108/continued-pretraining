@@ -22,10 +22,16 @@ echo "=========================================="
 cd /dcai/projects/iu_0092/projects/cp/continued-pretraining
 echo "Working directory: $(pwd)"
 source .venv/bin/activate
+PYTHON_BIN="$(pwd)/.venv/bin/python"
 
-echo "Python: $(which python)"
-python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
-python -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
+if [ ! -x "${PYTHON_BIN}" ]; then
+    echo "Python interpreter not found at ${PYTHON_BIN}"
+    exit 1
+fi
+
+echo "Python: ${PYTHON_BIN}"
+"${PYTHON_BIN}" -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
+"${PYTHON_BIN}" -c "import wandb; print('wandb:', wandb.__version__)" || echo "wandb: not installed"
 
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -116,7 +122,7 @@ run_single() {
     echo "  Start: $(date)"
     echo "=========================================="
 
-    python -u continued_pretraining.py \
+    "${PYTHON_BIN}" -u continued_pretraining.py \
         --cp-method lejepa \
         --random-init \
         --post-cp-sft \

@@ -18,6 +18,12 @@ echo "=========================================="
 cd /dcai/projects/iu_0092/projects/cp/continued-pretraining
 echo "Working directory: $(pwd)"
 source .venv/bin/activate
+PYTHON_BIN="$(pwd)/.venv/bin/python"
+
+if [ ! -x "${PYTHON_BIN}" ]; then
+    echo "Python interpreter not found at ${PYTHON_BIN}"
+    exit 1
+fi
 
 # ============================================================
 # Paths
@@ -39,7 +45,7 @@ NSAMPLES=(97477)
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
 echo "Writing aggregated CSV to: ${CSV_FILE}"
 
-python3 <<PYEOF
+"${PYTHON_BIN}" <<PYEOF
 import csv
 import json
 import os
