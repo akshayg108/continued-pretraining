@@ -136,6 +136,146 @@ def extract_features(
     return features, labels
 
 
+def extract_all_tokens(
+    model: nn.Module,
+    loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    verbose: bool = True,
+) -> tuple:
+    """Extract the full token sequence (including [cls]) from forward_features.
+
+    Returns (tokens, labels) where tokens has shape (N, 1+L, D). Used by
+    Selective Aggregation LP (Beyond [cls], Przewiezlikowski et al., 2024).
+    """
+    tokens, labels = [], []
+    model.eval()
+    iterator = tqdm(loader, desc="Extracting tokens") if verbose else loader
+
+    with torch.no_grad():
+        for batch in iterator:
+            if isinstance(batch, dict):
+                x, y = batch["image"], batch["label"]
+            else:
+                x, y = batch[0], batch[1]
+
+            x = x.to(device)
+            feat = model.forward_features(x)
+            assert feat.dim() == 3, (
+                f"extract_all_tokens expects 3D output (B, 1+L, D); got {feat.shape}."
+            )
+            tokens.append(feat.cpu().numpy())
+            labels.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
+
+    tokens = np.concatenate(tokens, axis=0)
+    labels = np.concatenate(labels, axis=0).ravel()
+    return tokens, labels
+
+
+def selective_aggregation_lp_evaluate(
+    train_tokens: np.ndarray,
+    train_labels: np.ndarray,
+    test_tokens: np.ndarray,
+    test_labels: np.ndarray,
+    device: torch.device = "cuda",
+    lr: float = 1e-3,
+    min_epochs: int = 150,
+    min_steps: int = 10000,
+    batch_size: int = 512,
+    verbose: bool = True,
+) -> dict:
+    """Selective Aggregation LP per Beyond[cls] (Przewiezlikowski et al., 2024).
+
+    Uses ABMILPHead in its minimal config (depth=1, self_attention="none",
+    content="patch") to learn a soft attention pooling over patch tokens, then
+    trains a Linear classifier on L2-normalized aggregated features.
+
+    Args:
+        train_tokens, test_tokens: shape (N, 1+L, D) — full token sequence,
+            [cls] included at index 0. ABMILPHead strips [cls] internally.
+    """
+    from .abmilp import ABMILPHead
+
+    num_patches = train_tokens.shape[1] - 1  # exclude [cls]
+    dim = train_tokens.shape[-1]
+    num_classes = len(np.unique(train_labels))
+
+    sa_head = ABMILPHead(
+        dim=dim,
+        self_attention_apply_to="none",
+        depth=1,
+        cond="none",
+        content="patch",
+        num_patches=num_patches,
+    ).to(device)
+    clf = nn.Linear(dim, num_classes).to(device)
+
+    # Convert to tensors — keep train_tokens on CPU to avoid GPU OOM for large N
+    train_tokens_t = torch.from_numpy(train_tokens).float()
+    train_labels_t = torch.from_numpy(train_labels).long()
+    test_tokens_t = torch.from_numpy(test_tokens).float()
+    test_labels_t = torch.from_numpy(test_labels).long()
+
+    params = list(sa_head.parameters()) + list(clf.parameters())
+    optimizer = torch.optim.Adam(params, lr=lr)
+    criterion = nn.CrossEntropyLoss()
+
+    n = len(train_tokens_t)
+    steps_per_epoch = max(n // batch_size, 1)
+    num_epochs = max(min_epochs, (min_steps + steps_per_epoch - 1) // steps_per_epoch)
+    num_steps = num_epochs * steps_per_epoch
+
+    sa_head.train()
+    clf.train()
+    step = 0
+    for epoch in range(num_epochs):
+        perm = torch.randperm(n)
+        for i in range(steps_per_epoch):
+            idx = perm[i * batch_size : (i + 1) * batch_size]
+            x = train_tokens_t[idx].to(device, non_blocking=True)
+            y = train_labels_t[idx].to(device, non_blocking=True)
+
+            agg = sa_head(x)                        # (B, D)
+            agg = torch.nn.functional.normalize(agg, dim=-1)
+            logits = clf(agg)
+            loss = criterion(logits, y)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            step += 1
+
+        if verbose and (epoch + 1) % max(num_epochs // 10, 1) == 0:
+            print(f"    SA-LP epoch {epoch + 1}/{num_epochs}, loss={loss.item():.4f}")
+
+    # Evaluation (batched to avoid OOM)
+    sa_head.eval()
+    clf.eval()
+    all_logits = []
+    with torch.no_grad():
+        for i in range(0, len(test_tokens_t), batch_size):
+            x = test_tokens_t[i : i + batch_size].to(device, non_blocking=True)
+            agg = sa_head(x)
+            agg = torch.nn.functional.normalize(agg, dim=-1)
+            all_logits.append(clf(agg).cpu())
+    logits = torch.cat(all_logits, dim=0)
+    proba = torch.softmax(logits, dim=1)
+    pred = logits.argmax(dim=1)
+
+    results = {
+        "sa_lp_acc": MulticlassAccuracy(num_classes=num_classes)(pred, test_labels_t).item(),
+        "sa_lp_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
+            pred, test_labels_t
+        ).item(),
+    }
+    try:
+        results["sa_lp_auroc"] = MulticlassAUROC(
+            num_classes=num_classes, average="macro"
+        )(proba, test_labels_t).item()
+    except ValueError:
+        results["sa_lp_auroc"] = 0.0
+    return results
+
+
 def knn_evaluate(
     train_features: np.ndarray,
     train_labels: np.ndarray,
@@ -360,6 +500,7 @@ def zero_shot_eval(
     linear_pytorch_lr: float = 1e-3,
     pool_strategy: str = "cls",
     knn_train_loader: torch.utils.data.DataLoader = None,
+    selective_agg: bool = False,
     verbose: bool = True,
 ) -> dict:
     # Full zero-shot evaluation pipeline
@@ -446,6 +587,32 @@ def zero_shot_eval(
     results.update(kmeans_evaluate(test_features, test_labels))
     if verbose:
         print(f"  ARI: {results['kmeans_ari']:.4f}, NMI: {results['kmeans_nmi']:.4f}")
+
+    # Selective Aggregation LP (Beyond [cls], Przewiezlikowski et al., 2024)
+    if selective_agg:
+        if verbose:
+            print("Running Selective Aggregation LP (extracting patch tokens)...")
+        train_tokens, train_tok_labels = extract_all_tokens(
+            model, train_loader, device, verbose=verbose
+        )
+        test_tokens, test_tok_labels = extract_all_tokens(
+            model, test_loader, device, verbose=verbose
+        )
+        results.update(
+            selective_aggregation_lp_evaluate(
+                train_tokens, train_tok_labels,
+                test_tokens, test_tok_labels,
+                device=device,
+                lr=linear_pytorch_lr,
+                min_steps=linear_pytorch_min_steps,
+                verbose=verbose,
+            )
+        )
+        if verbose:
+            print(
+                f"  SA-LP acc: {results['sa_lp_acc']:.4f}, "
+                f"F1: {results['sa_lp_f1']:.4f}"
+            )
 
     return results
 

@@ -79,6 +79,15 @@ def create_base_parser(description="Continued Pretraining"):
         help="Resume training from existing checkpoint. Default behaviour "
         "starts fresh and overwrites any previous checkpoint.",
     )
+    parser.add_argument(
+        "--aggregation",
+        action="store_true",
+        help="Run Selective Aggregation LP (Beyond [cls], ABMILPHead depth=1) "
+        "at the post-CP stage. Two use cases per Przewiezlikowski et al. (2024): "
+        "(a) MAE encoder, where SA outperforms both [cls] and avg-patch pooling; "
+        "(b) MAE-CP on DINOv3/CLIP, to test whether patch info survives when "
+        "[cls] aggregation is disrupted (distinguishing 'info loss' vs 'aggregation failure').",
+    )
     return parser
 
 
@@ -297,6 +306,7 @@ def run_baseline(
     if args.skip_baseline:
         return None
     print("Baseline eval (KNN + Linear Probe) …")
+    # Note: SA is only run at post-CP (pre-CP [cls] is fine for DINOv3/CLIP).
     results = zero_shot_eval(
         backbone,
         eval_train_loader,
@@ -306,6 +316,7 @@ def run_baseline(
         linear_probe_method="both",
         pool_strategy=args.pool_strategy,
         knn_train_loader=knn_train_loader,
+        selective_agg=False,
         verbose=True,
     )
     logger.experiment.log({f"baseline/{k}": v for k, v in results.items()}, step=0)
@@ -331,6 +342,10 @@ def run_final_eval(
     if args.skip_final_eval:
         return None
     print("Final eval (KNN + Linear Probe) …")
+    # SA is informative for two cases (Przewiezlikowski et al., 2024, Tab 1):
+    # (a) MAE encoder: SA outperforms both [cls] and avg-patch pooling by ~4-6 pts.
+    # (b) JEA encoder after MAE-CP: if MAE-CP disrupts the [cls] aggregation,
+    #     SA may recover the representation from patch tokens.
     final_results = zero_shot_eval(
         backbone,
         eval_train_loader,
@@ -340,6 +355,7 @@ def run_final_eval(
         linear_probe_method="both",
         pool_strategy=args.pool_strategy,
         knn_train_loader=knn_train_loader,
+        selective_agg=getattr(args, "aggregation", False),
         verbose=True,
     )
     for k, v in final_results.items():
@@ -770,6 +786,9 @@ def main():
             results_json["post_linear_acc"] = final_eval_results.get(
                 "linear_pytorch_acc", None
             )
+            # Selective Aggregation LP (if --aggregation)
+            results_json["post_sa_lp_f1"] = final_eval_results.get("sa_lp_f1", None)
+            results_json["post_sa_lp_acc"] = final_eval_results.get("sa_lp_acc", None)
 
         # Post-CP SFT
         if sft_post_results:
