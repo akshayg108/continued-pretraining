@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --gpus=1
 #SBATCH --mem=64G
-#SBATCH --time=96:00:00
+#SBATCH --time=144:00:00
 #SBATCH --array=0-2
 #SBATCH --output=/dcai/projects/iu_0092/projects/cp/outputs/slurm-logs/lejepa-rand-octmnist-max-%A_%a.out
 
@@ -70,8 +70,8 @@ BACKBONE_TAG="SCRATCH"
 BACKBONE_TIMM="vit_base_patch16_224"
 
 EPOCHS=150
-BATCH_SIZE=64
-ACCUMULATE_GRAD_BATCHES=4
+BATCH_SIZE=32
+ACCUMULATE_GRAD_BATCHES=8
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
