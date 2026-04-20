@@ -164,15 +164,12 @@ def _sample_shared_train_indices_by_class(args, dataset):
         rng.shuffle(selected)
         return selected
 
-    try:
-        selected_indices, _ = train_test_split(
-            all_indices,
-            train_size=args.n_samples,
-            stratify=all_labels,
-            random_state=args.seed,
-        )
-    except ValueError as e:
-        return _one_per_class(f"stratified split raised: {e}")
+    selected_indices, _ = train_test_split(
+        all_indices,
+        train_size=args.n_samples,
+        stratify=all_labels,
+        random_state=args.seed,
+    )
 
     selected_labels = all_labels[selected_indices]
     if len(np.unique(selected_labels)) < n_classes:
