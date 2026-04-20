@@ -119,6 +119,51 @@ EXPERIMENTS=(
     "fgvc_aircraft 500"
     "fgvc_aircraft 1000"
     "fgvc_aircraft 3400"
+
+    # Cars196 (MAX=8144, 196 classes)
+    "cars196 196"
+    "cars196 500"
+    "cars196 1000"
+    "cars196 8144"
+
+    # CUB200 (MAX=5994, 200 classes)
+    "cub200 200"
+    "cub200 500"
+    "cub200 1000"
+    "cub200 5994"
+
+    # Flowers102 (MAX=1020, 102 classes)
+    "flowers102 102"
+    "flowers102 500"
+    "flowers102 1000"
+    "flowers102 1020"
+
+    # OxfordPet (MAX=3680, 37 classes)
+    "oxford_pet 100"
+    "oxford_pet 500"
+    "oxford_pet 1000"
+    "oxford_pet 3680"
+
+    # DTD (MAX=1880, 47 classes)
+    "dtd 100"
+    "dtd 500"
+    "dtd 1000"
+    "dtd 1880"
+
+    # EuroSAT (MAX=16200, 10 classes)
+    "eurosat 100"
+    "eurosat 500"
+    "eurosat 1000"
+    "eurosat 10000"
+    "eurosat 16200"
+
+    # PlantVillage (MAX=43596, 38 classes)
+    "plant_village 100"
+    "plant_village 500"
+    "plant_village 1000"
+    "plant_village 10000"
+    "plant_village 25000"
+    "plant_village 43596"
 )
 
 # ============================================================
@@ -134,6 +179,13 @@ get_display_name() {
         galaxy10)       echo "Galaxy10" ;;
         food101)        echo "Food101" ;;
         fgvc_aircraft)  echo "FGVC_Aircraft" ;;
+        cars196)        echo "Cars196" ;;
+        cub200)         echo "CUB200" ;;
+        flowers102)     echo "Flowers102" ;;
+        oxford_pet)     echo "OxfordPet" ;;
+        dtd)            echo "DTD" ;;
+        eurosat)        echo "EuroSAT" ;;
+        plant_village)  echo "PlantVillage" ;;
         *)              echo "$1" ;;
     esac
 }

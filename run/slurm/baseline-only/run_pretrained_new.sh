@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=baseline-pretrained
+#SBATCH --job-name=baseline-pretrained-new
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-new-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-new-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -70,62 +70,6 @@ BACKBONE_TIMM_NAMES=(
 # ============================================================
 
 DINOV3_EXPERIMENTS=(
-    # DermaMNIST (MAX=7007)
-    "dermamnist 100"
-    "dermamnist 500"
-    "dermamnist 1000"
-    "dermamnist 7007"
-
-    # BreastMNIST (MAX=546)
-    "breastmnist 100"
-    "breastmnist 500"
-    "breastmnist 546"
-
-    # OCTMNIST (MAX=97477)
-    "octmnist 100"
-    "octmnist 500"
-    "octmnist 1000"
-    "octmnist 10000"
-    "octmnist 25000"
-    "octmnist 97477"
-
-    # OrganAMNIST (MAX=34561)
-    "organamnist 100"
-    "organamnist 500"
-    "organamnist 1000"
-    "organamnist 10000"
-    "organamnist 25000"
-    "organamnist 34561"
-
-    # PathMNIST (MAX=89996)
-    "pathmnist 100"
-    "pathmnist 500"
-    "pathmnist 1000"
-    "pathmnist 10000"
-    "pathmnist 25000"
-    "pathmnist 89996"
-
-    # Galaxy10 (MAX=14188)
-    "galaxy10 100"
-    "galaxy10 500"
-    "galaxy10 1000"
-    "galaxy10 10000"
-    "galaxy10 14188"
-
-    # Food101 (MAX=75750)
-    "food101 101"
-    "food101 500"
-    "food101 1000"
-    "food101 10000"
-    "food101 25000"
-    "food101 75750"
-
-    # FGVC_Aircraft (MAX=3400)
-    "fgvc_aircraft 100"
-    "fgvc_aircraft 500"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
-
     # Cars196 (MAX=8144, 196 classes)
     "cars196 196"
     "cars196 500"
@@ -173,22 +117,6 @@ DINOV3_EXPERIMENTS=(
 )
 
 MAE_EXPERIMENTS=(
-    "dermamnist 1000"
-    "dermamnist 7007"
-    "breastmnist 100"
-    "breastmnist 546"
-    "octmnist 1000"
-    "octmnist 97477"
-    "organamnist 1000"
-    "organamnist 34561"
-    "pathmnist 1000"
-    "pathmnist 89996"
-    "galaxy10 1000"
-    "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
     "cars196 1000"
     "cars196 8144"
     "cub200 1000"
@@ -206,22 +134,6 @@ MAE_EXPERIMENTS=(
 )
 
 CLIP_EXPERIMENTS=(
-    "dermamnist 1000"
-    "dermamnist 7007"
-    "breastmnist 100"
-    "breastmnist 546"
-    "octmnist 1000"
-    "octmnist 97477"
-    "organamnist 1000"
-    "organamnist 34561"
-    "pathmnist 1000"
-    "pathmnist 89996"
-    "galaxy10 1000"
-    "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
     "cars196 1000"
     "cars196 8144"
     "cub200 1000"
@@ -305,7 +217,7 @@ run_single() {
         --pool-strategy ${pool_strategy} \
         --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
-        --project baseline-pretrained \
+        --project baseline-pretrained-new \
         --run-name "${backbone_tag}_${dataset}_n${n_samples}_s${seed}" \
         --seed ${seed} \
         --results-json ${results_file} 2>&1
