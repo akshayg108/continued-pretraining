@@ -306,7 +306,6 @@ def run_baseline(
     if args.skip_baseline:
         return None
     print("Baseline eval (KNN + Linear Probe) …")
-    # Note: SA is only run at post-CP (pre-CP [cls] is fine for DINOv3/CLIP).
     results = zero_shot_eval(
         backbone,
         eval_train_loader,
@@ -342,10 +341,6 @@ def run_final_eval(
     if args.skip_final_eval:
         return None
     print("Final eval (KNN + Linear Probe) …")
-    # SA is informative for two cases (Przewiezlikowski et al., 2024, Tab 1):
-    # (a) MAE encoder: SA outperforms both [cls] and avg-patch pooling by ~4-6 pts.
-    # (b) JEA encoder after MAE-CP: if MAE-CP disrupts the [cls] aggregation,
-    #     SA may recover the representation from patch tokens.
     final_results = zero_shot_eval(
         backbone,
         eval_train_loader,

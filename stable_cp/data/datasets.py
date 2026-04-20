@@ -151,6 +151,64 @@ DATASETS = {
         "splits": ["train", "validation", "test"],
         "dataset_kwargs": {"size": 224},
     },
+    # Fine-grained additions
+    "cars196": {
+        "dataset_class": stable_ds.Cars196,
+        "config_name": None,
+        "num_classes": 196,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "test", "test"],  # no validation; reuse test
+    },
+    "cub200": {
+        "dataset_class": stable_ds.CUB200,
+        "config_name": None,
+        "num_classes": 200,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "test", "test"],  # no validation; reuse test
+    },
+    "flowers102": {
+        "dataset_class": stable_ds.Flowers102,
+        "config_name": None,
+        "num_classes": 102,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "validation", "test"],
+    },
+    "oxford_pet": {
+        "dataset_class": stable_ds.OxfordPet,
+        "config_name": None,
+        "num_classes": 37,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "test", "test"],  # no validation; reuse test
+    },
+    # OOD additions
+    "dtd": {
+        "dataset_class": stable_ds.DTD,
+        "config_name": None,
+        "num_classes": 47,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "validation", "test"],
+    },
+    "eurosat": {
+        "dataset_class": stable_ds.EuroSAT,
+        "config_name": None,
+        "num_classes": 10,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "validation", "test"],
+    },
+    "plant_village": {
+        "dataset_class": stable_ds.PlantVillage,
+        "config_name": "color",  # RGB variant (default); alternatives: "grayscale", "segmented"
+        "num_classes": 38,
+        "input_size": 224,
+        "normalization": "imagenet",
+        "splits": ["train", "test", "test"],  # no validation; reuse test
+    },
 }
 
 # Normalization presets
