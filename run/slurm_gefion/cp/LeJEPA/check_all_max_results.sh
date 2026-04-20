@@ -53,7 +53,9 @@ resolve_array_job_from_agg() {
     if [[ "${dep}" =~ afterany:([0-9_]+) ]]; then
         echo "${BASH_REMATCH[1]}"
     else
-        echo ""
+        # Fallback: submit_all_max.sh submits each array job immediately before
+        # its aggregation job, so agg_job_id = array_job_id + 1.
+        echo "$((agg_job_id - 1))"
     fi
 }
 
@@ -71,7 +73,7 @@ if [ "$#" -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
 
     for agg_job_id in "${agg_jobs[@]}"; do
         array_job_id="$(resolve_array_job_from_agg "${agg_job_id}")"
-        if [ -z "${array_job_id}" ]; then
+        if [ -z "${array_job_id}" ] || ! [[ "${array_job_id}" =~ ^[0-9]+$ ]]; then
             echo "Could not resolve array dependency for aggregation job ${agg_job_id}" >&2
             exit 1
         fi
