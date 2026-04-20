@@ -129,6 +129,10 @@ def _sample_shared_train_indices_by_class(args, dataset):
 
     The selected indices are intended to be reused across CP and SFT so both
     stages see the same train subset, while preserving class balance.
+
+    Fallback: when stratified split is infeasible (e.g., n_samples == n_classes
+    with unbalanced classes so some class would round to 0), pick exactly one
+    random sample per class.
     """
     n_total = len(dataset)
     if args.n_samples > n_total:
@@ -144,14 +148,29 @@ def _sample_shared_train_indices_by_class(args, dataset):
     labels_source = dataset.hf_dataset if hasattr(dataset, "hf_dataset") else dataset
     all_labels = np.array(labels_source["label"]).ravel()
 
-    selected_indices, _ = train_test_split(
-        all_indices,
-        train_size=args.n_samples,
-        stratify=all_labels,
-        random_state=args.seed,
-    )
-
-    return selected_indices.tolist()
+    try:
+        selected_indices, _ = train_test_split(
+            all_indices,
+            train_size=args.n_samples,
+            stratify=all_labels,
+            random_state=args.seed,
+        )
+        return selected_indices.tolist()
+    except ValueError as e:
+        # Typical cause: n_samples close to n_classes with unbalanced class
+        # counts. Fall back to one random sample per class.
+        print(
+            f"[warn] stratified split failed ({e}); "
+            f"falling back to 1-sample-per-class sampling "
+            f"(requested n={args.n_samples}, returning n_classes samples)"
+        )
+        rng = np.random.RandomState(args.seed)
+        selected = []
+        for lbl in np.unique(all_labels):
+            class_indices = all_indices[all_labels == lbl]
+            selected.append(int(rng.choice(class_indices)))
+        rng.shuffle(selected)
+        return selected
 
 
 def create_eval_loaders(
