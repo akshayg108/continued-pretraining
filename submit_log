@@ -1,0 +1,55 @@
+Submitting all LeJEPA MAX jobs from /dcai/projects/iu_0092/projects/cp/continued-pretraining/run/slurm_gefion/cp/LeJEPA
+
+============================================================
+Submitting: random/OctMNIST/submit_max.sh
+============================================================
+Submitted array job: 311096
+Submitted aggregation job: 311097 (dependency: afterany:311096)
+
+============================================================
+Submitting: random/PathMNIST/submit_max.sh
+============================================================
+Submitted array job: 311098
+Submitted aggregation job: 311099 (dependency: afterany:311098)
+
+============================================================
+Submitting: random/Food101/submit_max.sh
+============================================================
+Submitted array job: 311100
+Submitted aggregation job: 311101 (dependency: afterany:311100)
+
+============================================================
+Submitting: pretrained/OctMNIST/dinov3_submit_max.sh
+============================================================
+Submitted array job: 311102
+Submitted aggregation job: 311103 (dependency: afterany:311102)
+
+============================================================
+Submitting: pretrained/OctMNIST/mae_submit_max.sh
+============================================================
+Submitted array job: 311104
+Submitted aggregation job: 311105 (dependency: afterany:311104)
+
+============================================================
+Submitting: pretrained/OctMNIST/clip_submit_max.sh
+============================================================
+Submitted array job: 311106
+Submitted aggregation job: 311107 (dependency: afterany:311106)
+
+============================================================
+Submitting: pretrained/PathMNIST/dinov3_submit_max.sh
+============================================================
+Submitted array job: 311108
+Submitted aggregation job: 311109 (dependency: afterany:311108)
+
+============================================================
+Submitting: pretrained/PathMNIST/mae_submit_max.sh
+============================================================
+Submitted array job: 311110
+Submitted aggregation job: 311111 (dependency: afterany:311110)
+
+============================================================
+Submitting: pretrained/Food101/dinov3_submit_max.sh
+============================================================
+Submitted array job: 311112
+Submitted aggregation job: 311113 (dependency: afterany:311112)
