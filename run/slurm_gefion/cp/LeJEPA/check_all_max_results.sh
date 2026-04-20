@@ -45,7 +45,7 @@ resolve_array_job_from_agg() {
 
     job_info="$(scontrol show job "${agg_job_id}" 2>/dev/null || true)"
     if [ -z "${job_info}" ]; then
-        echo ""
+        echo "$((agg_job_id - 1))"
         return
     fi
 
