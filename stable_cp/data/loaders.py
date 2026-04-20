@@ -148,6 +148,22 @@ def _sample_shared_train_indices_by_class(args, dataset):
     labels_source = dataset.hf_dataset if hasattr(dataset, "hf_dataset") else dataset
     all_labels = np.array(labels_source["label"]).ravel()
 
+    unique_labels = np.unique(all_labels)
+    n_classes = len(unique_labels)
+
+    def _one_per_class(reason):
+        print(
+            f"[warn] {reason}; falling back to 1-sample-per-class sampling "
+            f"(requested n={args.n_samples}, returning {n_classes} samples)"
+        )
+        rng = np.random.RandomState(args.seed)
+        selected = []
+        for lbl in unique_labels:
+            class_indices = all_indices[all_labels == lbl]
+            selected.append(int(rng.choice(class_indices)))
+        rng.shuffle(selected)
+        return selected
+
     try:
         selected_indices, _ = train_test_split(
             all_indices,
@@ -155,22 +171,16 @@ def _sample_shared_train_indices_by_class(args, dataset):
             stratify=all_labels,
             random_state=args.seed,
         )
-        return selected_indices.tolist()
     except ValueError as e:
-        # Typical cause: n_samples close to n_classes with unbalanced class
-        # counts. Fall back to one random sample per class.
-        print(
-            f"[warn] stratified split failed ({e}); "
-            f"falling back to 1-sample-per-class sampling "
-            f"(requested n={args.n_samples}, returning n_classes samples)"
+        return _one_per_class(f"stratified split raised: {e}")
+
+    selected_labels = all_labels[selected_indices]
+    if len(np.unique(selected_labels)) < n_classes:
+        return _one_per_class(
+            f"stratified split covered only "
+            f"{len(np.unique(selected_labels))}/{n_classes} classes"
         )
-        rng = np.random.RandomState(args.seed)
-        selected = []
-        for lbl in np.unique(all_labels):
-            class_indices = all_indices[all_labels == lbl]
-            selected.append(int(rng.choice(class_indices)))
-        rng.shuffle(selected)
-        return selected
+    return selected_indices.tolist()
 
 
 def create_eval_loaders(
