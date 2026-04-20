@@ -312,17 +312,39 @@ echo "Status report written to: ${STATUS_CSV}"
 echo "Combined results written to: ${COMBINED_CSV}"
 echo ""
 
-if awk -F',' '
-    NR > 1 && (
-        $3 != "SUCCESS" ||
-        $9 != "COMPLETED" ||
-        $12 != "yes"
-    ) {
-        exit 1
-    }
-' "${STATUS_CSV}"; then
-    echo "All tracked runs completed successfully and produced CSV outputs."
-else
-    echo "Some runs are incomplete, failed, or missing CSV outputs."
-    exit 2
-fi
+python3 - "${STATUS_CSV}" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+status_csv = Path(sys.argv[1])
+
+bad_rows = []
+with status_csv.open(newline="") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        if (
+            row["array_status"] != "SUCCESS"
+            or row["aggregation_state"] != "COMPLETED"
+            or row["csv_exists"] != "yes"
+        ):
+            bad_rows.append(row)
+
+if not bad_rows:
+    print("All tracked runs completed successfully and produced CSV outputs.")
+    raise SystemExit(0)
+
+print("Some runs are incomplete, failed, or missing CSV outputs:")
+for row in bad_rows:
+    print(
+        f"- {row['submitter']}: "
+        f"array_job={row['array_job_id']} array_status={row['array_status']} "
+        f"failed_tasks={row['seed_tasks_failed']} running_or_pending={row['seed_tasks_running_or_pending']} "
+        f"agg_job={row['aggregation_job_id']} agg_state={row['aggregation_state']} "
+        f"csv_exists={row['csv_exists']}"
+    )
+    if row["array_failure_details"]:
+        print(f"  details: {row['array_failure_details']}")
+
+raise SystemExit(2)
+PY
