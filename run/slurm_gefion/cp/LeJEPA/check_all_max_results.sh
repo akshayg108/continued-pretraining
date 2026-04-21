@@ -4,12 +4,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-
-SUBMIT_LOG_PATH="${1:-${REPO_ROOT}/submit_log}"
 OUTPUT_ROOT="/dcai/projects/iu_0092/projects/cp/outputs/logs/cp/LeJEPA"
 COMBINED_DIR="${OUTPUT_ROOT}/combined"
-STATUS_CSV="${COMBINED_DIR}/lejepa_max_status.csv"
-COMBINED_CSV="${COMBINED_DIR}/lejepa_max_combined_results.csv"
+MAX_STATUS_CSV="${COMBINED_DIR}/lejepa_max_status.csv"
+MAX_COMBINED_CSV="${COMBINED_DIR}/lejepa_max_combined_results.csv"
 
 EXPECTED_SUBMITTERS=(
     "random/OctMNIST/submit_max.sh"
@@ -30,118 +28,22 @@ if ! command -v sacct >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! command -v scontrol >/dev/null 2>&1; then
-    echo "scontrol is required but was not found on PATH" >&2
-    exit 1
-fi
-
-declare -a submitters=()
-declare -a array_jobs=()
-declare -a agg_jobs=()
-
 resolve_array_job_from_agg() {
     local agg_job_id="$1"
     local job_info dep
 
-    job_info="$(scontrol show job "${agg_job_id}" 2>/dev/null || true)"
-    if [ -z "${job_info}" ]; then
-        echo "$((agg_job_id - 1))"
-        return
-    fi
-
-    dep="$(printf '%s\n' "${job_info}" | tr ' ' '\n' | grep '^Dependency=' | head -n 1 | cut -d= -f2-)"
-    if [[ "${dep}" =~ afterany:([0-9_]+) ]]; then
-        echo "${BASH_REMATCH[1]}"
-    else
-        # Fallback: submit_all_max.sh submits each array job immediately before
-        # its aggregation job, so agg_job_id = array_job_id + 1.
-        echo "$((agg_job_id - 1))"
-    fi
-}
-
-if [ "$#" -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
-    if [ "$#" -ne "${#EXPECTED_SUBMITTERS[@]}" ]; then
-        echo "Expected ${#EXPECTED_SUBMITTERS[@]} aggregation job IDs, got $#." >&2
-        exit 1
-    fi
-
-    AGG_ID_ARGS=("$@")
-    for i in "${!EXPECTED_SUBMITTERS[@]}"; do
-        submitters+=("${EXPECTED_SUBMITTERS[$i]}")
-        agg_jobs+=("${AGG_ID_ARGS[$i]}")
-    done
-
-    for agg_job_id in "${agg_jobs[@]}"; do
-        array_job_id="$(resolve_array_job_from_agg "${agg_job_id}")"
-        if [ -z "${array_job_id}" ] || ! [[ "${array_job_id}" =~ ^[0-9]+$ ]]; then
-            echo "Could not resolve array dependency for aggregation job ${agg_job_id}" >&2
-            exit 1
+    if command -v scontrol >/dev/null 2>&1; then
+        job_info="$(scontrol show job "${agg_job_id}" 2>/dev/null || true)"
+        dep="$(printf '%s\n' "${job_info}" | tr ' ' '\n' | grep '^Dependency=' | head -n 1 | cut -d= -f2- || true)"
+        if [[ "${dep}" =~ afterany:([0-9_]+) ]]; then
+            echo "${BASH_REMATCH[1]}"
+            return
         fi
-        array_jobs+=("${array_job_id}")
-    done
-else
-    if [ ! -f "${SUBMIT_LOG_PATH}" ]; then
-        echo "submit log not found: ${SUBMIT_LOG_PATH}" >&2
-        exit 1
     fi
 
-    current_submitter=""
-    while IFS= read -r line; do
-        if [[ "${line}" =~ ^Submitting:\ (.+)$ ]]; then
-            current_submitter="${BASH_REMATCH[1]}"
-        elif [[ "${line}" =~ ^Submitted\ array\ job:\ ([0-9]+)$ ]]; then
-            submitters+=("${current_submitter}")
-            array_jobs+=("${BASH_REMATCH[1]}")
-        elif [[ "${line}" =~ ^Submitted\ aggregation\ job:\ ([0-9]+) ]]; then
-            agg_jobs+=("${BASH_REMATCH[1]}")
-        fi
-    done < "${SUBMIT_LOG_PATH}"
-fi
-
-if [ "${#submitters[@]}" -eq 0 ]; then
-    echo "No submitted jobs found." >&2
-    exit 1
-fi
-
-if [ "${#submitters[@]}" -ne "${#array_jobs[@]}" ] || [ "${#submitters[@]}" -ne "${#agg_jobs[@]}" ]; then
-    echo "submit log is incomplete or malformed: counts do not match" >&2
-    exit 1
-fi
-
-csv_path_for_submitter() {
-    case "$1" in
-        random/OctMNIST/submit_max.sh)
-            echo "${OUTPUT_ROOT}/random/OctMNIST/SCRATCH_lejepa_cp_results.csv"
-            ;;
-        random/PathMNIST/submit_max.sh)
-            echo "${OUTPUT_ROOT}/random/PathMNIST/SCRATCH_lejepa_cp_results.csv"
-            ;;
-        random/Food101/submit_max.sh)
-            echo "${OUTPUT_ROOT}/random/Food101/SCRATCH_lejepa_cp_results.csv"
-            ;;
-        pretrained/OctMNIST/dinov3_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/DINOv3/all/DINOv3_lejepa_cp_results.csv"
-            ;;
-        pretrained/OctMNIST/mae_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/MAE/all/MAE_lejepa_cp_results.csv"
-            ;;
-        pretrained/OctMNIST/clip_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/CLIP/all/CLIP_lejepa_cp_results.csv"
-            ;;
-        pretrained/PathMNIST/dinov3_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/PathMNIST/DINOv3/all/DINOv3_lejepa_cp_results.csv"
-            ;;
-        pretrained/PathMNIST/mae_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/PathMNIST/MAE/all/MAE_lejepa_cp_results.csv"
-            ;;
-        pretrained/Food101/dinov3_submit_max.sh)
-            echo "${OUTPUT_ROOT}/pretrained/Food101/DINOv3/all/DINOv3_lejepa_cp_results.csv"
-            ;;
-        *)
-            echo "unknown submitter: $1" >&2
-            return 1
-            ;;
-    esac
+    # Fallback: our submit wrappers submit the array immediately before the
+    # aggregation job, so agg_job_id = array_job_id + 1 on normal Slurm setups.
+    echo "$((agg_job_id - 1))"
 }
 
 check_array_job() {
@@ -160,7 +62,7 @@ check_array_job() {
     local pending=0
     local bad_rows=()
 
-    while IFS='|' read -r jobidraw jobname state exitcode; do
+    while IFS='|' read -r jobidraw _jobname state exitcode; do
         [ -z "${jobidraw}" ] && continue
         if [[ "${jobidraw}" != *_* ]]; then
             continue
@@ -210,51 +112,237 @@ check_single_job() {
     echo "${state}|${exitcode}"
 }
 
-{
-    echo "submitter,array_job_id,array_status,seed_tasks_completed,seed_tasks_failed,seed_tasks_running_or_pending,array_failure_details,aggregation_job_id,aggregation_state,aggregation_exit_code,csv_path,csv_exists"
+csv_path_for_submitter() {
+    case "$1" in
+        random/OctMNIST/submit_max.sh)
+            echo "${OUTPUT_ROOT}/random/OctMNIST/SCRATCH_lejepa_cp_results.csv"
+            ;;
+        random/PathMNIST/submit_max.sh)
+            echo "${OUTPUT_ROOT}/random/PathMNIST/SCRATCH_lejepa_cp_results.csv"
+            ;;
+        random/Food101/submit_max.sh)
+            echo "${OUTPUT_ROOT}/random/Food101/SCRATCH_lejepa_cp_results.csv"
+            ;;
+        pretrained/OctMNIST/dinov3_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/DINOv3/all/DINOv3_lejepa_cp_results.csv"
+            ;;
+        pretrained/OctMNIST/mae_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/MAE/all/MAE_lejepa_cp_results.csv"
+            ;;
+        pretrained/OctMNIST/clip_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/OctMNIST/CLIP/all/CLIP_lejepa_cp_results.csv"
+            ;;
+        pretrained/PathMNIST/dinov3_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/PathMNIST/DINOv3/all/DINOv3_lejepa_cp_results.csv"
+            ;;
+        pretrained/PathMNIST/mae_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/PathMNIST/MAE/all/MAE_lejepa_cp_results.csv"
+            ;;
+        pretrained/Food101/dinov3_submit_max.sh)
+            echo "${OUTPUT_ROOT}/pretrained/Food101/DINOv3/all/DINOv3_lejepa_cp_results.csv"
+            ;;
+        *)
+            echo "unknown submitter: $1" >&2
+            return 1
+            ;;
+    esac
+}
 
-    overall_ok=1
-    combined_inputs=()
+check_remaining_job_file() {
+    local job_file="$1"
 
-    for i in "${!submitters[@]}"; do
-        submitter="${submitters[$i]}"
-        array_job_id="${array_jobs[$i]}"
-        agg_job_id="${agg_jobs[$i]}"
-        csv_path="$(csv_path_for_submitter "${submitter}")"
+    # shellcheck source=/dev/null
+    source "${job_file}"
 
-        IFS='|' read -r array_status seed_ok seed_bad seed_running array_details <<< "$(check_array_job "${array_job_id}")"
-        IFS='|' read -r agg_state agg_exit_code <<< "$(check_single_job "${agg_job_id}")"
+    if [ "${workflow:-}" != "remaining" ]; then
+        return 1
+    fi
 
-        csv_exists="no"
-        if [ -f "${csv_path}" ]; then
-            csv_exists="yes"
+    local array_id="${array_job_id:-}"
+    local agg_id="${aggregation_job_id:-}"
+    local status_csv="${STATUS_CSV:-}"
+    local combined_csv="${COMBINED_CSV:-}"
+
+    if [ -z "${array_id}" ] || [ -z "${agg_id}" ]; then
+        echo "Remaining job file is missing array_job_id or aggregation_job_id: ${job_file}" >&2
+        exit 1
+    fi
+
+    IFS='|' read -r array_status seed_ok seed_bad seed_running array_details <<< "$(check_array_job "${array_id}")"
+    IFS='|' read -r agg_state agg_exit_code <<< "$(check_single_job "${agg_id}")"
+
+    echo "Remaining LeJEPA status"
+    echo "  Job file: ${job_file}"
+    echo "  Array job: ${array_id} (${array_status}; completed=${seed_ok}, failed=${seed_bad}, running_or_pending=${seed_running})"
+    echo "  Aggregation job: ${agg_id} (${agg_state}, exit=${agg_exit_code})"
+    echo "  Status CSV: ${status_csv}"
+    echo "  Combined CSV: ${combined_csv}"
+    echo ""
+
+    local ok=1
+    if [ "${array_status}" != "SUCCESS" ]; then
+        ok=0
+        echo "Array job is not fully successful."
+        if [ -n "${array_details}" ]; then
+            echo "Failed array tasks: ${array_details}"
+        fi
+        echo ""
+    fi
+
+    if [ "${agg_state}" != "COMPLETED" ]; then
+        ok=0
+        echo "Aggregation job is not completed successfully."
+        echo ""
+    fi
+
+    if [ ! -f "${status_csv}" ]; then
+        ok=0
+        echo "Manifest status CSV is missing: ${status_csv}"
+        echo ""
+    else
+        if ! python3 - "${status_csv}" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+status_csv = Path(sys.argv[1])
+bad = []
+with status_csv.open(newline="") as f:
+    for row in csv.DictReader(f):
+        if row["complete"] != "yes":
+            bad.append(row)
+
+if not bad:
+    print("All manifest rows have all three seed JSONs.")
+    raise SystemExit(0)
+
+print("Manifest rows with missing seed JSONs:")
+for row in bad:
+    print(
+        f"- {row['run_id']}: {row['backbone']} {row['dataset']} "
+        f"n={row['n_samples']} missing_seeds={row['missing_seeds']}"
+    )
+raise SystemExit(2)
+PY
+        then
+            ok=0
+        fi
+        echo ""
+    fi
+
+    if [ ! -f "${combined_csv}" ]; then
+        ok=0
+        echo "Combined results CSV is missing: ${combined_csv}"
+        echo ""
+    fi
+
+    if [ "${ok}" -eq 1 ]; then
+        echo "All tracked remaining runs completed successfully and produced CSV outputs."
+        exit 0
+    fi
+
+    echo "Some remaining runs are incomplete, failed, or missing CSV outputs."
+    exit 2
+}
+
+check_max_jobs() {
+    local submit_log_path="${1:-${REPO_ROOT}/submit_log}"
+    shift || true
+
+    declare -a submitters=()
+    declare -a array_jobs=()
+    declare -a agg_jobs=()
+
+    if [ "$#" -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
+        if [ "$#" -ne "${#EXPECTED_SUBMITTERS[@]}" ]; then
+            echo "Expected ${#EXPECTED_SUBMITTERS[@]} aggregation job IDs, got $#." >&2
+            exit 1
         fi
 
-        if [ "${array_status}" != "SUCCESS" ] || [ "${agg_state}" != "COMPLETED" ]; then
-            overall_ok=0
+        local agg_job_id array_job_id
+        local agg_id_args=("$@")
+        for i in "${!EXPECTED_SUBMITTERS[@]}"; do
+            submitters+=("${EXPECTED_SUBMITTERS[$i]}")
+            agg_jobs+=("${agg_id_args[$i]}")
+        done
+
+        for agg_job_id in "${agg_jobs[@]}"; do
+            array_job_id="$(resolve_array_job_from_agg "${agg_job_id}")"
+            if [ -z "${array_job_id}" ] || ! [[ "${array_job_id}" =~ ^[0-9]+$ ]]; then
+                echo "Could not resolve array dependency for aggregation job ${agg_job_id}" >&2
+                exit 1
+            fi
+            array_jobs+=("${array_job_id}")
+        done
+    else
+        if [ ! -f "${submit_log_path}" ]; then
+            echo "submit log not found: ${submit_log_path}" >&2
+            exit 1
         fi
 
-        if [ "${csv_exists}" = "yes" ]; then
-            combined_inputs+=("${submitter}|${array_job_id}|${agg_job_id}|${csv_path}")
-        fi
+        local current_submitter=""
+        while IFS= read -r line; do
+            if [[ "${line}" =~ ^Submitting:\ (.+)$ ]]; then
+                current_submitter="${BASH_REMATCH[1]}"
+            elif [[ "${line}" =~ ^Submitted\ array\ job:\ ([0-9]+)$ ]]; then
+                submitters+=("${current_submitter}")
+                array_jobs+=("${BASH_REMATCH[1]}")
+            elif [[ "${line}" =~ ^Submitted\ aggregation\ job:\ ([0-9]+) ]]; then
+                agg_jobs+=("${BASH_REMATCH[1]}")
+            fi
+        done < "${submit_log_path}"
+    fi
 
-        printf '%s,%s,%s,%s,%s,%s,"%s",%s,%s,%s,%s,%s\n' \
-            "${submitter}" \
-            "${array_job_id}" \
-            "${array_status}" \
-            "${seed_ok}" \
-            "${seed_bad}" \
-            "${seed_running}" \
-            "${array_details}" \
-            "${agg_job_id}" \
-            "${agg_state}" \
-            "${agg_exit_code}" \
-            "${csv_path}" \
-            "${csv_exists}"
-    done
-} > "${STATUS_CSV}"
+    if [ "${#submitters[@]}" -eq 0 ]; then
+        echo "No submitted jobs found." >&2
+        exit 1
+    fi
 
-python3 - "${COMBINED_CSV}" "${combined_inputs[@]}" <<'PY'
+    if [ "${#submitters[@]}" -ne "${#array_jobs[@]}" ] || [ "${#submitters[@]}" -ne "${#agg_jobs[@]}" ]; then
+        echo "submit log is incomplete or malformed: counts do not match" >&2
+        exit 1
+    fi
+
+    {
+        echo "submitter,array_job_id,array_status,seed_tasks_completed,seed_tasks_failed,seed_tasks_running_or_pending,array_failure_details,aggregation_job_id,aggregation_state,aggregation_exit_code,csv_path,csv_exists"
+
+        combined_inputs=()
+
+        for i in "${!submitters[@]}"; do
+            submitter="${submitters[$i]}"
+            array_job_id="${array_jobs[$i]}"
+            agg_job_id="${agg_jobs[$i]}"
+            csv_path="$(csv_path_for_submitter "${submitter}")"
+
+            IFS='|' read -r array_status seed_ok seed_bad seed_running array_details <<< "$(check_array_job "${array_job_id}")"
+            IFS='|' read -r agg_state agg_exit_code <<< "$(check_single_job "${agg_job_id}")"
+
+            csv_exists="no"
+            if [ -f "${csv_path}" ]; then
+                csv_exists="yes"
+            fi
+
+            if [ "${csv_exists}" = "yes" ]; then
+                combined_inputs+=("${submitter}|${array_job_id}|${agg_job_id}|${csv_path}")
+            fi
+
+            printf '%s,%s,%s,%s,%s,%s,"%s",%s,%s,%s,%s,%s\n' \
+                "${submitter}" \
+                "${array_job_id}" \
+                "${array_status}" \
+                "${seed_ok}" \
+                "${seed_bad}" \
+                "${seed_running}" \
+                "${array_details}" \
+                "${agg_job_id}" \
+                "${agg_state}" \
+                "${agg_exit_code}" \
+                "${csv_path}" \
+                "${csv_exists}"
+        done
+    } > "${MAX_STATUS_CSV}"
+
+    python3 - "${MAX_COMBINED_CSV}" "${combined_inputs[@]}" <<'PY'
 import csv
 import sys
 from pathlib import Path
@@ -308,11 +396,11 @@ with combined_csv.open("w", newline="") as f:
     writer.writerows(rows)
 PY
 
-echo "Status report written to: ${STATUS_CSV}"
-echo "Combined results written to: ${COMBINED_CSV}"
-echo ""
+    echo "Status report written to: ${MAX_STATUS_CSV}"
+    echo "Combined results written to: ${MAX_COMBINED_CSV}"
+    echo ""
 
-python3 - "${STATUS_CSV}" <<'PY'
+    python3 - "${MAX_STATUS_CSV}" <<'PY'
 import csv
 import sys
 from pathlib import Path
@@ -331,10 +419,10 @@ with status_csv.open(newline="") as f:
             bad_rows.append(row)
 
 if not bad_rows:
-    print("All tracked runs completed successfully and produced CSV outputs.")
+    print("All tracked MAX runs completed successfully and produced CSV outputs.")
     raise SystemExit(0)
 
-print("Some runs are incomplete, failed, or missing CSV outputs:")
+print("Some MAX runs are incomplete, failed, or missing CSV outputs:")
 for row in bad_rows:
     print(
         f"- {row['submitter']}: "
@@ -348,3 +436,16 @@ for row in bad_rows:
 
 raise SystemExit(2)
 PY
+}
+
+if [ "$#" -gt 0 ] && [ -f "$1" ]; then
+    if grep -q '^workflow=remaining$' "$1"; then
+        check_remaining_job_file "$1"
+    fi
+fi
+
+if [ "$#" -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
+    check_max_jobs "" "$@"
+else
+    check_max_jobs "${1:-${REPO_ROOT}/submit_log}"
+fi
