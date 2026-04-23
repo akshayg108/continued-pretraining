@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-cars196-cli
+#SBATCH --job-name=d-car-cli
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

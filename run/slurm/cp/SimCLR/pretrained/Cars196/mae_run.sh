@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-cars196-mae
+#SBATCH --job-name=s-car-mae
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

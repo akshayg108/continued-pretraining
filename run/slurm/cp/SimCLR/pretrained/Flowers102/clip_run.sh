@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-flowers-cli
+#SBATCH --job-name=s-foll-cli
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

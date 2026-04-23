@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=lr-plantv-25000
+#SBATCH --job-name=lr-plvi-25000
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

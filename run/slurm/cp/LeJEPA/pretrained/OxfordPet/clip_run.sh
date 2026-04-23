@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=l-oxpet-cli
+#SBATCH --job-name=l-oxpt-cli
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

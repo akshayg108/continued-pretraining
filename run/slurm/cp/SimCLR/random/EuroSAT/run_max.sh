@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sr-eurosat-max
+#SBATCH --job-name=sr-euro-max
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

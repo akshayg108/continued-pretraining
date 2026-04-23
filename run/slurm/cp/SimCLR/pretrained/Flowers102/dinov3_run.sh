@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-flowers-din
+#SBATCH --job-name=s-foll-din
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

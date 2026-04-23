@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=lr-cub200
+#SBATCH --job-name=lr-cub
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

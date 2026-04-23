@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-eurosat-cli-max
+#SBATCH --job-name=d-euro-cli-max
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

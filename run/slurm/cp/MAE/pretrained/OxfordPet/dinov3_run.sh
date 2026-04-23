@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=m-oxpet-din
+#SBATCH --job-name=m-oxpt-din
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mr-eurosat-small
+#SBATCH --job-name=mr-euro-small
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
