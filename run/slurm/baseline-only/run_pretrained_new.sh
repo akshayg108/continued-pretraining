@@ -85,7 +85,6 @@ DINOV3_EXPERIMENTS=(
     # Flowers102 (MAX=1020, 102 classes)
     "flowers102 102"
     "flowers102 500"
-    "flowers102 1000"
     "flowers102 1020"
 
     # OxfordPet (MAX=3680, 37 classes)
@@ -121,7 +120,7 @@ MAE_EXPERIMENTS=(
     "cars196 8144"
     "cub200 1000"
     "cub200 5994"
-    "flowers102 1000"
+    "flowers102 100"
     "flowers102 1020"
     "oxford_pet 1000"
     "oxford_pet 3680"
@@ -138,7 +137,7 @@ CLIP_EXPERIMENTS=(
     "cars196 8144"
     "cub200 1000"
     "cub200 5994"
-    "flowers102 1000"
+    "flowers102 100"
     "flowers102 1020"
     "oxford_pet 1000"
     "oxford_pet 3680"

@@ -81,7 +81,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(1000 1020)
+NSAMPLES=(100 1020)
 
 # ============================================================
 # Run a single experiment
@@ -106,7 +106,6 @@ run_single() {
     python -u continued_pretraining.py \
         --cp-method mae \
         --post-cp-sft \
-        --aggregation \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \

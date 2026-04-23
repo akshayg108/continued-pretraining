@@ -81,7 +81,7 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(1000 1020)
+NSAMPLES=(100 1020)
 
 # ============================================================
 # Run a single experiment

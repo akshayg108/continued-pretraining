@@ -135,7 +135,6 @@ EXPERIMENTS=(
     # Flowers102 (MAX=1020, 102 classes)
     "flowers102 102"
     "flowers102 500"
-    "flowers102 1000"
     "flowers102 1020"
 
     # OxfordPet (MAX=3680, 37 classes)

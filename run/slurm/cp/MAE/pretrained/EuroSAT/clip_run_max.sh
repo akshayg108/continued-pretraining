@@ -106,7 +106,6 @@ run_single() {
     python -u continued_pretraining.py \
         --cp-method mae \
         --post-cp-sft \
-        --aggregation \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \

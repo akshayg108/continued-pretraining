@@ -107,7 +107,6 @@ run_single() {
         --cp-method mae \
         --random-init \
         --post-cp-sft \
-        --aggregation \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \

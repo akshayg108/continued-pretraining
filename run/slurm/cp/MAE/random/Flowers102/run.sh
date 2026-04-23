@@ -81,7 +81,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(102 500 1000 1020)
+NSAMPLES=(102 500 1020)
 
 # ============================================================
 # Run a single experiment
@@ -107,7 +107,6 @@ run_single() {
         --cp-method mae \
         --random-init \
         --post-cp-sft \
-        --aggregation \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
