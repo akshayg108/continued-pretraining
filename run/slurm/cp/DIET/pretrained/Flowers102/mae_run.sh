@@ -83,7 +83,7 @@ CUTMIX_ALPHA=1.0
 MIXUP_CUTMIX_PROB=0.0
 MIXUP_CUTMIX_SWITCH_PROB=0.5
 
-NSAMPLES=(100 1020)
+NSAMPLES=(102 1020)
 
 # ============================================================
 # Run a single experiment

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=pre-foll-mc100
+#SBATCH --job-name=bl-foll-mc100
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -7,9 +7,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
-#SBATCH --time=24:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/pre-cp-flowers102-mae-clip-100-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/pre-cp-flowers102-mae-clip-100-%j.err
+#SBATCH --time=4:00:00
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/bl-flowers102-mae-clip-102-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/bl-flowers102-mae-clip-102-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -40,73 +40,93 @@ nvidia-smi
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-BASE_CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/pre-cp-only/Flowers102"
-BASE_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/pre-cp-only/Flowers102"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/baseline-only"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/baseline-only"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
-mkdir -p ${DATA_DIR} ${SLURM_LOG_DIR}
+mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="flowers102"
-DISPLAY_NAME="Flowers102"
 MODEL_SIZE="ViT-B"
 BATCH_SIZE=32
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
-NSAMPLES=(100)
 
 # ============================================================
-# Backbone definitions (MAE + CLIP)
+# Backbone definitions (MAE + CLIP only)
 # ============================================================
 BACKBONE_TAGS=("MAE" "CLIP")
-BACKBONE_TIMMS=("vit_base_patch16_224.mae" "vit_base_patch16_clip_224.openai")
+BACKBONE_TIMM_NAMES=(
+    "vit_base_patch16_224.mae"
+    "vit_base_patch16_clip_224.openai"
+)
 POOL_STRATEGIES=("mean" "cls")
 
 # ============================================================
-# Run a single experiment
+# Experiment list: Flowers102 n=100 only
+# ============================================================
+EXPERIMENTS=(
+    "flowers102 102"
+)
+
+# ============================================================
+# CSV column name mapping
+# ============================================================
+get_display_name() {
+    case "$1" in
+        flowers102)     echo "Flowers102" ;;
+        *)              echo "$1" ;;
+    esac
+}
+
+# ============================================================
+# Run a single experiment (baseline only: KNN + Linear Probe)
 # ============================================================
 run_single() {
     local backbone_tag=$1
     local backbone_timm=$2
-    local pool_strategy=$3
-    local log_dir=$4
-    local ckpt_dir=$5
-    local n_samples=$6
-    local seed=$7
+    local dataset=$3
+    local n_samples=$4
+    local seed=$5
+    local pool_strategy=$6
 
-    local results_file="${log_dir}/${backbone_tag}_${DATASET}_n${n_samples}_seed${seed}.json"
+    local dataset_results_dir="${LOG_DIR}/${dataset}"
+    mkdir -p "${dataset_results_dir}"
+
+    local results_file="${dataset_results_dir}/${backbone_tag}_${dataset}_n${n_samples}_seed${seed}.json"
+
+    local dataset_ckpt_dir="${CKPT_DIR}/${dataset}"
+    mkdir -p "${dataset_ckpt_dir}"
 
     if [ -f "$results_file" ]; then
-        echo "[SKIP] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
+        echo "[SKIP] ${backbone_tag} | ${dataset} n=${n_samples} seed=${seed} (results file exists)"
         return 0
     fi
 
     echo "=========================================="
-    echo "[RUN] Pre-CP ${backbone_tag} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] ${backbone_tag} | ${dataset} | n=${n_samples} | seed=${seed}"
     echo "  Start: $(date)"
     echo "=========================================="
 
     local backbone_tag_lower=$(echo "${backbone_tag}" | tr '[:upper:]' '[:lower:]')
 
     python -u continued_pretraining.py \
-        --cp-method simclr \
+        --cp-method diet \
         --no-cp \
-        --pre-cp-sft \
-        --dataset ${DATASET} \
+        --dataset ${dataset} \
         --backbone ${backbone_timm} \
         --n-samples ${n_samples} \
         --batch-size ${BATCH_SIZE} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
         --pool-strategy ${pool_strategy} \
-        --checkpoint-dir ${ckpt_dir} \
+        --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
-        --project pre-cp-${backbone_tag_lower}-${DATASET} \
-        --run-name "${backbone_tag}_${DATASET}_n${n_samples}_s${seed}" \
+        --project baseline-pretrained \
+        --run-name "${backbone_tag}_${dataset}_n${n_samples}_s${seed}" \
         --seed ${seed} \
-        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?
@@ -114,7 +134,7 @@ run_single() {
     echo "  End: $(date)"
 
     if [ $exit_code -ne 0 ]; then
-        echo "[FAIL] ${backbone_tag} | ${DATASET} n=${n_samples} seed=${seed}"
+        echo "[FAIL] ${backbone_tag} | ${dataset} n=${n_samples} seed=${seed}"
     fi
 
     return $exit_code
@@ -125,28 +145,30 @@ run_single() {
 # ============================================================
 aggregate_results() {
     local backbone_tag=$1
-    local log_dir=$2
+    local dataset=$2
     local n_samples=$3
+    local display_name=$(get_display_name ${dataset})
     local csv_file=$4
+
+    local dataset_results_dir="${LOG_DIR}/${dataset}"
 
     python3 << PYEOF
 import json, os, statistics
 
-log_dir = "${log_dir}"
+results_dir = "${dataset_results_dir}"
 backbone_tag = "${backbone_tag}"
-dataset = "${DATASET}"
+dataset = "${dataset}"
 n_samples = "${n_samples}"
-display_name = "${DISPLAY_NAME}"
+display_name = "${display_name}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
 
 knn_f1s = []
 linear_f1s = []
-sft_f1s = []
 
 for i, seed in enumerate(seeds):
-    results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
+    results_file = os.path.join(results_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
         print(f"  Warning: {results_file} not found, skipping seed {seed}")
         continue
@@ -156,22 +178,18 @@ for i, seed in enumerate(seeds):
 
     knn_f1 = data.get("pre_knn_f1")
     linear_f1 = data.get("pre_linear_f1")
-    sft_f1 = data.get("pre_sft_f1")
 
     if knn_f1 is not None:
         knn_f1s.append(knn_f1)
     if linear_f1 is not None:
         linear_f1s.append(linear_f1)
-    if sft_f1 is not None:
-        sft_f1s.append(sft_f1)
 
     with open(csv_file, "a") as f:
         knn_str = f"{knn_f1:.6f}" if knn_f1 is not None else ""
         lin_str = f"{linear_f1:.6f}" if linear_f1 is not None else ""
-        sft_str = f"{sft_f1:.6f}" if sft_f1 is not None else ""
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},{knn_str},,{lin_str},,{sft_str},\n")
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},{knn_str},,{lin_str},\n")
 
-if len(knn_f1s) > 0 or len(linear_f1s) > 0 or len(sft_f1s) > 0:
+if len(knn_f1s) > 0 or len(linear_f1s) > 0:
     def mean_std(vals):
         if len(vals) == 0:
             return "", ""
@@ -181,12 +199,11 @@ if len(knn_f1s) > 0 or len(linear_f1s) > 0 or len(sft_f1s) > 0:
 
     knn_mean, knn_std = mean_std(knn_f1s)
     lin_mean, lin_std = mean_std(linear_f1s)
-    sft_mean, sft_std = mean_std(sft_f1s)
 
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,{knn_mean},{knn_std},{lin_mean},{lin_std},{sft_mean},{sft_std}\n")
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,{knn_mean},{knn_std},{lin_mean},{lin_std}\n")
 
-    print(f"  [{backbone_tag}] {display_name} n={n_samples}: knn_f1={knn_mean}+-{knn_std} linear_f1={lin_mean}+-{lin_std} sft_f1={sft_mean}+-{sft_std}")
+    print(f"  [{backbone_tag}] {display_name} n={n_samples}: knn_f1={knn_mean}+-{knn_std} linear_f1={lin_mean}+-{lin_std}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
 
@@ -198,7 +215,8 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Pre-CP-Only: ${DISPLAY_NAME} (MAE + CLIP, n=100)"
+echo "Starting Baseline-Only: Flowers102 MAE+CLIP n=100"
+echo "Backbones: ${BACKBONE_TAGS[*]}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
@@ -208,12 +226,8 @@ TOTAL_FAIL=0
 
 for idx in "${!BACKBONE_TAGS[@]}"; do
     BACKBONE_TAG="${BACKBONE_TAGS[$idx]}"
-    BACKBONE_TIMM="${BACKBONE_TIMMS[$idx]}"
+    BACKBONE_TIMM="${BACKBONE_TIMM_NAMES[$idx]}"
     POOL_STRATEGY="${POOL_STRATEGIES[$idx]}"
-
-    CKPT_DIR="${BASE_CKPT_DIR}/${BACKBONE_TAG}"
-    LOG_DIR="${BASE_LOG_DIR}/${BACKBONE_TAG}"
-    mkdir -p ${CKPT_DIR} ${LOG_DIR}
 
     echo ""
     echo "############################################################"
@@ -221,20 +235,25 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
     echo "############################################################"
     echo ""
 
-    CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_pre_cp_results.csv"
-    if [ ! -f "${CSV_FILE}" ]; then
-        echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
-    fi
-    echo "CSV file: ${CSV_FILE}"
+    for exp in "${EXPERIMENTS[@]}"; do
+        read -r dataset n_samples <<< "$exp"
+        display_name=$(get_display_name ${dataset})
 
-    for n_samples in "${NSAMPLES[@]}"; do
+        dataset_log_dir="${LOG_DIR}/${dataset}"
+        mkdir -p "${dataset_log_dir}"
+        CSV_FILE="${dataset_log_dir}/${BACKBONE_TAG}_baseline_results.csv"
+        if [ ! -f "${CSV_FILE}" ]; then
+            echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std" > ${CSV_FILE}
+        fi
+        echo "CSV file: ${CSV_FILE}"
+
         echo ""
         echo "============================================================"
-        echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
+        echo "Experiment: ${BACKBONE_TAG} | ${display_name} | n_samples=${n_samples}"
         echo "============================================================"
 
         for seed in "${SEEDS[@]}"; do
-            run_single ${BACKBONE_TAG} ${BACKBONE_TIMM} ${POOL_STRATEGY} ${LOG_DIR} ${CKPT_DIR} ${n_samples} ${seed}
+            run_single ${BACKBONE_TAG} ${BACKBONE_TIMM} ${dataset} ${n_samples} ${seed} ${POOL_STRATEGY}
             if [ $? -eq 0 ]; then
                 TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
             else
@@ -242,16 +261,16 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
             fi
         done
 
-        echo "--- Aggregating results for ${BACKBONE_TAG} n=${n_samples} ---"
-        aggregate_results ${BACKBONE_TAG} ${LOG_DIR} ${n_samples} ${CSV_FILE}
+        echo "--- Aggregating results for ${BACKBONE_TAG} | ${display_name} n=${n_samples} ---"
+        aggregate_results ${BACKBONE_TAG} ${dataset} ${n_samples} ${CSV_FILE}
     done
 done
 
 echo ""
 echo "=========================================="
-echo "All Pre-CP ${DISPLAY_NAME} MAE+CLIP experiments completed!"
+echo "All baseline experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
-echo "  Results: ${BASE_LOG_DIR}/"
+echo "  Results: ${LOG_DIR}/flowers102/"
 echo "  End Time: $(date)"
 echo "=========================================="
