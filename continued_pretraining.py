@@ -430,6 +430,8 @@ def run_training(
             module,
             ds_cfg["num_classes"],
             embed_dim,
+            include_linear=False,
+            include_knn=False,
             include_f1=True,
             include_auroc=True,
             knn_queue_length=max(args.n_samples, 5000),
