@@ -60,11 +60,11 @@ pretrained_food101_clip_n75750,pretrained,CLIP,vit_base_patch16_clip_224.openai,
 pretrained_fgvc_aircraft_dinov3_n100,pretrained,DINOv3,vit_base_patch16_dinov3.lvd1689m,fgvc_aircraft,FGVC_Aircraft,ViT-B,100,2,cls,no,lejepa-cp-dinov3-fgvc_aircraft,67
 pretrained_fgvc_aircraft_dinov3_n500,pretrained,DINOv3,vit_base_patch16_dinov3.lvd1689m,fgvc_aircraft,FGVC_Aircraft,ViT-B,500,2,cls,no,lejepa-cp-dinov3-fgvc_aircraft,68
 pretrained_fgvc_aircraft_dinov3_n1000,pretrained,DINOv3,vit_base_patch16_dinov3.lvd1689m,fgvc_aircraft,FGVC_Aircraft,ViT-B,1000,2,cls,no,lejepa-cp-dinov3-fgvc_aircraft,69
-pretrained_fgvc_aircraft_dinov3_n3400,pretrained,DINOv3,vit_base_patch16_dinov3.lvd1689m,fgvc_aircraft,FGVC_Aircraft,ViT-B,3400,4,cls,no,lejepa-cp-dinov3-fgvc_aircraft,70
+pretrained_fgvc_aircraft_dinov3_n3334,pretrained,DINOv3,vit_base_patch16_dinov3.lvd1689m,fgvc_aircraft,FGVC_Aircraft,ViT-B,3334,4,cls,no,lejepa-cp-dinov3-fgvc_aircraft,70
 pretrained_fgvc_aircraft_mae_n1000,pretrained,MAE,vit_base_patch16_224.mae,fgvc_aircraft,FGVC_Aircraft,ViT-B,1000,2,mean,no,lejepa-cp-mae-fgvc_aircraft,71
-pretrained_fgvc_aircraft_mae_n3400,pretrained,MAE,vit_base_patch16_224.mae,fgvc_aircraft,FGVC_Aircraft,ViT-B,3400,4,mean,no,lejepa-cp-mae-fgvc_aircraft,72
+pretrained_fgvc_aircraft_mae_n3334,pretrained,MAE,vit_base_patch16_224.mae,fgvc_aircraft,FGVC_Aircraft,ViT-B,3334,4,mean,no,lejepa-cp-mae-fgvc_aircraft,72
 pretrained_fgvc_aircraft_clip_n1000,pretrained,CLIP,vit_base_patch16_clip_224.openai,fgvc_aircraft,FGVC_Aircraft,ViT-B,1000,2,cls,no,lejepa-cp-clip-fgvc_aircraft,73
-pretrained_fgvc_aircraft_clip_n3400,pretrained,CLIP,vit_base_patch16_clip_224.openai,fgvc_aircraft,FGVC_Aircraft,ViT-B,3400,4,cls,no,lejepa-cp-clip-fgvc_aircraft,74
+pretrained_fgvc_aircraft_clip_n3334,pretrained,CLIP,vit_base_patch16_clip_224.openai,fgvc_aircraft,FGVC_Aircraft,ViT-B,3334,4,cls,no,lejepa-cp-clip-fgvc_aircraft,74
 random_dermamnist_scratch_n100,random,SCRATCH,vit_base_patch16_224,dermamnist,DermaMNIST,ViT-B,100,2,cls,yes,lejepa-cp-rand-dermamnist,296
 random_dermamnist_scratch_n500,random,SCRATCH,vit_base_patch16_224,dermamnist,DermaMNIST,ViT-B,500,2,cls,yes,lejepa-cp-rand-dermamnist,297
 random_dermamnist_scratch_n1000,random,SCRATCH,vit_base_patch16_224,dermamnist,DermaMNIST,ViT-B,1000,2,cls,yes,lejepa-cp-rand-dermamnist,298
@@ -101,4 +101,4 @@ random_food101_scratch_n25000,random,SCRATCH,vit_base_patch16_224,food101,Food10
 random_fgvc_aircraft_scratch_n100,random,SCRATCH,vit_base_patch16_224,fgvc_aircraft,FGVC_Aircraft,ViT-B,100,2,cls,yes,lejepa-cp-rand-fgvc_aircraft,332
 random_fgvc_aircraft_scratch_n500,random,SCRATCH,vit_base_patch16_224,fgvc_aircraft,FGVC_Aircraft,ViT-B,500,2,cls,yes,lejepa-cp-rand-fgvc_aircraft,333
 random_fgvc_aircraft_scratch_n1000,random,SCRATCH,vit_base_patch16_224,fgvc_aircraft,FGVC_Aircraft,ViT-B,1000,2,cls,yes,lejepa-cp-rand-fgvc_aircraft,334
-random_fgvc_aircraft_scratch_n3400,random,SCRATCH,vit_base_patch16_224,fgvc_aircraft,FGVC_Aircraft,ViT-B,3400,4,cls,yes,lejepa-cp-rand-fgvc_aircraft,335
+random_fgvc_aircraft_scratch_n3334,random,SCRATCH,vit_base_patch16_224,fgvc_aircraft,FGVC_Aircraft,ViT-B,3334,4,cls,yes,lejepa-cp-rand-fgvc_aircraft,335
