@@ -39,10 +39,10 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 echo "Submitting SimCLR MAX jobs"
 echo "Manifest: ${MANIFEST}"
 echo "Manifest rows: ${MANIFEST_ROWS}"
-echo "Array tasks: ${TASK_COUNT} (${MANIFEST_ROWS} runs x ${SEEDS_PER_RUN} seeds; max 20 concurrent)"
+echo "Array tasks: ${TASK_COUNT} (${MANIFEST_ROWS} runs x ${SEEDS_PER_RUN} seeds; max 6 concurrent)"
 echo ""
 
-ARRAY_JOB_ID="$(sbatch --parsable --array=0-${ARRAY_MAX}%20 "${RUNNER}" --manifest "${MANIFEST}")"
+ARRAY_JOB_ID="$(sbatch --parsable --array=0-${ARRAY_MAX}%6 "${RUNNER}" --manifest "${MANIFEST}")"
 
 STATUS_CSV="${COMBINED_DIR}/simclr_max_status_${ARRAY_JOB_ID}.csv"
 COMBINED_CSV="${COMBINED_DIR}/simclr_max_combined_results_${ARRAY_JOB_ID}.csv"
