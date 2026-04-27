@@ -26,7 +26,10 @@ from stable_cp.callbacks import (
     create_cp_evaluation_callbacks,
 )
 from stable_cp.callbacks.lejepa_metrics import LeJEPAMetricsCallback
-from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
+from stable_cp.evaluation.zero_shot_eval import (
+    load_backbone_from_checkpoint,
+    zero_shot_eval,
+)
 from stable_cp.evaluation.sft_eval import sft_evaluate
 from stable_cp.utils.backbone import BACKBONE_DIMS
 from stable_cp.data import DATASETS, get_dataset_config, get_dataset, CPSubset
@@ -463,6 +466,20 @@ def run_training(
     )()
 
 
+def load_merge_results(path):
+    """Load existing result metrics used to carry pre-CP fields into eval-only JSON."""
+    if not path:
+        return {}
+    merge_path = Path(path)
+    if not merge_path.exists():
+        raise FileNotFoundError(f"Merge results JSON not found: {merge_path}")
+    with merge_path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"Merge results JSON must contain an object: {merge_path}")
+    return data
+
+
 # ============================================================
 # Unified CLI
 # ============================================================
@@ -582,6 +599,12 @@ def main():
         action="store_true",
         help="Skip CP training entirely (baseline-only mode)",
     )
+    parser.add_argument(
+        "--eval-only-cp-checkpoint",
+        type=str,
+        default=None,
+        help="Load an existing CP checkpoint and run post-CP eval without CP training.",
+    )
 
     # ---- Results output ----
     parser.add_argument(
@@ -590,12 +613,25 @@ def main():
         default=None,
         help="Path to save results as JSON (for automated result collection)",
     )
+    parser.add_argument(
+        "--merge-results-json",
+        type=str,
+        default=None,
+        help="Existing results JSON whose pre-CP metrics should be preserved.",
+    )
 
     args = parser.parse_args()
+    eval_only_cp = bool(args.eval_only_cp_checkpoint)
 
     # ---- Validate flag combinations ----
     if args.no_cp and args.post_cp_sft:
         parser.error("--post-cp-sft requires CP training (remove --no-cp)")
+    if args.no_cp and eval_only_cp:
+        parser.error("--eval-only-cp-checkpoint cannot be combined with --no-cp")
+    if eval_only_cp and args.pre_cp_sft:
+        parser.error("--pre-cp-sft is not supported with --eval-only-cp-checkpoint")
+    if eval_only_cp and not Path(args.eval_only_cp_checkpoint).exists():
+        parser.error(f"CP checkpoint not found: {args.eval_only_cp_checkpoint}")
 
     # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
@@ -612,6 +648,12 @@ def main():
     if args.no_cp:
         project = args.project or f"{args.dataset}-sft-eval"
         run_name = f"sft_eval_{init_tag}_n{args.n_samples}_s{args.seed}"
+    elif eval_only_cp:
+        project = args.project or f"{args.dataset}-{args.cp_method}-cp-eval"
+        run_name = (
+            f"{args.cp_method}_eval_only_{init_tag}_n{args.n_samples}"
+            f"_blk{args.num_trained_blocks}_s{args.seed}"
+        )
     else:
         method_cfg = METHODS[args.cp_method]
         project = args.project or f"{args.dataset}-{args.cp_method}-cp"
@@ -651,7 +693,7 @@ def main():
         print(f"SFT data created: {len(indices)} train samples")
 
     # CP data (method-specific multi-view transforms)
-    if not args.no_cp:
+    if not args.no_cp and not eval_only_cp:
         method_cfg = METHODS[args.cp_method]
         cp_data, n_views = _create_cp_data(args, ds_cfg, data_dir, indices, method_cfg)
         print(
@@ -696,7 +738,7 @@ def main():
     # ================================================================
     # Phase 2: Continued Pretraining
     # ================================================================
-    if not args.no_cp:
+    if not args.no_cp and not eval_only_cp:
         method_cfg = METHODS[args.cp_method]
         optim_config = create_optim_config(args, warmup_epochs)
 
@@ -749,6 +791,9 @@ def main():
             logger,
             cp_ckpt_path,
         )
+    elif eval_only_cp:
+        print(f"Loading CP checkpoint for eval-only run: {args.eval_only_cp_checkpoint}")
+        load_backbone_from_checkpoint(backbone, args.eval_only_cp_checkpoint)
 
     # ================================================================
     # Phase 3: Post-CP evaluation
@@ -789,7 +834,8 @@ def main():
     # Save results to JSON
     # ================================================================
     if args.results_json:
-        results_json = {
+        results_json = load_merge_results(args.merge_results_json)
+        results_json.update({
             "dataset": args.dataset,
             "n_samples": args.n_samples,
             "backbone": args.backbone,
@@ -798,7 +844,10 @@ def main():
             "epochs": args.epochs,
             "random_init": getattr(args, "random_init", False),
             "no_cp": args.no_cp,
-        }
+            "eval_only_cp": eval_only_cp,
+        })
+        if eval_only_cp:
+            results_json["eval_only_cp_checkpoint"] = args.eval_only_cp_checkpoint
 
         # Pre-CP KNN / Linear Probe
         if baseline_results:
