@@ -1,10 +1,10 @@
 run_id,backbone_tag,backbone_timm,dataset,display_name,model_size,n_samples,num_trained_blocks,pool_strategy,project
 simclr_octmnist_dinov3_max,DINOv3,vit_base_patch16_dinov3.lvd1689m,octmnist,OctMNIST,ViT-B,97477,-1,cls,simclr-cp-dinov3-octmnist
-simclr_octmnist_mae_max,MAE,vit_base_patch16_224.mae,octmnist,OctMNIST,ViT-B,97477,-1,cls,simclr-cp-mae-octmnist
+simclr_octmnist_mae_max,MAE,vit_base_patch16_224.mae,octmnist,OctMNIST,ViT-B,97477,-1,mean,simclr-cp-mae-octmnist
 simclr_octmnist_clip_max,CLIP,vit_base_patch16_clip_224.openai,octmnist,OctMNIST,ViT-B,97477,-1,cls,simclr-cp-clip-octmnist
 simclr_pathmnist_dinov3_max,DINOv3,vit_base_patch16_dinov3.lvd1689m,pathmnist,PathMNIST,ViT-B,89996,-1,cls,simclr-cp-dinov3-pathmnist
-simclr_pathmnist_mae_max,MAE,vit_base_patch16_224.mae,pathmnist,PathMNIST,ViT-B,89996,-1,cls,simclr-cp-mae-pathmnist
+simclr_pathmnist_mae_max,MAE,vit_base_patch16_224.mae,pathmnist,PathMNIST,ViT-B,89996,-1,mean,simclr-cp-mae-pathmnist
 simclr_pathmnist_clip_max,CLIP,vit_base_patch16_clip_224.openai,pathmnist,PathMNIST,ViT-B,89996,-1,cls,simclr-cp-clip-pathmnist
 simclr_food101_dinov3_max,DINOv3,vit_base_patch16_dinov3.lvd1689m,food101,Food101,ViT-B,75750,-1,cls,simclr-cp-dinov3-food101
-simclr_food101_mae_max,MAE,vit_base_patch16_224.mae,food101,Food101,ViT-B,75750,-1,cls,simclr-cp-mae-food101
+simclr_food101_mae_max,MAE,vit_base_patch16_224.mae,food101,Food101,ViT-B,75750,-1,mean,simclr-cp-mae-food101
 simclr_food101_clip_max,CLIP,vit_base_patch16_clip_224.openai,food101,Food101,ViT-B,75750,-1,cls,simclr-cp-clip-food101
