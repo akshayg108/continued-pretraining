@@ -5,7 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=80g
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-rand-food101-max-%j.out
