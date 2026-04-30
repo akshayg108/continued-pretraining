@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=80g
-#SBATCH --exclude=cn259
+#SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-organamnist-max-%j.out
