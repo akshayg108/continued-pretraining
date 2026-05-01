@@ -38,7 +38,9 @@ def simclr_cp_forward(self, batch, stage):
 
         if self.training:
             projections = [self.projector(emb) for emb in embeddings]
-            out["loss"] = self.simclr_loss(projections[0], projections[1])
+            out["loss"] = self.rescale_loss_for_grad_acc(
+                self.simclr_loss(projections[0], projections[1])
+            )
             self.log(
                 f"{stage}/loss",
                 out["loss"],

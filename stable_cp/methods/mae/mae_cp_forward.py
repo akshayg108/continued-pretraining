@@ -47,8 +47,8 @@ def mae_forward(self, batch, stage):
             ids_keep=enc_out.ids_keep,
             output_masked_only=False,
         )
-        out["loss"] = self.loss_fn(
-            predictions, images.to(predictions.dtype), enc_out.mask
+        out["loss"] = self.rescale_loss_for_grad_acc(
+            self.loss_fn(predictions, images.to(predictions.dtype), enc_out.mask)
         )
         self.log(
             f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True

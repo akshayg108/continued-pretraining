@@ -63,7 +63,7 @@ def lejepa_forward(self, batch, stage):
 
             lamb = getattr(self, "lamb", 0.02)
             lejepa_loss = sigreg_loss * lamb + inv_loss * (1 - lamb)
-            out["loss"] = lejepa_loss
+            out["loss"] = self.rescale_loss_for_grad_acc(lejepa_loss)
 
             self.log(
                 f"{stage}/sigreg",

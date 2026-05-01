@@ -56,11 +56,12 @@ def diet_forward(self, batch, stage):
         logits = self.diet_head(F.normalize(embedding, p=2, dim=1))
         # Handle both hard labels [B] and soft labels [B, C] from MixUp/CutMix
         if sample_idx.ndim == 2:
-            out["loss"] = F.cross_entropy(logits, sample_idx)  # soft targets
+            diet_total_loss = F.cross_entropy(logits, sample_idx)  # soft targets
         else:
-            out["loss"] = self.diet_loss(
+            diet_total_loss = self.diet_loss(
                 logits, sample_idx
             )  # hard targets with label_smoothing
+        out["loss"] = self.rescale_loss_for_grad_acc(diet_total_loss)
         self.log(
             f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True
         )

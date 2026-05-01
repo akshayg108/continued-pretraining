@@ -20,6 +20,9 @@ from lightning.pytorch.callbacks import LearningRateMonitor
 
 import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_timm
+from stable_pretraining.utils.lightning_patch import apply_manual_optimization_patch
+
+apply_manual_optimization_patch()
 
 from stable_cp.callbacks import (
     FreezeBackboneCallback,
@@ -72,6 +75,14 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     parser.add_argument(
         "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
+    )
+    parser.add_argument(
+        "--accumulate-grad-batches",
+        type=int,
+        default=1,
+        help="Number of batches to accumulate gradients before stepping. "
+        "Effective batch size = batch_size * accumulate_grad_batches. "
+        "Use this when the desired batch size doesn't fit in memory.",
     )
     parser.add_argument(
         "--resume",
@@ -413,6 +424,7 @@ def run_training(
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
+        accumulate_grad_batches=getattr(args, "accumulate_grad_batches", 1),
         num_sanity_val_steps=0,
         log_every_n_steps=10,
         callbacks=callbacks,
