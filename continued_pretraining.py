@@ -151,7 +151,9 @@ def get_steps_per_epoch(n_samples, batch_size):
 
 
 def create_optim_config(args, warmup_epochs):
-    steps_per_epoch = get_steps_per_epoch(args.n_samples, args.batch_size)
+    accum = max(int(getattr(args, "accumulate_grad_batches", 1)), 1)
+    forwards_per_epoch = get_steps_per_epoch(args.n_samples, args.batch_size)
+    steps_per_epoch = max(forwards_per_epoch // accum, 1)
     total_steps = args.epochs * steps_per_epoch
     warmup_steps = warmup_epochs * steps_per_epoch
     return {
