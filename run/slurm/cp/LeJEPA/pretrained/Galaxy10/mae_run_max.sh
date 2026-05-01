@@ -62,7 +62,13 @@ BACKBONE_TAG="MAE"
 BACKBONE_TIMM="vit_base_patch16_224.mae"
 
 EPOCHS=150
-BATCH_SIZE=256
+EFFECTIVE_BATCH=256
+ACCUMULATE_GRAD_BATCHES=2
+if [ $((EFFECTIVE_BATCH % ACCUMULATE_GRAD_BATCHES)) -ne 0 ]; then
+    echo "[ERROR] EFFECTIVE_BATCH=${EFFECTIVE_BATCH} is not divisible by ACCUMULATE_GRAD_BATCHES=${ACCUMULATE_GRAD_BATCHES}" >&2
+    exit 1
+fi
+BATCH_SIZE=$((EFFECTIVE_BATCH / ACCUMULATE_GRAD_BATCHES))
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
@@ -112,6 +118,7 @@ run_single() {
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
         --pool-strategy mean \
+        --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
         --project lejepa-cp-mae-${DATASET} \

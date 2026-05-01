@@ -66,7 +66,13 @@ BACKBONE_TAG="CLIP"
 BACKBONE_TIMM="vit_base_patch16_clip_224.openai"
 
 EPOCHS=150
-BATCH_SIZE=32
+EFFECTIVE_BATCH=32
+ACCUMULATE_GRAD_BATCHES=1
+if [ $((EFFECTIVE_BATCH % ACCUMULATE_GRAD_BATCHES)) -ne 0 ]; then
+    echo "[ERROR] EFFECTIVE_BATCH=${EFFECTIVE_BATCH} is not divisible by ACCUMULATE_GRAD_BATCHES=${ACCUMULATE_GRAD_BATCHES}" >&2
+    exit 1
+fi
+BATCH_SIZE=$((EFFECTIVE_BATCH / ACCUMULATE_GRAD_BATCHES))
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
@@ -126,6 +132,7 @@ run_single() {
         --mixup-cutmix-prob ${MIXUP_CUTMIX_PROB} \
         --mixup-cutmix-switch-prob ${MIXUP_CUTMIX_SWITCH_PROB} \
         --pool-strategy cls \
+        --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
         --project diet-cp-clip-food101 \
