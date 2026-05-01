@@ -330,8 +330,11 @@ def create_train_datamodule(
         if remap_sample_idx
         else torch.utils.data.Subset(full_train, indices)
     )
-    steps_per_epoch = max(math.ceil(args.n_samples / args.batch_size), 1)
-    num_samples = steps_per_epoch * args.batch_size
+    accum = max(int(getattr(args, "accumulate_grad_batches", 1)), 1)
+    effective_batch = args.batch_size * accum
+    optim_steps_per_epoch = max(math.ceil(args.n_samples / effective_batch), 1)
+    steps_per_epoch = optim_steps_per_epoch * accum  # forwards per epoch
+    num_samples = steps_per_epoch * args.batch_size  # = optim_steps_per_epoch * effective_batch
     train_sampler = BalancedRepeatSampler(
         train_subset,
         num_samples=num_samples,
