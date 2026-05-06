@@ -112,6 +112,39 @@ def setup_paths(args):
     return data_dir, checkpoint_dir
 
 
+def get_runtime_dir(checkpoint_dir: Path) -> Path:
+    """Return a dedicated runtime-artifacts directory for Lightning side files."""
+    runtime_dir = checkpoint_dir / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return runtime_dir
+
+
+def sanitize_trainer_callbacks(trainer: pl.Trainer) -> None:
+    """Remove callbacks that are unstable for these CP runs."""
+    filtered_callbacks = []
+    removed = []
+
+    for callback in trainer.callbacks:
+        callback_name = callback.__class__.__name__
+        callback_module = callback.__class__.__module__
+
+        should_remove = (
+            callback_name == "HuggingFaceCheckpointCallback"
+            or callback_module.endswith(".hf_models")
+            or ".hf_models" in callback_module
+        )
+
+        if should_remove:
+            removed.append(f"{callback_module}.{callback_name}")
+            continue
+
+        filtered_callbacks.append(callback)
+
+    if removed:
+        print(f"Removing callbacks: {removed}")
+        trainer.callbacks = filtered_callbacks
+
+
 def get_config(args):
     ds_cfg = get_dataset_config(args.dataset)
     embed_dim = BACKBONE_DIMS.get(args.backbone, 384)
@@ -424,6 +457,8 @@ def run_training(
         print(f"[resume=False] Removing old checkpoint: {ckpt_path}")
         Path(ckpt_path).unlink()
 
+    runtime_dir = get_runtime_dir(Path(ckpt_path).parent)
+
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         accumulate_grad_batches=getattr(args, "accumulate_grad_batches", 1),
@@ -431,8 +466,10 @@ def run_training(
         log_every_n_steps=10,
         callbacks=callbacks,
         precision="16-mixed",
+        default_root_dir=str(runtime_dir),
         logger=logger,
     )
+    sanitize_trainer_callbacks(trainer)
     spt.Manager(
         trainer=trainer, module=module, data=data, ckpt_path=ckpt_path, seed=args.seed
     )()
