@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=l-breast
+#SBATCH --job-name=d-fgvc
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -10,8 +10,8 @@
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-rand-breastmnist-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-rand-breastmnist-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-fgvc_aircraft-dinov3-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-fgvc_aircraft-dinov3-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -53,23 +53,23 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/random/test"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/random/test"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/FGVC_Aircraft/DINOv3"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/pretrained/FGVC_Aircraft/DINOv3"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="breastmnist"
-DISPLAY_NAME="BreastMNIST"
+DATASET="fgvc_aircraft"
+DISPLAY_NAME="FGVC_Aircraft"
 MODEL_SIZE="ViT-B"
-BACKBONE_TAG="SCRATCH"
-BACKBONE_TIMM="vit_base_patch16_224"
+BACKBONE_TAG="DINOv3"
+BACKBONE_TIMM="vit_base_patch16_dinov3.lvd1689m"
 
 EPOCHS=150
 EFFECTIVE_BATCH=256
-ACCUMULATE_GRAD_BATCHES=2
+ACCUMULATE_GRAD_BATCHES=1
 if [ $((EFFECTIVE_BATCH % ACCUMULATE_GRAD_BATCHES)) -ne 0 ]; then
     echo "[ERROR] EFFECTIVE_BATCH=${EFFECTIVE_BATCH} is not divisible by ACCUMULATE_GRAD_BATCHES=${ACCUMULATE_GRAD_BATCHES}" >&2
     exit 1
@@ -78,10 +78,10 @@ BATCH_SIZE=$((EFFECTIVE_BATCH / ACCUMULATE_GRAD_BATCHES))
 LR=1e-4
 WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
-NUM_TRAINED_BLOCKS=4
+NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
-SEEDS=(42)
+SEEDS=(42 43 44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # LeJEPA hyperparameters
@@ -90,7 +90,7 @@ N_VIEWS=8
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(546)
+NSAMPLES=(3400)
 
 # ============================================================
 # Run a single experiment
@@ -107,14 +107,13 @@ run_single() {
     fi
 
     echo "=========================================="
-    echo "[RUN] LeJEPA-CP (random) ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] LeJEPA-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
     echo "  Start: $(date)"
     echo "=========================================="
 
     python -u continued_pretraining.py \
         --cp-method lejepa \
-        --random-init \
         --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
@@ -135,8 +134,8 @@ run_single() {
         --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project test \
-        --run-name "test_${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
+        --project lejepa-cp-dinov3-${DATASET} \
+        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --skip-baseline \
         --results-json ${results_file} 2>&1
@@ -176,7 +175,6 @@ pre_linear_f1s = []
 post_knn_f1s = []
 post_linear_f1s = []
 post_sft_f1s = []
-
 for i, seed in enumerate(seeds):
     results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
@@ -218,15 +216,16 @@ if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_line
     pl_m, pl_s = mean_std(pre_linear_f1s)
     ok_m, ok_s = mean_std(post_knn_f1s)
     ol_m, ol_s = mean_std(post_linear_f1s)
-    sf_m, sf_s = mean_std(post_sft_f1s)
+    os_m, os_s = mean_std(post_sft_f1s)
 
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
-                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},{sf_m},{sf_s}\n")
+                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},"
+                f"{os_m},{os_s}\n")
 
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
           f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
-          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={sf_m}+-{sf_s}")
+          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={os_m}+-{os_s}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
 
@@ -238,8 +237,9 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting LeJEPA-CP (random init): ${DISPLAY_NAME} (all: 100,500,546)"
+echo "Starting LeJEPA-CP: ${DISPLAY_NAME}"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
+echo "n_samples: ${NSAMPLES[*]}"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
@@ -275,7 +275,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All LeJEPA-CP (random) ${DISPLAY_NAME} experiments completed!"
+echo "All LeJEPA-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"
