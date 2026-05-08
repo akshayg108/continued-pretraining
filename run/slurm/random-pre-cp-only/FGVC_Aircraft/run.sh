@@ -59,7 +59,7 @@ KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
 
-NSAMPLES=(100 500 1000 3400)
+NSAMPLES=(100 500 1000 3334)
 
 # ============================================================
 # Run a single experiment
@@ -186,7 +186,7 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Random Pre-CP-Only: ${DISPLAY_NAME} (SCRATCH, all: 100,500,1000,3400)"
+echo "Starting Random Pre-CP-Only: ${DISPLAY_NAME} (SCRATCH, all: 100,500,1000,3334)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="

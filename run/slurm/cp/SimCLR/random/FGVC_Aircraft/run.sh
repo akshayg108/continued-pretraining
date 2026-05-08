@@ -87,7 +87,7 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(100 500 1000 3400)
+NSAMPLES=(100 500 1000 3334)
 
 # ============================================================
 # Run a single experiment
@@ -234,7 +234,7 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3400)"
+echo "Starting SimCLR-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3334)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"

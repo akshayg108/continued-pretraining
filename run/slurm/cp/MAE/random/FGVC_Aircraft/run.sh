@@ -87,7 +87,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(100 500 1000 3400)
+NSAMPLES=(100 500 1000 3334)
 
 # ============================================================
 # Run a single experiment
@@ -234,7 +234,7 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting MAE-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3400)"
+echo "Starting MAE-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3334)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
