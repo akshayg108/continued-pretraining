@@ -1,0 +1,10 @@
+run_id,backbone_tag,backbone_timm,dataset,display_name,model_size,n_samples,num_trained_blocks,pool_strategy,project
+lejepa_rerun_max_octmnist_dinov3,DINOv3,vit_base_patch16_dinov3.lvd1689m,octmnist,OctMNIST,ViT-B,97477,-1,cls,lejepa-rerun-max-dinov3-octmnist
+lejepa_rerun_max_octmnist_mae,MAE,vit_base_patch16_224.mae,octmnist,OctMNIST,ViT-B,97477,-1,mean,lejepa-rerun-max-mae-octmnist
+lejepa_rerun_max_octmnist_clip,CLIP,vit_base_patch16_clip_224.openai,octmnist,OctMNIST,ViT-B,97477,-1,cls,lejepa-rerun-max-clip-octmnist
+lejepa_rerun_max_pathmnist_dinov3,DINOv3,vit_base_patch16_dinov3.lvd1689m,pathmnist,PathMNIST,ViT-B,89996,-1,cls,lejepa-rerun-max-dinov3-pathmnist
+lejepa_rerun_max_pathmnist_mae,MAE,vit_base_patch16_224.mae,pathmnist,PathMNIST,ViT-B,89996,-1,mean,lejepa-rerun-max-mae-pathmnist
+lejepa_rerun_max_pathmnist_clip,CLIP,vit_base_patch16_clip_224.openai,pathmnist,PathMNIST,ViT-B,89996,-1,cls,lejepa-rerun-max-clip-pathmnist
+lejepa_rerun_max_food101_dinov3,DINOv3,vit_base_patch16_dinov3.lvd1689m,food101,Food101,ViT-B,75750,-1,cls,lejepa-rerun-max-dinov3-food101
+lejepa_rerun_max_food101_mae,MAE,vit_base_patch16_224.mae,food101,Food101,ViT-B,75750,-1,mean,lejepa-rerun-max-mae-food101
+lejepa_rerun_max_food101_clip,CLIP,vit_base_patch16_clip_224.openai,food101,Food101,ViT-B,75750,-1,cls,lejepa-rerun-max-clip-food101
