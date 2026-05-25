@@ -87,7 +87,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(1000 7007)
+NSAMPLES=(100 500 1000 7007)
 
 # ============================================================
 # Run a single experiment

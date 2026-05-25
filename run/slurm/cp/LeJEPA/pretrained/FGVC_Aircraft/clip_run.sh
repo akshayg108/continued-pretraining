@@ -90,7 +90,7 @@ N_VIEWS=8
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(1000 3334)
+NSAMPLES=(100 500 1000 3334)
 
 # ============================================================
 # Run a single experiment

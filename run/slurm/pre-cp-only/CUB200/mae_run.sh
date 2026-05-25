@@ -59,7 +59,7 @@ KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
 
-NSAMPLES=(1000 5994)
+NSAMPLES=(200 500 1000 5994)
 
 # ============================================================
 # Run a single experiment
