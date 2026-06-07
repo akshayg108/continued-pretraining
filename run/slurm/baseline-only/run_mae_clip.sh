@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=baseline-pretrained
+#SBATCH --job-name=baseline-mae-clip-new
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,17 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-pretrained-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-mae-clip-new-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/baseline-mae-clip-new-%j.err
+
+# ============================================================
+# Baseline-only delta runner for MAE + CLIP.
+#
+# Runs the (dataset, n_samples) tuples that were ADDED to MAE/CLIP when their
+# experiment lists were expanded to mirror DINOv3 (small + MAX → full list).
+# All other paths/conventions mirror run_pretrained.sh, so skip-detection
+# against the existing JSONs in baseline-only/<dataset>/ still works.
+# ============================================================
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -37,7 +46,7 @@ echo "=========================================="
 nvidia-smi
 
 # ============================================================
-# Paths
+# Paths (identical to run_pretrained.sh so JSONs/CSVs land in the same place)
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
 CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/baseline-only"
@@ -55,129 +64,97 @@ NUM_WORKERS=8
 SEEDS=(42 43 44)
 
 # ============================================================
-# Backbone definitions
+# Backbones — MAE and CLIP only
 # ============================================================
-BACKBONE_TAGS=("DINOv3" "MAE" "CLIP")
+BACKBONE_TAGS=("MAE" "CLIP")
 BACKBONE_TIMM_NAMES=(
-    "vit_base_patch16_dinov3.lvd1689m"
     "vit_base_patch16_224.mae"
     "vit_base_patch16_clip_224.openai"
 )
 
 # ============================================================
-# Experiment lists per backbone
-# Same datasets/n_samples as DIET pre-cp-only
+# Delta experiments — the (dataset, n_samples) pairs that DINOv3 has
+# but MAE/CLIP did not have in the previous run_pretrained.sh.
+#
+# MAE/CLIP previously only had: small (100/102/196/200/1000) + MAX per dataset.
+# The full list adds intermediate sizes (100/500, 10000, 25000, etc.) to match DINOv3.
+#
+# 40 entries per backbone × 2 backbones × 3 seeds = 240 runs total.
 # ============================================================
-
-DINOV3_EXPERIMENTS=(
-    # DermaMNIST (MAX=7007)
+DELTA_EXPERIMENTS=(
+    # DermaMNIST — added: 100, 500
     "dermamnist 100"
     "dermamnist 500"
-    "dermamnist 1000"
-    "dermamnist 7007"
 
-    # BreastMNIST (MAX=546)
-    "breastmnist 100"
+    # BreastMNIST — added: 500
     "breastmnist 500"
-    "breastmnist 546"
 
-    # OCTMNIST (MAX=97477)
+    # OCTMNIST — added: 100, 500, 10000, 25000
     "octmnist 100"
     "octmnist 500"
-    "octmnist 1000"
     "octmnist 10000"
     "octmnist 25000"
-    "octmnist 97477"
 
-    # OrganAMNIST (MAX=34561)
+    # OrganAMNIST — added: 100, 500, 10000, 25000
     "organamnist 100"
     "organamnist 500"
-    "organamnist 1000"
     "organamnist 10000"
     "organamnist 25000"
-    "organamnist 34561"
 
-    # PathMNIST (MAX=89996)
+    # PathMNIST — added: 100, 500, 10000, 25000
     "pathmnist 100"
     "pathmnist 500"
-    "pathmnist 1000"
     "pathmnist 10000"
     "pathmnist 25000"
-    "pathmnist 89996"
 
-    # Galaxy10 (MAX=14188)
+    # Galaxy10 — added: 100, 500, 10000
     "galaxy10 100"
     "galaxy10 500"
-    "galaxy10 1000"
     "galaxy10 10000"
-    "galaxy10 14188"
 
-    # Food101 (MAX=75750)
+    # Food101 — added: 101, 500, 10000, 25000
     "food101 101"
     "food101 500"
-    "food101 1000"
     "food101 10000"
     "food101 25000"
-    "food101 75750"
 
-    # FGVC_Aircraft (MAX=3334)
+    # FGVC_Aircraft — added: 100, 500
     "fgvc_aircraft 100"
     "fgvc_aircraft 500"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3334"
 
-    # Cars196 (MAX=8144, 196 classes)
+    # Cars196 — added: 196, 500
     "cars196 196"
     "cars196 500"
-    "cars196 1000"
-    "cars196 8144"
 
-    # CUB200 (MAX=5994, 200 classes)
+    # CUB200 — added: 200, 500
     "cub200 200"
     "cub200 500"
-    "cub200 1000"
-    "cub200 5994"
 
-    # Flowers102 (MAX=1020, 102 classes)
-    "flowers102 102"
+    # Flowers102 — added: 500
     "flowers102 500"
-    "flowers102 1020"
 
-    # OxfordPet (MAX=3680, 37 classes)
+    # OxfordPet — added: 100, 500
     "oxford_pet 100"
     "oxford_pet 500"
-    "oxford_pet 1000"
-    "oxford_pet 3680"
 
-    # DTD (MAX=1880, 47 classes)
+    # DTD — added: 100, 500
     "dtd 100"
     "dtd 500"
-    "dtd 1000"
-    "dtd 1880"
 
-    # EuroSAT (MAX=16200, 10 classes)
+    # EuroSAT — added: 100, 500, 10000
     "eurosat 100"
     "eurosat 500"
-    "eurosat 1000"
     "eurosat 10000"
-    "eurosat 16200"
 
-    # PlantVillage (MAX=43596, 38 classes)
+    # PlantVillage — added: 100, 500, 10000, 25000
     "plant_village 100"
     "plant_village 500"
-    "plant_village 1000"
     "plant_village 10000"
     "plant_village 25000"
-    "plant_village 43596"
 )
 
-# MAE and CLIP now use the same complete experiment list as DINOv3.
-# (Previously CLIP/MAE only had the small + MAX pair per dataset; expanded to mirror DINOv3.)
-MAE_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}")
-CLIP_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}")
-
 # ============================================================
-# CSV column name mapping
+# CSV column name mapping (mirrors run_pretrained.sh)
 # ============================================================
 get_display_name() {
     case "$1" in
@@ -202,6 +179,7 @@ get_display_name() {
 
 # ============================================================
 # Run a single experiment (baseline only: KNN + Linear Probe)
+# Identical to run_pretrained.sh::run_single
 # ============================================================
 run_single() {
     local backbone_tag=$1
@@ -228,8 +206,6 @@ run_single() {
     echo "[RUN] ${backbone_tag} | ${dataset} | n=${n_samples} | seed=${seed}"
     echo "  Start: $(date)"
     echo "=========================================="
-
-    local backbone_tag_lower=$(echo "${backbone_tag}" | tr '[:upper:]' '[:lower:]')
 
     python -u continued_pretraining.py \
         --cp-method diet \
@@ -260,7 +236,7 @@ run_single() {
 }
 
 # ============================================================
-# Aggregate results across seeds
+# Aggregate results across seeds (identical to run_pretrained.sh)
 # ============================================================
 aggregate_results() {
     local backbone_tag=$1
@@ -334,9 +310,10 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Baseline-Only Evaluation (KNN + Linear Probe, Pretrained Backbones)"
+echo "Starting Baseline (MAE + CLIP delta — newly-added sizes only)"
 echo "Backbones: ${BACKBONE_TAGS[*]}"
 echo "Seeds: ${SEEDS[*]}"
+echo "Delta size: ${#DELTA_EXPERIMENTS[@]} experiments per backbone"
 echo "=========================================="
 echo ""
 
@@ -354,16 +331,15 @@ for idx in "${!BACKBONE_TAGS[@]}"; do
     echo ""
 
     case "$BACKBONE_TAG" in
-        DINOv3) CURRENT_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}"); POOL_STRATEGY="cls" ;;
-        MAE)    CURRENT_EXPERIMENTS=("${MAE_EXPERIMENTS[@]}"); POOL_STRATEGY="mean" ;;
-        CLIP)   CURRENT_EXPERIMENTS=("${CLIP_EXPERIMENTS[@]}"); POOL_STRATEGY="cls" ;;
+        MAE)  POOL_STRATEGY="mean" ;;
+        CLIP) POOL_STRATEGY="cls"  ;;
     esac
 
-    for exp in "${CURRENT_EXPERIMENTS[@]}"; do
+    for exp in "${DELTA_EXPERIMENTS[@]}"; do
         read -r dataset n_samples <<< "$exp"
         display_name=$(get_display_name ${dataset})
 
-        # Per-dataset CSV
+        # Per-dataset CSV (same as run_pretrained.sh — new rows append to existing CSV)
         dataset_log_dir="${LOG_DIR}/${dataset}"
         mkdir -p "${dataset_log_dir}"
         CSV_FILE="${dataset_log_dir}/${BACKBONE_TAG}_baseline_results.csv"
@@ -393,7 +369,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All baseline experiments completed!"
+echo "All MAE + CLIP delta baseline experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/{dataset}/"
