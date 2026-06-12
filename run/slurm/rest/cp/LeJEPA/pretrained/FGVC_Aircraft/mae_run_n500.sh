@@ -1,15 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=pre-food-clip-25k
+#SBATCH --job-name=m-fgvc-n500
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=80g
+#SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/pre-cp-food101-clip-25k-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/pre-cp-food101-clip-25k-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-fgvc-mae-n500-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-fgvc-mae-n500-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -37,29 +39,58 @@ echo "=========================================="
 nvidia-smi
 
 # ============================================================
+# Parse optional arguments (e.g., sbatch run.sh --seed 42)
+# ============================================================
+OVERRIDE_SEED=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --seed) OVERRIDE_SEED="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# ============================================================
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/pre-cp-only/Food101/CLIP/25k"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/pre-cp-only/Food101/CLIP/25k"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/FGVC_Aircraft/MAE"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/pretrained/FGVC_Aircraft/MAE"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="food101"
-DISPLAY_NAME="Food101"
+DATASET="fgvc_aircraft"
+DISPLAY_NAME="FGVC_Aircraft"
 MODEL_SIZE="ViT-B"
-BACKBONE_TAG="CLIP"
-BACKBONE_TIMM="vit_base_patch16_clip_224.openai"
+BACKBONE_TAG="MAE"
+BACKBONE_TIMM="vit_base_patch16_224.mae"
 
-BATCH_SIZE=32
+EPOCHS=150
+EFFECTIVE_BATCH=256
+ACCUMULATE_GRAD_BATCHES=1
+if [ $((EFFECTIVE_BATCH % ACCUMULATE_GRAD_BATCHES)) -ne 0 ]; then
+    echo "[ERROR] EFFECTIVE_BATCH=${EFFECTIVE_BATCH} is not divisible by ACCUMULATE_GRAD_BATCHES=${ACCUMULATE_GRAD_BATCHES}" >&2
+    exit 1
+fi
+BATCH_SIZE=$((EFFECTIVE_BATCH / ACCUMULATE_GRAD_BATCHES))
+LR=1e-4
+WEIGHT_DECAY=0.05
+FREEZE_EPOCHS=15
+NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=8
 SEEDS=(42 43 44)
+if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
-NSAMPLES=(25000)
+# LeJEPA hyperparameters
+LAMB=0.02
+N_VIEWS=8
+PROJ_DIM=128
+HIDDEN_DIM=2048
+
+NSAMPLES=(500)
 
 # ============================================================
 # Run a single experiment
@@ -76,25 +107,35 @@ run_single() {
     fi
 
     echo "=========================================="
-    echo "[RUN] Pre-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] LeJEPA-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
     echo "  Start: $(date)"
     echo "=========================================="
 
     python -u continued_pretraining.py \
-        --cp-method simclr \
-        --no-cp \
-        --pre-cp-sft \
+        --cp-method lejepa \
+        --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
+        --epochs ${EPOCHS} \
         --batch-size ${BATCH_SIZE} \
+        --lr ${LR} \
+        --weight-decay ${WEIGHT_DECAY} \
+        --freeze-epochs ${FREEZE_EPOCHS} \
+        --num-trained-blocks ${NUM_TRAINED_BLOCKS} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
-        --pool-strategy cls \
+        --lamb ${LAMB} \
+        --n-views ${N_VIEWS} \
+        --proj-dim ${PROJ_DIM} \
+        --hidden-dim ${HIDDEN_DIM} \
+        --pool-strategy mean \
+        --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project pre-cp-clip-${DATASET} \
-        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_s${seed}" \
+        --project lejepa-cp-mae-${DATASET} \
+        --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --skip-baseline \
         --results-json ${results_file} 2>&1
@@ -129,10 +170,11 @@ model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
 
-knn_f1s = []
-linear_f1s = []
-sft_f1s = []
-
+pre_knn_f1s = []
+pre_linear_f1s = []
+post_knn_f1s = []
+post_linear_f1s = []
+post_sft_f1s = []
 for i, seed in enumerate(seeds):
     results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
@@ -142,39 +184,48 @@ for i, seed in enumerate(seeds):
     with open(results_file) as f:
         data = json.load(f)
 
-    knn_f1 = data.get("pre_knn_f1")
-    linear_f1 = data.get("pre_linear_f1")
-    sft_f1 = data.get("pre_sft_f1")
+    for key, lst in [
+        ("pre_knn_f1", pre_knn_f1s),
+        ("pre_linear_f1", pre_linear_f1s),
+        ("post_knn_f1", post_knn_f1s),
+        ("post_linear_f1", post_linear_f1s),
+        ("post_sft_f1", post_sft_f1s),
+    ]:
+        val = data.get(key)
+        if val is not None:
+            lst.append(val)
 
-    if knn_f1 is not None:
-        knn_f1s.append(knn_f1)
-    if linear_f1 is not None:
-        linear_f1s.append(linear_f1)
-    if sft_f1 is not None:
-        sft_f1s.append(sft_f1)
-
-    with open(csv_file, "a") as f:
-        knn_str = f"{knn_f1:.6f}" if knn_f1 is not None else ""
-        lin_str = f"{linear_f1:.6f}" if linear_f1 is not None else ""
-        sft_str = f"{sft_f1:.6f}" if sft_f1 is not None else ""
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},{knn_str},,{lin_str},,{sft_str},\n")
-
-if len(knn_f1s) > 0 or len(linear_f1s) > 0 or len(sft_f1s) > 0:
-    def mean_std(vals):
-        if len(vals) == 0:
-            return "", ""
-        m = statistics.mean(vals)
-        s = statistics.stdev(vals) if len(vals) > 1 else 0.0
-        return f"{m:.6f}", f"{s:.6f}"
-
-    knn_mean, knn_std = mean_std(knn_f1s)
-    lin_mean, lin_std = mean_std(linear_f1s)
-    sft_mean, sft_std = mean_std(sft_f1s)
+    def fmt(v):
+        return f"{v:.6f}" if v is not None else ""
 
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,{knn_mean},{knn_std},{lin_mean},{lin_std},{sft_mean},{sft_std}\n")
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
+                f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
+                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
+                f"{fmt(data.get('post_sft_f1'))},\n")
 
-    print(f"  [{backbone_tag}] {display_name} n={n_samples}: knn_f1={knn_mean}+-{knn_std} linear_f1={lin_mean}+-{lin_std} sft_f1={sft_mean}+-{sft_std}")
+def mean_std(vals):
+    if len(vals) == 0:
+        return "", ""
+    m = statistics.mean(vals)
+    s = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    return f"{m:.6f}", f"{s:.6f}"
+
+if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s, post_sft_f1s]):
+    pk_m, pk_s = mean_std(pre_knn_f1s)
+    pl_m, pl_s = mean_std(pre_linear_f1s)
+    ok_m, ok_s = mean_std(post_knn_f1s)
+    ol_m, ol_s = mean_std(post_linear_f1s)
+    os_m, os_s = mean_std(post_sft_f1s)
+
+    with open(csv_file, "a") as f:
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
+                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},"
+                f"{os_m},{os_s}\n")
+
+    print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
+          f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
+          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={os_m}+-{os_s}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
 
@@ -186,15 +237,17 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Pre-CP-Only: ${DISPLAY_NAME} (${BACKBONE_TAG}, 25k)"
+echo "Starting LeJEPA-CP: ${DISPLAY_NAME}"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
+echo "n_samples: ${NSAMPLES[*]}"
+echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
-CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_pre_cp_results.csv"
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,knn_f1,knn_f1_std,linear_f1,linear_f1_std,sft_f1,sft_f1_std" > ${CSV_FILE}
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 fi
 echo "CSV file: ${CSV_FILE}"
 
@@ -222,7 +275,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All Pre-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
+echo "All LeJEPA-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"
