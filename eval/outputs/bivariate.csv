@@ -1,0 +1,7 @@
+encoder,position,n,rho_pos,rho_base,partial_pos_given_base,p_pos,partial_base_given_pos,p_base,adjR2_pos,adjR2_base,adjR2_both
+DINOv3,uniformity_t2,15,0.596,-0.339,0.621,0.013,0.043,0.879,0.306,0.047,0.25
+DINOv3,neighbor_overlap_k50,15,-0.537,-0.339,-0.439,0.101,-0.132,0.639,0.234,0.047,0.187
+CLIP,uniformity_t2,15,0.754,-0.154,0.775,0.001,0.186,0.508,0.535,-0.052,0.505
+CLIP,neighbor_overlap_k50,15,-0.673,-0.154,-0.643,0.01,-0.146,0.603,0.411,-0.052,0.382
+MAE,uniformity_t2,15,-0.336,-0.221,-0.293,0.289,0.004,0.99,0.044,-0.024,-0.034
+MAE,neighbor_overlap_k50,15,0.5,-0.221,0.418,0.121,0.214,0.443,0.192,-0.024,0.166
