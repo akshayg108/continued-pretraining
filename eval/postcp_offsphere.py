@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-from load_results import load_long
+from load_results import load_long, add_size_canon
 
 ROOT = Path(__file__).resolve().parent.parent
 SPHERE = ["DINOv3", "CLIP"]
@@ -52,7 +52,11 @@ def main():
     dknn = (df.groupby(["Method", "Backbone", "dataset_key", "size"])["dknn"].mean()
               .reset_index().rename(columns={"Method": "method_cp", "Backbone": "encoder",
                                              "dataset_key": "dataset"}))
-    m = post.merge(dknn, on=["method_cp", "encoder", "dataset", "size"], how="left")
+    # Reconcile MAX-label drift (FGVC: ckpt n3334 vs results n3400) by joining on size_canon.
+    post = add_size_canon(post, "dataset", "size")
+    dknn = add_size_canon(dknn, "dataset", "size")
+    m = post.merge(dknn[["method_cp", "encoder", "dataset", "size_canon", "dknn"]],
+                   on=["method_cp", "encoder", "dataset", "size_canon"], how="left")
     m.to_csv(ROOT / "eval/outputs/postcp_offsphere.csv", index=False)
 
     print("=" * 72)

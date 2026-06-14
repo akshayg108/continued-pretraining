@@ -94,6 +94,21 @@ def load_long(xlsx_path=RESULTS_XLSX, sheet="By Datasets"):
     return raw.reset_index(drop=True)
 
 
+def add_size_canon(frame, dataset_col="dataset_key", size_col="size"):
+    """Add a `size_canon` column that maps each dataset's LARGEST size to the token "MAX".
+
+    Reconciles MAX-label drift between results.xlsx and ckpt filenames (e.g. FGVC-Aircraft:
+    results.xlsx records the MAX run as n=3400 but the checkpoint is n=3334 — same run). Within
+    each frame, the per-dataset maximum size -> "MAX"; all smaller sizes stay exact (they match
+    across sources). Join sweep↔results on (..., size_canon) instead of raw size.
+    """
+    frame = frame.copy()
+    mx = frame.groupby(dataset_col)[size_col].transform("max")
+    frame["size_canon"] = np.where(frame[size_col] == mx, "MAX",
+                                   frame[size_col].astype("Int64").astype(str))
+    return frame
+
+
 if __name__ == "__main__":
     df = load_long()
     out = ROOT / "eval" / "outputs" / "cp_long.csv"
