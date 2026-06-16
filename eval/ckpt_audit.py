@@ -11,10 +11,15 @@ filename. So it answers "which ckpts am I still missing" in seconds, even when n
 The parse helpers mirror postcp_sweep.{encoder_from_name,parse_ckpt,discover}; they are replicated
 here (not imported) so this stays a pure, fast file check with no heavy imports.
 
-MAX-label drift (e.g. FGVC: ckpt n3334 vs results n3400 — same MAX run) is reconciled by defining
-the canonical size set from the AUTHORITATIVE results.xlsx grid: any disk size that is not one of a
-dataset's exact non-max sizes is treated as that dataset's "MAX". (This is stricter than
-add_size_canon's per-frame max, which can mislabel when the disk set is incomplete.)
+SIZE DRIFT RECONCILIATION (important): results.xlsx records *nominal* target sizes that do not
+always equal the *actual* sampled count baked into the ckpt filename:
+  - MAX drift   : fgvc_aircraft results n3400 vs ckpt n3334; flowers102 MAX 1020; etc.
+  - small drift : flowers102 has a nominal "100" row AND the real smallest "102" (= num classes);
+                  food101 has "100" + real "101". The nominal "100" has NO ckpt — it is a phantom.
+We therefore DO NOT match sizes exactly. Per dataset we bucket all sizes (results ∪ disk) that lie
+within a relative tolerance of each other into one canonical bucket, so 100↔102, 100↔101 and
+3400↔3334 collapse, while genuine buckets (≥2× apart: 100/500/1000/MAX) stay separate. A config is
+"missing" only if its bucket has zero ckpts on disk.
 
 Run on the cluster (where the ckpts live):
   python eval/ckpt_audit.py --ckpt-root /scratch/gs4133/zhd/CP/outputs/ckpts/cp
@@ -25,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from load_results import load_long, add_size_canon, DATASET_KEY
+from load_results import load_long, DATASET_KEY
 
 ROOT = Path(__file__).resolve().parent.parent
 METHODS = {"DIET", "LeJEPA", "MAE", "SimCLR"}
@@ -70,6 +75,24 @@ def discover(ckpt_root):
     return out
 
 
+def canon_map(sizes, rel_tol):
+    """size(int) -> canonical label. Sizes within rel_tol of each other collapse into one bucket
+    (absorbs MAX drift 3400↔3334 and small-size phantoms 100↔102); the largest bucket -> 'MAX'."""
+    xs = sorted({int(x) for x in sizes})
+    buckets = []
+    for x in xs:
+        if buckets and x <= buckets[-1][-1] * (1 + rel_tol):
+            buckets[-1].append(x)
+        else:
+            buckets.append([x])
+    m = {}
+    for i, b in enumerate(buckets):
+        label = "MAX" if i == len(buckets) - 1 else str(max(b))
+        for v in b:
+            m[v] = label
+    return m
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt-root", default="/scratch/gs4133/zhd/CP/outputs/ckpts/cp",
@@ -77,6 +100,8 @@ def main():
     ap.add_argument("--results", default=None)
     ap.add_argument("--encoders", nargs="+", default=["DINOv3", "CLIP", "MAE"])
     ap.add_argument("--seeds-expected", type=int, default=3)
+    ap.add_argument("--size-rel-tol", type=float, default=0.05,
+                    help="sizes within this relative tolerance collapse to one bucket (drift)")
     args = ap.parse_args()
 
     # ---- expected grid from results.xlsx (authoritative) ----
@@ -84,11 +109,6 @@ def main():
     exp = df[df.Backbone.isin(args.encoders)].dropna(subset=["size"]).copy()
     exp = exp.rename(columns={"Method": "method_cp", "Backbone": "encoder",
                               "dataset_key": "dataset"})
-    exp = add_size_canon(exp, "dataset", "size")
-    exp_grid = exp[["method_cp", "encoder", "dataset", "size_canon"]].drop_duplicates()
-    # per-dataset exact (non-max) sizes — used to canon-ise disk sizes robustly
-    nonmax = (exp[exp.size_canon != "MAX"].groupby("dataset")["size"]
-              .apply(lambda s: {int(x) for x in s}).to_dict())
 
     # ---- present on disk (parse only, no checkpoint load) ----
     cfgs = discover(args.ckpt_root)
@@ -98,9 +118,18 @@ def main():
     disk = pd.DataFrame(cfgs)
     disk = disk[(disk.variant == "pretrained") & (disk.encoder.isin(args.encoders))].copy()
     disk["method_cp"] = disk.method + "-CP"
-    disk["size_canon"] = disk.apply(
-        lambda r: str(int(r["size"])) if int(r["size"]) in nonmax.get(r["dataset"], set())
-        else "MAX", axis=1)
+
+    # ---- per-dataset size buckets from the UNION (so expected & disk agree) ----
+    exp_sz = exp.groupby("dataset")["size"].apply(lambda s: {int(x) for x in s})
+    disk_sz = disk.groupby("dataset")["size"].apply(lambda s: {int(x) for x in s})
+    canon = {ds: canon_map(exp_sz.get(ds, set()) | disk_sz.get(ds, set()), args.size_rel_tol)
+             for ds in set(exp_sz.index) | set(disk_sz.index)}
+
+    def lab(row):
+        return canon.get(row["dataset"], {}).get(int(row["size"]), str(int(row["size"])))
+    exp["size_canon"] = exp.apply(lab, axis=1)
+    disk["size_canon"] = disk.apply(lab, axis=1)
+    exp_grid = exp[["method_cp", "encoder", "dataset", "size_canon"]].drop_duplicates()
 
     seeds = (disk.groupby(["method_cp", "encoder", "dataset", "size_canon"]).seed
                  .nunique().reset_index(name="seeds"))
