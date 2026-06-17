@@ -11,6 +11,8 @@
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/postcp-sweep-%A_%a.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/postcp-sweep-%A_%a.err
 
+# run this: sbatch --array=0-11 eval/run_postcp_sweep.sh
+
 echo "=========================================="
 echo "SLURM Job ID: ${SLURM_JOB_ID}  Array: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 echo "Node: ${SLURM_NODELIST}"
@@ -52,6 +54,7 @@ done
 CKPT_ROOT="/scratch/gs4133/zhd/CP/outputs/ckpts/cp"
 DOWNLOAD_DIR="/scratch/gs4133/zhd/CP/data/stable_datasets/downloads"
 PROCESSED_DIR="/scratch/gs4133/zhd/CP/data/stable_datasets/processed"
+IMAGENET_DIR="/scratch/gs4133/zhd/CP/data/imagenet_val"   # set to "" to skip neighbor-overlap (~2x faster; not needed for Δcv→Δknn)
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p "${SLURM_LOG_DIR}" eval/outputs
 
@@ -69,7 +72,11 @@ fi
 SEED_ARG=""
 if [ -n "${OVERRIDE_SEED}" ]; then SEED_ARG="--seeds ${OVERRIDE_SEED}"; fi
 
-echo "OUT=${OUT}  SHARD_ARG='${SHARD_ARG}'  SEED_ARG='${SEED_ARG}'"
+# Optional ImageNet overlap (neighbor_overlap; re-embeds ImageNet per ckpt, ~2x time)
+IMN_ARG=""
+if [ -n "${IMAGENET_DIR}" ]; then IMN_ARG="--imagenet-dir ${IMAGENET_DIR}"; fi
+
+echo "OUT=${OUT}  SHARD_ARG='${SHARD_ARG}'  SEED_ARG='${SEED_ARG}'  IMN_ARG='${IMN_ARG}'"
 echo "=========================================="
 
 python -u eval/postcp_sweep.py \
@@ -77,7 +84,7 @@ python -u eval/postcp_sweep.py \
     --download-dir "${DOWNLOAD_DIR}" \
     --processed-dir "${PROCESSED_DIR}" \
     --out "${OUT}" \
-    ${SHARD_ARG} ${SEED_ARG}
+    ${SHARD_ARG} ${SEED_ARG} ${IMN_ARG}
 
 echo "=========================================="
 echo "Exit Code: $?  End Time: $(date)"
