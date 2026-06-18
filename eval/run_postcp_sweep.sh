@@ -59,12 +59,18 @@ SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p "${SLURM_LOG_DIR}" eval/outputs
 
 # ============================================================
-# Sharding: with `--array=0-7` each task does its slice; without it, one job does everything.
+# Sharding. Each array task does its 1/N slice; without --array, one job does everything.
+# N = (highest array index + 1), NOT the number of submitted tasks. This makes BOTH a full submit
+# (--array=0-11 -> N=12) AND a tail-subset RESUBMIT of failed tasks (--array=7-11 -> still N=12)
+# shard correctly. Do NOT use SLURM_ARRAY_TASK_COUNT: a subset like 7-11 has COUNT=5, giving the
+# bogus "--shard 7/5" (matches 0 ckpts). For an arbitrary subset, set NSHARDS explicitly:
+#   NSHARDS=12 sbatch --array=3-5 eval/run_postcp_sweep.sh
 # ============================================================
 SHARD_ARG=""
 OUT="eval/outputs/postcp_sweep.csv"
-if [ -n "${SLURM_ARRAY_TASK_COUNT}" ]; then
-    SHARD_ARG="--shard ${SLURM_ARRAY_TASK_ID}/${SLURM_ARRAY_TASK_COUNT}"
+if [ -n "${SLURM_ARRAY_TASK_ID}" ]; then
+    N="${NSHARDS:-$(( ${SLURM_ARRAY_TASK_MAX:-0} + 1 ))}"
+    SHARD_ARG="--shard ${SLURM_ARRAY_TASK_ID}/${N}"
     OUT="eval/outputs/postcp_sweep_${SLURM_ARRAY_TASK_ID}.csv"
 fi
 
