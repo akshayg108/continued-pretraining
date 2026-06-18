@@ -25,9 +25,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--download-dir", default="/scratch/gs4133/zhd/CP/data/stable_datasets/downloads")
     ap.add_argument("--processed-dir", default="/scratch/gs4133/zhd/CP/data/stable_datasets/processed")
+    ap.add_argument("--datasets", nargs="+", default=None,
+                    help="only build these dataset keys (default: all). Use on a COMPUTE node for "
+                         "big ones (food101/pathmnist) that hit the login-node thread limit.")
     args = ap.parse_args()
 
     names = [n for n in DS_REGISTRY if n != "imagenet"]
+    if args.datasets:
+        names = [n for n in names if n in args.datasets]
     print(f"pre-building {len(names)} datasets (single process, no concurrency)...")
     ok, fail = [], []
     for n in names:
