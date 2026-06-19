@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=p-euro-din-small
+#SBATCH --job-name=p-euro
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

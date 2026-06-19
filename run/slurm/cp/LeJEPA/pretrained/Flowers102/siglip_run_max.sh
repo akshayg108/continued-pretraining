@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=l-foll-din
+#SBATCH --job-name=l-flow
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

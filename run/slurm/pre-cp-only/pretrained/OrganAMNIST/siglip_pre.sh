@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-orgA-s
+#SBATCH --job-name=p-orga
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

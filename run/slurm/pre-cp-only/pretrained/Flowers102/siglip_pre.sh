@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=p-foll-din
+#SBATCH --job-name=p-flow
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1

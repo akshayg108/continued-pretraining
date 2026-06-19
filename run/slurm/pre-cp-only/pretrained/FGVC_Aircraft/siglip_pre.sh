@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=d-fgvc
+#SBATCH --job-name=p-fgvc
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
