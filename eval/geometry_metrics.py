@@ -57,6 +57,7 @@ ENCODERS = {
     "DINOv3": {"timm_id": "vit_base_patch16_dinov3.lvd1689m", "pool": "cls"},
     "MAE":    {"timm_id": "vit_base_patch16_224.mae",         "pool": "mean"},
     "CLIP":   {"timm_id": "vit_base_patch16_clip_224.openai", "pool": "cls"},
+    "SigLIP": {"timm_id": "vit_base_patch16_siglip_224.v2_webli", "pool": "map"},  # SigLIP-2; native MAP attn-pool head (no cls token; sphere-native pooled embedding)
 }
 
 TARGET_DATASETS = [
@@ -174,7 +175,9 @@ def extract_features(model, loader, device, pool_strategy="cls"):
         for batch in tqdm(loader, desc="Extracting", leave=False):
             x, y = batch[0], batch[1]
             feat = model.forward_features(x.to(device))
-            if feat.dim() == 3:
+            if pool_strategy == "map":
+                feat = model.forward_head(feat)  # SigLIP MAP head: attn_pool + fc_norm (native pooled embedding); needs num_classes=0 so head=Identity
+            elif feat.dim() == 3:
                 feat = feat[:, 1:, :].mean(dim=1) if pool_strategy == "mean" else feat[:, 0, :]
             feats.append(feat.cpu().numpy())
             labels.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
@@ -282,7 +285,7 @@ def main():
     for enc_name in args.encoders:
         cfg = ENCODERS[enc_name]
         print(f"\n{'='*60}\nEncoder: {enc_name} ({cfg['timm_id']}, pool={cfg['pool']})\n{'='*60}")
-        model = timm.create_model(cfg["timm_id"], pretrained=True).eval().to(device)
+        model = timm.create_model(cfg["timm_id"], pretrained=True, num_classes=0).eval().to(device)  # num_classes=0 -> head=Identity so forward_head returns the pooled embedding (MAP for SigLIP)
 
         feat_imagenet = None
         if imagenet_loader is not None:

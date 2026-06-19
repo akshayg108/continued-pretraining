@@ -21,9 +21,10 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+import sys; from pathlib import Path as _P; sys.path.insert(0, str(_P(__file__).resolve().parent.parent))  # eval/ root for shared modules
 from load_results import load_long, add_size_canon
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 SPHERE = ["DINOv3", "CLIP"]
 
 

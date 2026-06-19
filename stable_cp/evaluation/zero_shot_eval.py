@@ -121,7 +121,9 @@ def extract_features(
             x = x.to(device)
             feat = model.forward_features(x)
 
-            if feat.dim() == 3:
+            if pool_strategy == "map":  # SigLIP MAP attention-pool head (native readout)
+                feat = model.fc_norm(model.attn_pool(feat))
+            elif feat.dim() == 3:
                 if pool_strategy == "mean":
                     feat = feat[:, 1:, :].mean(dim=1)
                 else:

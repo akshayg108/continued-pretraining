@@ -19,8 +19,10 @@ def _get_views_list(batch):
     return None
 
 
-def _extract_embedding(backbone_output, pool_strategy="cls"):
+def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
     if backbone_output.ndim == 3:
+        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout): attn_pool + fc_norm
+            return backbone.fc_norm(backbone.attn_pool(backbone_output))
         if pool_strategy == "mean":
             return backbone_output[:, 1:, :].mean(dim=1)
         return backbone_output[:, 0, :]  # CLS token
@@ -38,7 +40,7 @@ def lejepa_forward(self, batch, stage):
         # Single forward pass for all views
         all_images = torch.cat([view["image"] for view in views], dim=0)
         all_emb = _extract_embedding(
-            self.backbone.forward_features(all_images), pool_strategy
+            self.backbone.forward_features(all_images), pool_strategy, backbone=self.backbone
         )
         out["embedding"] = all_emb
 
@@ -84,7 +86,7 @@ def lejepa_forward(self, batch, stage):
             )
     else:
         out["embedding"] = _extract_embedding(
-            self.backbone.forward_features(batch["image"]), pool_strategy
+            self.backbone.forward_features(batch["image"]), pool_strategy, backbone=self.backbone
         )
         if "label" in batch:
             out["label"] = batch["label"]

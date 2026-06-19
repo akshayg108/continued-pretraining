@@ -10,9 +10,11 @@ other) plus adjusted R^2 (penalises the extra predictor). Both reported here.
 import numpy as np, pandas as pd
 from scipy.stats import spearmanr, rankdata
 from sklearn.linear_model import LinearRegression
+import sys; from pathlib import Path as _P; sys.path.insert(0, str(_P(__file__).resolve().parent.parent))  # eval/ root for shared modules
 from load_results import load_long
 
-GEOM = "outputs/geometry_15.csv"
+ROOT = _P(__file__).resolve().parent.parent.parent  # continued-pretraining
+GEOM = str(ROOT / "eval/outputs/geometry_15.csv")
 INV = ["LeJEPA-CP", "SimCLR-CP"]
 
 
@@ -57,7 +59,7 @@ def main():
                 adjR2_base=round(adj_r2(B, m.dknn.values), 3),
                 adjR2_both=round(adj_r2(np.hstack([P, B]), m.dknn.values), 3)))
     out = pd.DataFrame(rows)
-    out.to_csv("outputs/bivariate.csv", index=False)
+    out.to_csv(ROOT / "eval/outputs/bivariate.csv", index=False)
     pd.set_option("display.width", 200, "display.max_columns", 20)
     print(out.to_string(index=False))
     print("\nDTD vs FG-cluster pre-CP baseline (DINOv3) — does low baseline explain DTD's +Δ?:")

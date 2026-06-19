@@ -74,7 +74,7 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     parser.add_argument(
-        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
+        "--pool-strategy", type=str, default="cls", choices=["cls", "mean", "map"]
     )
     parser.add_argument(
         "--accumulate-grad-batches",

@@ -29,9 +29,10 @@ import pandas as pd
 from scipy.stats import spearmanr, rankdata
 from sklearn.linear_model import LinearRegression
 
+import sys; from pathlib import Path as _P; sys.path.insert(0, str(_P(__file__).resolve().parent.parent))  # eval/ root for shared modules
 from load_results import load_long, NEW_DATASETS
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 INVARIANCE = ["LeJEPA-CP", "SimCLR-CP"]
 
 GEOM_METRICS = ["cosine_dist_centroid", "mmd_rbf", "neighbor_overlap_k20",

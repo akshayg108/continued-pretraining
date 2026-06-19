@@ -3,11 +3,13 @@ import torch.nn.functional as F
 from torchvision.transforms import v2
 
 
-def _extract_embedding(backbone_output, pool_strategy="cls"):
-    # Extract embedding: CLS token for DINOv2/MAE, mean pooling for I-JEPA
+def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
+    # Extract embedding: CLS token for DINOv2/MAE, mean pooling for I-JEPA, MAP for SigLIP
     if backbone_output.ndim == 3:
         # Token sequence from TIMM ViT
         tokens = backbone_output
+        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout)
+            return backbone.fc_norm(backbone.attn_pool(tokens))
         if pool_strategy == "mean":
             return tokens[:, 1:, :].mean(dim=1)  # Mean over patch tokens (exclude CLS)
         return tokens[:, 0, :]  # CLS token (default)
@@ -46,7 +48,7 @@ def diet_forward(self, batch, stage):
 
     # Extract embedding (pool_strategy: "cls" for DINOv2/MAE, "mean" for I-JEPA)
     pool_strategy = getattr(self, "pool_strategy", "cls")
-    embedding = _extract_embedding(self.backbone.forward_features(images), pool_strategy)
+    embedding = _extract_embedding(self.backbone.forward_features(images), pool_strategy, backbone=self.backbone)
     out["embedding"] = embedding
 
     if "label" in batch:

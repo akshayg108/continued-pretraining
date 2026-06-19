@@ -31,11 +31,11 @@ PY
 
 echo ""
 echo "=== [2/3] Exp A: off-sphere mechanism (Δcv -> Δknn) ==="
-python eval/postcp_offsphere.py --sweep eval/outputs/postcp_sweep.csv --geometry eval/outputs/geometry_15.csv
+python eval/f2_mechanism/postcp_offsphere.py --sweep eval/outputs/postcp_sweep.csv --geometry eval/outputs/geometry_15.csv
 
 echo ""
 echo "=== [3/3] Exp C: growth dynamics (uniformity spread + overlap collision vs CP size) ==="
-python eval/postcp_growth_analysis.py --sweep eval/outputs/postcp_sweep.csv --geometry eval/outputs/geometry_15.csv
+python eval/f3_growth/postcp_growth_analysis.py --sweep eval/outputs/postcp_sweep.csv --geometry eval/outputs/geometry_15.csv
 
 echo ""
 echo "=== done. outputs: eval/outputs/{postcp_sweep,postcp_offsphere,postcp_growth_analysis}.csv ==="

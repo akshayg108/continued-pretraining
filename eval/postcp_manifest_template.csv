@@ -1,6 +1,0 @@
-method,encoder,dataset,size,ckpt
-MAE-CP,DINOv3,food101,MAX,
-MAE-CP,CLIP,food101,MAX,
-LeJEPA-CP,DINOv3,food101,MAX,
-LeJEPA-CP,MAE,food101,MAX,
-MAE-CP,DINOv3,galaxy10,MAX,

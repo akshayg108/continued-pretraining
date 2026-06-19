@@ -19,6 +19,7 @@ reversal carriers). Both are overridable in the functions.
 import numpy as np
 import pandas as pd
 
+import sys; from pathlib import Path as _P; sys.path.insert(0, str(_P(__file__).resolve().parent.parent))  # eval/ root for shared modules
 from load_results import load_long
 
 INVARIANCE = ["LeJEPA-CP", "SimCLR-CP"]

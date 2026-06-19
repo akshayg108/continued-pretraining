@@ -34,6 +34,9 @@ BACKBONE_DIMS = {
     "vit_base_patch16_clip_224.laion2b": 768,
     "vit_large_patch14_clip_224.laion2b": 1024,
     "vit_huge_patch14_clip_224.laion2b": 1280,
+    # SigLIP / SigLIP-2 image towers (TIMM; MAP attention-pool head, no CLS token)
+    "vit_base_patch16_siglip_224.webli": 768,
+    "vit_base_patch16_siglip_224.v2_webli": 768,
 }
 
 
