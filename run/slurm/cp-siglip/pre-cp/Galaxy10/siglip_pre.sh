@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
@@ -142,6 +142,7 @@ aggregate_results() {
 
     python3 << PYEOF
 import json, os, statistics
+
 log_dir = "${LOG_DIR}"
 backbone_tag = "${BACKBONE_TAG}"
 dataset = "${DATASET}"
@@ -150,38 +151,41 @@ display_name = "${DISPLAY_NAME}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
-metrics = {k: [] for k in ["pre_knn_f1","pre_linear_f1","post_knn_f1","post_linear_f1","post_sft_f1"]}
+METRICS = ["pre_knn_f1", "pre_linear_f1", "pre_sft_f1"]
+acc = {m: [] for m in METRICS}
+
+def fmt(v):
+    return f"{v:.6f}" if v is not None else ""
+
 for i, seed in enumerate(seeds):
     rf = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}_pre.json")
     if not os.path.exists(rf):
         print(f"  Warning: {rf} not found, skipping seed {seed}")
         continue
-    with open(rf) as f:
-        data = json.load(f)
-    for key in metrics:
-        val = data.get(key)
-        if val is not None: metrics[key].append(val)
-    def fmt(v): return f"{v:.6f}" if v is not None else ""
+    data = json.load(open(rf))
+    for m in METRICS:
+        v = data.get(m)
+        if v is not None:
+            acc[m].append(v)
+    row = f"{backbone_tag},{display_name},{n_samples},{model_size},{i}"
+    for m in METRICS:
+        row += f",{fmt(data.get(m))},"
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
-                f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
-                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
-                f"{fmt(data.get('post_sft_f1'))},\n")
-def mean_std(vals):
-    if not vals: return "", ""
-    m = statistics.mean(vals)
-    s = statistics.stdev(vals) if len(vals) > 1 else 0.0
-    return f"{m:.6f}", f"{s:.6f}"
-if any(len(v) > 0 for v in metrics.values()):
-    ms = {k: mean_std(v) for k, v in metrics.items()}
+        f.write(row + "\n")
+
+def mean_std(v):
+    if not v:
+        return "", ""
+    return f"{statistics.mean(v):.6f}", (f"{statistics.stdev(v):.6f}" if len(v) > 1 else "0.000000")
+
+if any(acc[m] for m in METRICS):
+    cells = [backbone_tag, display_name, str(n_samples), model_size, "average"]
+    for m in METRICS:
+        mm, ss = mean_std(acc[m]); cells += [mm, ss]
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
-                f"{ms['pre_knn_f1'][0]},{ms['pre_knn_f1'][1]},"
-                f"{ms['pre_linear_f1'][0]},{ms['pre_linear_f1'][1]},"
-                f"{ms['post_knn_f1'][0]},{ms['post_knn_f1'][1]},"
-                f"{ms['post_linear_f1'][0]},{ms['post_linear_f1'][1]},"
-                f"{ms['post_sft_f1'][0]},{ms['post_sft_f1'][1]}\n")
-    print(f"  [{backbone_tag}] {display_name} n={n_samples}: aggregated")
+        f.write(",".join(cells) + "\n")
+    summ = "  ".join(f"{m}={mean_std(acc[m])[0]}+-{mean_std(acc[m])[1]}({len(acc[m])}/3)" for m in METRICS)
+    print(f"  [{backbone_tag}] {display_name} n={n_samples}: {summ}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
 PYEOF
@@ -197,7 +201,7 @@ echo "=========================================="
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,pre_sft_f1,pre_sft_f1_std" > ${CSV_FILE}
 fi
 
 TOTAL_SUCCESS=0

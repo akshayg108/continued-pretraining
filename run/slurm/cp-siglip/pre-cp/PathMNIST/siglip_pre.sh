@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
@@ -175,66 +175,43 @@ display_name = "${DISPLAY_NAME}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
+METRICS = ["pre_knn_f1", "pre_linear_f1", "pre_sft_f1"]
+acc = {m: [] for m in METRICS}
 
-pre_knn_f1s = []
-pre_linear_f1s = []
-post_knn_f1s = []
-post_linear_f1s = []
-post_sft_f1s = []
+def fmt(v):
+    return f"{v:.6f}" if v is not None else ""
 
 for i, seed in enumerate(seeds):
-    results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}_pre.json")
-    if not os.path.exists(results_file):
-        print(f"  Warning: {results_file} not found, skipping seed {seed}")
+    rf = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}_pre.json")
+    if not os.path.exists(rf):
+        print(f"  Warning: {rf} not found, skipping seed {seed}")
         continue
-
-    with open(results_file) as f:
-        data = json.load(f)
-
-    for key, lst in [
-        ("pre_knn_f1", pre_knn_f1s),
-        ("pre_linear_f1", pre_linear_f1s),
-        ("post_knn_f1", post_knn_f1s),
-        ("post_linear_f1", post_linear_f1s),
-        ("post_sft_f1", post_sft_f1s),
-    ]:
-        val = data.get(key)
-        if val is not None:
-            lst.append(val)
-
-    def fmt(v):
-        return f"{v:.6f}" if v is not None else ""
-
+    data = json.load(open(rf))
+    for m in METRICS:
+        v = data.get(m)
+        if v is not None:
+            acc[m].append(v)
+    row = f"{backbone_tag},{display_name},{n_samples},{model_size},{i}"
+    for m in METRICS:
+        row += f",{fmt(data.get(m))},"
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
-                f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
-                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
-                f"{fmt(data.get('post_sft_f1'))},\n")
+        f.write(row + "\n")
 
-def mean_std(vals):
-    if len(vals) == 0:
+def mean_std(v):
+    if not v:
         return "", ""
-    m = statistics.mean(vals)
-    s = statistics.stdev(vals) if len(vals) > 1 else 0.0
-    return f"{m:.6f}", f"{s:.6f}"
+    return f"{statistics.mean(v):.6f}", (f"{statistics.stdev(v):.6f}" if len(v) > 1 else "0.000000")
 
-if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s, post_sft_f1s]):
-    pk_m, pk_s = mean_std(pre_knn_f1s)
-    pl_m, pl_s = mean_std(pre_linear_f1s)
-    ok_m, ok_s = mean_std(post_knn_f1s)
-    ol_m, ol_s = mean_std(post_linear_f1s)
-    sf_m, sf_s = mean_std(post_sft_f1s)
-
+if any(acc[m] for m in METRICS):
+    cells = [backbone_tag, display_name, str(n_samples), model_size, "average"]
+    for m in METRICS:
+        mm, ss = mean_std(acc[m]); cells += [mm, ss]
     with open(csv_file, "a") as f:
-        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
-                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},{sf_m},{sf_s}\n")
-
-    print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
-          f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
-          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={sf_m}+-{sf_s}")
+        f.write(",".join(cells) + "\n")
+    summ = "  ".join(f"{m}={mean_std(acc[m])[0]}+-{mean_std(acc[m])[1]}({len(acc[m])}/3)" for m in METRICS)
+    print(f"  [{backbone_tag}] {display_name} n={n_samples}: {summ}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
-
 PYEOF
 }
 
@@ -252,7 +229,7 @@ echo ""
 
 CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,pre_sft_f1,pre_sft_f1_std" > ${CSV_FILE}
 fi
 echo "CSV file: ${CSV_FILE}"
 
