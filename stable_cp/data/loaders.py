@@ -270,11 +270,17 @@ def create_eval_loaders(
         eval_subset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
     )
     test_loader = torch.utils.data.DataLoader(
         test_data,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
     )
 
     return test_loader, eval_train_loader, indices
@@ -345,12 +351,18 @@ def create_train_datamodule(
         batch_size=args.batch_size,
         sampler=train_sampler,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
         drop_last=False,
     )
     val_loader = torch.utils.data.DataLoader(
         val_data,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
     )
     data = spt.data.DataModule(train=train_loader, val=val_loader)
 

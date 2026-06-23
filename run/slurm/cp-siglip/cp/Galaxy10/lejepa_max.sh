@@ -4,7 +4,7 @@
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=24
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=80g
 #SBATCH --exclude=cn253,cn259
@@ -74,8 +74,8 @@ WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
 NUM_TRAINED_BLOCKS=2
 KNN_K=20
-NUM_WORKERS=8
-SEEDS=(42 43 44)
+NUM_WORKERS=24
+SEEDS=(44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # LeJEPA hyperparameters
