@@ -1,16 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=p-cub
+#SBATCH --job-name=s-plnt
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=24
 #SBATCH --gres=gpu:v100:1
-#SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/precp-cub200-siglip-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/precp-cub200-siglip-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-plant_village-siglip-small-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-plant_village-siglip-small-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -52,16 +51,16 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/pre-cp/CUB200/SigLIP"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/pre-cp/CUB200/SigLIP"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/cp/SimCLR/PlantVillage/SigLIP/small"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/cp/SimCLR/PlantVillage/SigLIP/small"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="cub200"
-DISPLAY_NAME="CUB200"
+DATASET="plant_village"
+DISPLAY_NAME="PlantVillage"
 MODEL_SIZE="ViT-B"
 BACKBONE_TAG="SigLIP"
 BACKBONE_TIMM="vit_base_patch16_siglip_224.v2_webli"
@@ -80,16 +79,15 @@ FREEZE_EPOCHS=15
 NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=24
-SEEDS=(43 44)
+SEEDS=(42 43 44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
-# LeJEPA hyperparameters
-LAMB=0.02
-N_VIEWS=8
+# SimCLR hyperparameters
+TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(5994)
+NSAMPLES=(43596)
 
 # ============================================================
 # Run a single experiment
@@ -98,7 +96,7 @@ run_single() {
     local n_samples=$1
     local seed=$2
 
-    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}_pre.json"
+    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
         echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
@@ -106,14 +104,14 @@ run_single() {
     fi
 
     echo "=========================================="
-    echo "[RUN] Pre-CP eval ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] SimCLR-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
     echo "  Start: $(date)"
     echo "=========================================="
 
     python -u continued_pretraining.py \
-        --cp-method lejepa \
-        --pre-cp-sft \
+        --cp-method simclr \
+        --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
         --n-samples ${n_samples} \
@@ -125,18 +123,17 @@ run_single() {
         --num-trained-blocks ${NUM_TRAINED_BLOCKS} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
-        --lamb ${LAMB} \
-        --n-views ${N_VIEWS} \
+        --temperature ${TEMPERATURE} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
         --pool-strategy map \
         --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project precp-siglip-${DATASET} \
+        --project simclr-cp-siglip-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
-        --no-cp \
+        --skip-baseline \
         --results-json ${results_file} 2>&1
 
     local exit_code=$?
@@ -168,43 +165,72 @@ display_name = "${DISPLAY_NAME}"
 model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
-METRICS = ["pre_knn_f1", "pre_linear_f1", "pre_sft_f1"]
-acc = {m: [] for m in METRICS}
 
-def fmt(v):
-    return f"{v:.6f}" if v is not None else ""
+pre_knn_f1s = []
+pre_linear_f1s = []
+post_knn_f1s = []
+post_linear_f1s = []
+post_sft_f1s = []
+post_sa_lp_f1s = []
 
 for i, seed in enumerate(seeds):
-    rf = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}_pre.json")
-    if not os.path.exists(rf):
-        print(f"  Warning: {rf} not found, skipping seed {seed}")
+    results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
+    if not os.path.exists(results_file):
+        print(f"  Warning: {results_file} not found, skipping seed {seed}")
         continue
-    data = json.load(open(rf))
-    for m in METRICS:
-        v = data.get(m)
-        if v is not None:
-            acc[m].append(v)
-    row = f"{backbone_tag},{display_name},{n_samples},{model_size},{i}"
-    for m in METRICS:
-        row += f",{fmt(data.get(m))},"
-    with open(csv_file, "a") as f:
-        f.write(row + "\n")
 
-def mean_std(v):
-    if not v:
+    with open(results_file) as f:
+        data = json.load(f)
+
+    for key, lst in [
+        ("pre_knn_f1", pre_knn_f1s),
+        ("pre_linear_f1", pre_linear_f1s),
+        ("post_knn_f1", post_knn_f1s),
+        ("post_linear_f1", post_linear_f1s),
+        ("post_sft_f1", post_sft_f1s),
+        ("post_sa_lp_f1", post_sa_lp_f1s),
+    ]:
+        val = data.get(key)
+        if val is not None:
+            lst.append(val)
+
+    def fmt(v):
+        return f"{v:.6f}" if v is not None else ""
+
+    with open(csv_file, "a") as f:
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
+                f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
+                f"{fmt(data.get('post_knn_f1'))},,{fmt(data.get('post_linear_f1'))},,"
+                f"{fmt(data.get('post_sft_f1'))},,"
+                f"{fmt(data.get('post_sa_lp_f1'))},\n")
+
+def mean_std(vals):
+    if len(vals) == 0:
         return "", ""
-    return f"{statistics.mean(v):.6f}", (f"{statistics.stdev(v):.6f}" if len(v) > 1 else "0.000000")
+    m = statistics.mean(vals)
+    s = statistics.stdev(vals) if len(vals) > 1 else 0.0
+    return f"{m:.6f}", f"{s:.6f}"
 
-if any(acc[m] for m in METRICS):
-    cells = [backbone_tag, display_name, str(n_samples), model_size, "average"]
-    for m in METRICS:
-        mm, ss = mean_std(acc[m]); cells += [mm, ss]
+if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s, post_sft_f1s, post_sa_lp_f1s]):
+    pk_m, pk_s = mean_std(pre_knn_f1s)
+    pl_m, pl_s = mean_std(pre_linear_f1s)
+    ok_m, ok_s = mean_std(post_knn_f1s)
+    ol_m, ol_s = mean_std(post_linear_f1s)
+    sf_m, sf_s = mean_std(post_sft_f1s)
+    sa_m, sa_s = mean_std(post_sa_lp_f1s)
+
     with open(csv_file, "a") as f:
-        f.write(",".join(cells) + "\n")
-    summ = "  ".join(f"{m}={mean_std(acc[m])[0]}+-{mean_std(acc[m])[1]}({len(acc[m])}/3)" for m in METRICS)
-    print(f"  [{backbone_tag}] {display_name} n={n_samples}: {summ}")
+        f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
+                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},"
+                f"{sf_m},{sf_s},{sa_m},{sa_s}\n")
+
+    print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
+          f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
+          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} "
+          f"post_sft={sf_m}+-{sf_s} post_sa_lp={sa_m}+-{sa_s}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
+
 PYEOF
 }
 
@@ -213,16 +239,16 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting Pre-CP eval: ${DISPLAY_NAME} (SigLIP)"
+echo "Starting SimCLR-CP: ${DISPLAY_NAME} (SigLIP, small)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
-CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
-    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,pre_sft_f1,pre_sft_f1_std" > ${CSV_FILE}
+    echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std,post_sa_lp_f1,post_sa_lp_f1_std" > ${CSV_FILE}
 fi
 echo "CSV file: ${CSV_FILE}"
 
@@ -250,7 +276,7 @@ done
 
 echo ""
 echo "=========================================="
-echo "All Pre-CP eval ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
+echo "All SimCLR-CP ${DISPLAY_NAME} ${BACKBONE_TAG} experiments completed!"
 echo "  Successful: ${TOTAL_SUCCESS}"
 echo "  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"

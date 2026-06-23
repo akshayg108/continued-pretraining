@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=s-oct
+#SBATCH --job-name=s-path
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-octmnist-small-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-octmnist-small-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-pathmnist-small-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-pathmnist-small-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -51,16 +51,16 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/cp/SimCLR/OctMNIST/SigLIP/small"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/cp/SimCLR/OctMNIST/SigLIP/small"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/cp/SimCLR/PathMNIST/SigLIP/small"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/cp/SimCLR/PathMNIST/SigLIP/small"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
 # ============================================================
 # Fixed parameters
 # ============================================================
-DATASET="octmnist"
-DISPLAY_NAME="OctMNIST"
+DATASET="pathmnist"
+DISPLAY_NAME="PathMNIST"
 MODEL_SIZE="ViT-B"
 BACKBONE_TAG="SigLIP"
 BACKBONE_TIMM="vit_base_patch16_siglip_224.v2_webli"
@@ -79,7 +79,7 @@ FREEZE_EPOCHS=15
 NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=24
-SEEDS=(43 44)
+SEEDS=(42 43 44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
 # SimCLR hyperparameters
@@ -87,7 +87,8 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(97477)
+# n_samples for small runs
+NSAMPLES=(89996)
 
 # ============================================================
 # Run a single experiment
@@ -96,7 +97,13 @@ run_single() {
     local n_samples=$1
     local seed=$2
 
-    local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
+    local dataset_log_dir="${LOG_DIR}"
+    mkdir -p "${dataset_log_dir}"
+
+    local results_file="${dataset_log_dir}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
+
+    local dataset_ckpt_dir="${CKPT_DIR}"
+    mkdir -p "${dataset_ckpt_dir}"
 
     if [ -f "$results_file" ]; then
         echo "[SKIP] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed} (results file exists)"
@@ -128,7 +135,7 @@ run_single() {
         --hidden-dim ${HIDDEN_DIM} \
         --pool-strategy map \
         --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
-        --checkpoint-dir ${CKPT_DIR} \
+        --checkpoint-dir ${dataset_ckpt_dir} \
         --cache-dir ${DATA_DIR} \
         --project simclr-cp-siglip-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \

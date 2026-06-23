@@ -1,15 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=s-oct
+#SBATCH --job-name=l-orga
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=24
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=80g
+#SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-octmnist-small-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-octmnist-small-%j.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-organamnist-small-%j.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-organamnist-small-%j.err
 
 echo "=========================================="
 echo "SLURM Job ID: $SLURM_JOB_ID"
@@ -47,20 +49,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ============================================================
-# Paths
-# ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/cp/SimCLR/OctMNIST/SigLIP/small"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/cp/SimCLR/OctMNIST/SigLIP/small"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip/cp/LeJEPA/OrganAMNIST/SigLIP/small"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp-siglip/cp/LeJEPA/OrganAMNIST/SigLIP/small"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
-# ============================================================
-# Fixed parameters
-# ============================================================
-DATASET="octmnist"
-DISPLAY_NAME="OctMNIST"
+DATASET="organamnist"
+DISPLAY_NAME="OrganAMNIST"
 MODEL_SIZE="ViT-B"
 BACKBONE_TAG="SigLIP"
 BACKBONE_TIMM="vit_base_patch16_siglip_224.v2_webli"
@@ -79,23 +75,20 @@ FREEZE_EPOCHS=15
 NUM_TRAINED_BLOCKS=2
 KNN_K=20
 NUM_WORKERS=24
-SEEDS=(43 44)
+SEEDS=(42 43 44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
-# SimCLR hyperparameters
-TEMPERATURE=0.5
+# LeJEPA hyperparameters
+LAMB=0.02
+N_VIEWS=8
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(97477)
+NSAMPLES=(34561)
 
-# ============================================================
-# Run a single experiment
-# ============================================================
 run_single() {
     local n_samples=$1
     local seed=$2
-
     local results_file="${LOG_DIR}/${BACKBONE_TAG}_${DATASET}_n${n_samples}_seed${seed}.json"
 
     if [ -f "$results_file" ]; then
@@ -104,13 +97,13 @@ run_single() {
     fi
 
     echo "=========================================="
-    echo "[RUN] SimCLR-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
+    echo "[RUN] LeJEPA-CP ${BACKBONE_TAG} | ${DATASET} | n=${n_samples} | seed=${seed}"
     echo "  freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
     echo "  Start: $(date)"
     echo "=========================================="
 
     python -u continued_pretraining.py \
-        --cp-method simclr \
+        --cp-method lejepa \
         --post-cp-sft \
         --dataset ${DATASET} \
         --backbone ${BACKBONE_TIMM} \
@@ -123,14 +116,15 @@ run_single() {
         --num-trained-blocks ${NUM_TRAINED_BLOCKS} \
         --knn-k ${KNN_K} \
         --num-workers ${NUM_WORKERS} \
-        --temperature ${TEMPERATURE} \
+        --lamb ${LAMB} \
+        --n-views ${N_VIEWS} \
         --proj-dim ${PROJ_DIM} \
         --hidden-dim ${HIDDEN_DIM} \
         --pool-strategy map \
         --accumulate-grad-batches ${ACCUMULATE_GRAD_BATCHES} \
         --checkpoint-dir ${CKPT_DIR} \
         --cache-dir ${DATA_DIR} \
-        --project simclr-cp-siglip-${DATASET} \
+        --project lejepa-cp-siglip-${DATASET} \
         --run-name "${BACKBONE_TAG}_${DATASET}_n${n_samples}_blk${NUM_TRAINED_BLOCKS}_s${seed}" \
         --seed ${seed} \
         --skip-baseline \
@@ -139,17 +133,10 @@ run_single() {
     local exit_code=$?
     echo "  Exit Code: ${exit_code}"
     echo "  End: $(date)"
-
-    if [ $exit_code -ne 0 ]; then
-        echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
-    fi
-
+    [ $exit_code -ne 0 ] && echo "[FAIL] ${BACKBONE_TAG} | ${DATASET} n=${n_samples} seed=${seed}"
     return $exit_code
 }
 
-# ============================================================
-# Aggregate results across seeds
-# ============================================================
 aggregate_results() {
     local n_samples=$1
     local csv_file=$2
@@ -166,35 +153,21 @@ model_size = "${MODEL_SIZE}"
 csv_file = "${csv_file}"
 seeds = [42, 43, 44]
 
-pre_knn_f1s = []
-pre_linear_f1s = []
-post_knn_f1s = []
-post_linear_f1s = []
-post_sft_f1s = []
+metrics = {k: [] for k in ["pre_knn_f1","pre_linear_f1","post_knn_f1","post_linear_f1","post_sft_f1"]}
 
 for i, seed in enumerate(seeds):
     results_file = os.path.join(log_dir, f"{backbone_tag}_{dataset}_n{n_samples}_seed{seed}.json")
     if not os.path.exists(results_file):
         print(f"  Warning: {results_file} not found, skipping seed {seed}")
         continue
-
     with open(results_file) as f:
         data = json.load(f)
-
-    for key, lst in [
-        ("pre_knn_f1", pre_knn_f1s),
-        ("pre_linear_f1", pre_linear_f1s),
-        ("post_knn_f1", post_knn_f1s),
-        ("post_linear_f1", post_linear_f1s),
-        ("post_sft_f1", post_sft_f1s),
-    ]:
+    for key in metrics:
         val = data.get(key)
         if val is not None:
-            lst.append(val)
-
+            metrics[key].append(val)
     def fmt(v):
         return f"{v:.6f}" if v is not None else ""
-
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},{i},"
                 f"{fmt(data.get('pre_knn_f1'))},,{fmt(data.get('pre_linear_f1'))},,"
@@ -202,45 +175,40 @@ for i, seed in enumerate(seeds):
                 f"{fmt(data.get('post_sft_f1'))},\n")
 
 def mean_std(vals):
-    if len(vals) == 0:
-        return "", ""
+    if not vals: return "", ""
     m = statistics.mean(vals)
     s = statistics.stdev(vals) if len(vals) > 1 else 0.0
     return f"{m:.6f}", f"{s:.6f}"
 
-if any(len(l) > 0 for l in [pre_knn_f1s, pre_linear_f1s, post_knn_f1s, post_linear_f1s, post_sft_f1s]):
-    pk_m, pk_s = mean_std(pre_knn_f1s)
-    pl_m, pl_s = mean_std(pre_linear_f1s)
-    ok_m, ok_s = mean_std(post_knn_f1s)
-    ol_m, ol_s = mean_std(post_linear_f1s)
-    sf_m, sf_s = mean_std(post_sft_f1s)
-
+if any(len(v) > 0 for v in metrics.values()):
+    ms = {k: mean_std(v) for k, v in metrics.items()}
     with open(csv_file, "a") as f:
         f.write(f"{backbone_tag},{display_name},{n_samples},{model_size},average,"
-                f"{pk_m},{pk_s},{pl_m},{pl_s},{ok_m},{ok_s},{ol_m},{ol_s},{sf_m},{sf_s}\n")
-
+                f"{ms['pre_knn_f1'][0]},{ms['pre_knn_f1'][1]},"
+                f"{ms['pre_linear_f1'][0]},{ms['pre_linear_f1'][1]},"
+                f"{ms['post_knn_f1'][0]},{ms['post_knn_f1'][1]},"
+                f"{ms['post_linear_f1'][0]},{ms['post_linear_f1'][1]},"
+                f"{ms['post_sft_f1'][0]},{ms['post_sft_f1'][1]}\n")
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: "
-          f"pre_knn={pk_m}+-{pk_s} pre_lp={pl_m}+-{pl_s} "
-          f"post_knn={ok_m}+-{ok_s} post_lp={ol_m}+-{ol_s} post_sft={sf_m}+-{sf_s}")
+          f"pre_knn={ms['pre_knn_f1'][0]}+-{ms['pre_knn_f1'][1]} "
+          f"pre_lp={ms['pre_linear_f1'][0]}+-{ms['pre_linear_f1'][1]} "
+          f"post_knn={ms['post_knn_f1'][0]}+-{ms['post_knn_f1'][1]} "
+          f"post_lp={ms['post_linear_f1'][0]}+-{ms['post_linear_f1'][1]} "
+          f"post_sft={ms['post_sft_f1'][0]}+-{ms['post_sft_f1'][1]}")
 else:
     print(f"  [{backbone_tag}] {display_name} n={n_samples}: no results available")
-
 PYEOF
 }
 
-# ============================================================
-# Main loop
-# ============================================================
 echo ""
 echo "=========================================="
-echo "Starting SimCLR-CP: ${DISPLAY_NAME} (small: n=100,500,1000)"
+echo "Starting LeJEPA-CP: ${DISPLAY_NAME} (small: n=100,500,1000)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
-echo ""
 
-CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_simclr_cp_results.csv"
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_lejepa_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
     echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 fi
@@ -254,25 +222,18 @@ for n_samples in "${NSAMPLES[@]}"; do
     echo "============================================================"
     echo "Experiment: ${BACKBONE_TAG} | ${DISPLAY_NAME} | n_samples=${n_samples}"
     echo "============================================================"
-
     for seed in "${SEEDS[@]}"; do
         run_single ${n_samples} ${seed}
-        if [ $? -eq 0 ]; then
-            TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1))
-        else
-            TOTAL_FAIL=$((TOTAL_FAIL + 1))
-        fi
+        [ $? -eq 0 ] && TOTAL_SUCCESS=$((TOTAL_SUCCESS + 1)) || TOTAL_FAIL=$((TOTAL_FAIL + 1))
     done
-
     echo "--- Aggregating results for n=${n_samples} ---"
     aggregate_results ${n_samples} ${CSV_FILE}
 done
 
 echo ""
 echo "=========================================="
-echo "All SimCLR-CP ${DISPLAY_NAME} small experiments completed!"
-echo "  Successful: ${TOTAL_SUCCESS}"
-echo "  Failed: ${TOTAL_FAIL}"
+echo "All LeJEPA-CP ${DISPLAY_NAME} small experiments completed!"
+echo "  Successful: ${TOTAL_SUCCESS}  Failed: ${TOTAL_FAIL}"
 echo "  Results: ${LOG_DIR}/"
 echo "  End Time: $(date)"
 echo "=========================================="
