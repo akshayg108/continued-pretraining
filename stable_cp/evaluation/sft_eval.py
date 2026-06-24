@@ -9,6 +9,7 @@ Usage from continued_pretraining.py:
     results = sft_evaluate(backbone, sft_data, test_loader, device, ...)
 """
 import copy
+from pathlib import Path
 
 import lightning as pl
 import torch
@@ -204,12 +205,17 @@ def sft_evaluate(
         metric_prefix=prefix,
     )
 
+    trainer_kwargs = {}
+    if ckpt_path is not None:
+        trainer_kwargs["default_root_dir"] = str(Path(ckpt_path).parent / "runtime")
+
     trainer = pl.Trainer(
         max_epochs=SFT_EPOCHS,
         max_steps=total_steps,
         num_sanity_val_steps=0,
         precision="16-mixed",
         logger=False,
+        **trainer_kwargs,
     )
     spt.Manager(
         trainer=trainer,

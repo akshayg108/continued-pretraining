@@ -142,6 +142,8 @@ checkpoints/
 *.ckpt
 wandb/
 logs/
+environment*.json
+requirements_frozen*.txt
 
 # Data and cache directories
 ./data/
