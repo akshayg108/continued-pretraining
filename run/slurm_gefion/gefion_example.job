@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --job-name=pretrain
+#SBATCH --time=4:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=14
+#SBATCH --gpus=8
+#SBATCH --mem=0
+#SBATCH --exclusive
+#SBATCH --account=iu_0092
+#SBATCH --output=/dcai/users/munasb/internal_asparagus/logs/%j.log
+
+nvidia-smi
+
+cd /dcai/users/munasb/internal_asparagus/
+
+source /dcai/users/munasb/venv/asparagus/bin/activate
+
+set -a
+export OMP_NUM_THREADS=10
+export WANDB_MODE=offline
+source .env
+set +a
+
+srun asp_pretrain --config-name projects/datapaper/pretrain/resenc_12m_amaes.yaml \
+    task=PT902_FOMO2M
