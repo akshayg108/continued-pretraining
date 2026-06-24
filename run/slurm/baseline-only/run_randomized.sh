@@ -114,11 +114,11 @@ EXPERIMENTS=(
     "food101 25000"
     "food101 75750"
 
-    # FGVC_Aircraft (MAX=3400)
+    # FGVC_Aircraft (MAX=3334)
     "fgvc_aircraft 100"
     "fgvc_aircraft 500"
     "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
+    "fgvc_aircraft 3334"
 
     # Cars196 (MAX=8144, 196 classes)
     "cars196 196"

@@ -95,8 +95,8 @@ BACKBONE_TIMMS[CLIP]="vit_base_patch16_clip_224.openai"
 
 declare -A BACKBONE_NSAMPLES
 BACKBONE_NSAMPLES[DINOv3]="100 500 546"
-BACKBONE_NSAMPLES[MAE]="100 546"
-BACKBONE_NSAMPLES[CLIP]="100 546"
+BACKBONE_NSAMPLES[MAE]="100 500 546"
+BACKBONE_NSAMPLES[CLIP]="100 500 546"
 
 declare -A POOL_STRATEGIES
 POOL_STRATEGIES[DINOv3]="cls"
@@ -284,7 +284,7 @@ for backbone_tag in "${BACKBONES[@]}"; do
     log_dir="${BASE_LOG_DIR}/${backbone_tag}"
     mkdir -p "${log_dir}"
 
-    CSV_FILE="${log_dir}/${backbone_tag}_mae_results.csv"
+    CSV_FILE="${log_dir}/${backbone_tag}_mae_cp_results.csv"
     if [ ! -f "${CSV_FILE}" ]; then
         echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std,post_sa_lp_f1,post_sa_lp_f1_std" > ${CSV_FILE}
     fi

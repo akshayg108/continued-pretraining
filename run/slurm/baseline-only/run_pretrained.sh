@@ -120,11 +120,11 @@ DINOV3_EXPERIMENTS=(
     "food101 25000"
     "food101 75750"
 
-    # FGVC_Aircraft (MAX=3400)
+    # FGVC_Aircraft (MAX=3334)
     "fgvc_aircraft 100"
     "fgvc_aircraft 500"
     "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
+    "fgvc_aircraft 3334"
 
     # Cars196 (MAX=8144, 196 classes)
     "cars196 196"
@@ -171,71 +171,10 @@ DINOV3_EXPERIMENTS=(
     "plant_village 43596"
 )
 
-MAE_EXPERIMENTS=(
-    "dermamnist 1000"
-    "dermamnist 7007"
-    "breastmnist 100"
-    "breastmnist 546"
-    "octmnist 1000"
-    "octmnist 97477"
-    "organamnist 1000"
-    "organamnist 34561"
-    "pathmnist 1000"
-    "pathmnist 89996"
-    "galaxy10 1000"
-    "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
-    "cars196 1000"
-    "cars196 8144"
-    "cub200 1000"
-    "cub200 5994"
-    "flowers102 102"
-    "flowers102 1020"
-    "oxford_pet 1000"
-    "oxford_pet 3680"
-    "dtd 1000"
-    "dtd 1880"
-    "eurosat 1000"
-    "eurosat 16200"
-    "plant_village 1000"
-    "plant_village 43596"
-)
-
-CLIP_EXPERIMENTS=(
-    "dermamnist 1000"
-    "dermamnist 7007"
-    "breastmnist 100"
-    "breastmnist 546"
-    "octmnist 1000"
-    "octmnist 97477"
-    "organamnist 1000"
-    "organamnist 34561"
-    "pathmnist 1000"
-    "pathmnist 89996"
-    "galaxy10 1000"
-    "galaxy10 14188"
-    "food101 1000"
-    "food101 75750"
-    "fgvc_aircraft 1000"
-    "fgvc_aircraft 3400"
-    "cars196 1000"
-    "cars196 8144"
-    "cub200 1000"
-    "cub200 5994"
-    "flowers102 102"
-    "flowers102 1020"
-    "oxford_pet 1000"
-    "oxford_pet 3680"
-    "dtd 1000"
-    "dtd 1880"
-    "eurosat 1000"
-    "eurosat 16200"
-    "plant_village 1000"
-    "plant_village 43596"
-)
+# MAE and CLIP now use the same complete experiment list as DINOv3.
+# (Previously CLIP/MAE only had the small + MAX pair per dataset; expanded to mirror DINOv3.)
+MAE_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}")
+CLIP_EXPERIMENTS=("${DINOV3_EXPERIMENTS[@]}")
 
 # ============================================================
 # CSV column name mapping

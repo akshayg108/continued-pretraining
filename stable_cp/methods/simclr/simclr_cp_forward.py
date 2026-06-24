@@ -1,8 +1,10 @@
 import torch
 
 
-def _extract_embedding(backbone_output, pool_strategy="cls"):
+def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
     if backbone_output.ndim == 3:
+        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout): attn_pool + fc_norm
+            return backbone.fc_norm(backbone.attn_pool(backbone_output))
         if pool_strategy == "mean":
             return backbone_output[:, 1:, :].mean(dim=1)
         return backbone_output[:, 0, :]  # CLS token
@@ -28,7 +30,7 @@ def simclr_cp_forward(self, batch, stage):
             raise ValueError(f"SimCLR requires 2 views, got {len(views)}")
 
         embeddings = [
-            _extract_embedding(self.backbone.forward_features(v["image"]), pool_strategy)
+            _extract_embedding(self.backbone.forward_features(v["image"]), pool_strategy, backbone=self.backbone)
             for v in views
         ]
         out["embedding"] = torch.cat(embeddings, dim=0)
@@ -50,7 +52,7 @@ def simclr_cp_forward(self, batch, stage):
             )
     else:
         out["embedding"] = _extract_embedding(
-            self.backbone.forward_features(batch["image"]), pool_strategy
+            self.backbone.forward_features(batch["image"]), pool_strategy, backbone=self.backbone
         )
         if "label" in batch:
             out["label"] = batch["label"]

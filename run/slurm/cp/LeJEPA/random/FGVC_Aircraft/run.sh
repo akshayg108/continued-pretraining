@@ -69,7 +69,7 @@ BACKBONE_TIMM="vit_base_patch16_224"
 
 EPOCHS=150
 EFFECTIVE_BATCH=256
-ACCUMULATE_GRAD_BATCHES=4
+ACCUMULATE_GRAD_BATCHES=2
 if [ $((EFFECTIVE_BATCH % ACCUMULATE_GRAD_BATCHES)) -ne 0 ]; then
     echo "[ERROR] EFFECTIVE_BATCH=${EFFECTIVE_BATCH} is not divisible by ACCUMULATE_GRAD_BATCHES=${ACCUMULATE_GRAD_BATCHES}" >&2
     exit 1
@@ -90,7 +90,7 @@ N_VIEWS=8
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(100 500 1000 3400)
+NSAMPLES=(100 500 1000 3334)
 
 # ============================================================
 # Run a single experiment
@@ -238,7 +238,7 @@ PYEOF
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Starting LeJEPA-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3400)"
+echo "Starting LeJEPA-CP (random init): ${DISPLAY_NAME} (all: 100,500,1000,3334)"
 echo "Backbone: ${BACKBONE_TAG} (${BACKBONE_TIMM})"
 echo "freeze_epochs=${FREEZE_EPOCHS} num_trained_blocks=${NUM_TRAINED_BLOCKS}"
 echo "Seeds: ${SEEDS[*]}"

@@ -74,7 +74,7 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     parser.add_argument(
-        "--pool-strategy", type=str, default="cls", choices=["cls", "mean"]
+        "--pool-strategy", type=str, default="cls", choices=["cls", "mean", "map"]
     )
     parser.add_argument(
         "--accumulate-grad-batches",
@@ -259,11 +259,17 @@ def _create_sft_data(args, ds_cfg, data_dir, eval_tf, indices):
         shuffle=True,
         drop_last=True,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
     )
     val_loader = torch.utils.data.DataLoader(
         val_data,
         batch_size=SFT_BATCH_SIZE,
         num_workers=args.num_workers,
+        pin_memory=True,
+        persistent_workers=args.num_workers > 0,
+        prefetch_factor=4 if args.num_workers > 0 else None,
     )
     return spt.data.DataModule(train=train_loader, val=val_loader)
 

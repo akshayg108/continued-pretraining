@@ -51,8 +51,8 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/CUB200"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/MAE/pretrained/CUB200"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/CUB200/MAE"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/MAE/pretrained/CUB200/MAE"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
@@ -87,7 +87,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(1000 5994)
+NSAMPLES=(200 500 1000 5994)
 
 # ============================================================
 # Run a single experiment

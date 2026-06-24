@@ -87,7 +87,7 @@ DECODER_DIM=512
 DECODER_DEPTH=4
 MASK_RATIO=0.75
 
-NSAMPLES=(1000 7007)
+NSAMPLES=(100 500 1000 7007)
 
 # ============================================================
 # Run a single experiment
@@ -241,7 +241,7 @@ echo "Seeds: ${SEEDS[*]}"
 echo "=========================================="
 echo ""
 
-CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_mae_results.csv"
+CSV_FILE="${LOG_DIR}/${BACKBONE_TAG}_mae_cp_results.csv"
 if [ ! -f "${CSV_FILE}" ]; then
     echo "backbone,dataset,n_samples,model_size,run,pre_knn_f1,pre_knn_f1_std,pre_linear_f1,pre_linear_f1_std,post_knn_f1,post_knn_f1_std,post_linear_f1,post_linear_f1_std,post_sft_f1,post_sft_f1_std" > ${CSV_FILE}
 fi

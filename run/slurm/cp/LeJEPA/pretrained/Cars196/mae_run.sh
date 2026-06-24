@@ -53,8 +53,8 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/pretrained/Cars196"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/MAE"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/LeJEPA/pretrained/Cars196/MAE"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
@@ -90,7 +90,7 @@ N_VIEWS=8
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(1000 8144)
+NSAMPLES=(196 500 1000 8144)
 
 # ============================================================
 # Run a single experiment

@@ -51,8 +51,8 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/EuroSAT/max"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/pretrained/EuroSAT/max"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/EuroSAT/DINOv3/all"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/pretrained/EuroSAT/DINOv3/all"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 

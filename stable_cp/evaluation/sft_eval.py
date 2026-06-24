@@ -34,7 +34,7 @@ SFT_LABEL_SMOOTHING = 0.0
 # Forward & Module helpers (moved from stable_cp/methods/supervised/)
 # ---------------------------------------------------------------------------
 
-def _extract_embedding(backbone_output, pool_strategy="cls"):
+def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
     """Extract embedding from backbone output (handles ViT and CNN).
 
     Args:
@@ -42,9 +42,13 @@ def _extract_embedding(backbone_output, pool_strategy="cls"):
             - 3-D [B, T, D] for ViT token sequences
             - 2-D [B, D]    for CNNs / already-pooled features
         pool_strategy: 'cls' (default) uses the CLS token; 'mean' averages
-            over patch tokens (excluding CLS).
+            over patch tokens (excluding CLS); 'map' uses the SigLIP MAP
+            attention-pool head (requires `backbone` for attn_pool/fc_norm).
+        backbone: the timm backbone, only needed for pool_strategy='map'.
     """
     if backbone_output.ndim == 3:
+        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout)
+            return backbone.fc_norm(backbone.attn_pool(backbone_output))
         if pool_strategy == "mean":
             return backbone_output[:, 1:, :].mean(dim=1)
         return backbone_output[:, 0, :]  # CLS token
@@ -64,7 +68,7 @@ def _sft_forward(self, batch, stage):
     pool_strategy = getattr(self, "pool_strategy", "cls")
     prefix = getattr(self, "metric_prefix", "sft")
     features = self.backbone.forward_features(batch["image"])
-    out["embedding"] = _extract_embedding(features, pool_strategy)
+    out["embedding"] = _extract_embedding(features, pool_strategy, backbone=self.backbone)
     out["logits"] = self.classifier(out["embedding"])
 
     if "label" in batch:

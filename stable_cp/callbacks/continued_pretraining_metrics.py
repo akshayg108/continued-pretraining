@@ -70,6 +70,7 @@ def create_cp_knn_probe(
         queue_length=queue_length,
         metrics=metrics,
         input_dim=embedding_dim,
+        num_classes=num_classes,
         k=k,
     )
 

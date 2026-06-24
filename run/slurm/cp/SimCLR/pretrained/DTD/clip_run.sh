@@ -51,8 +51,8 @@ done
 # Paths
 # ============================================================
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/DTD"
-LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/pretrained/DTD"
+CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/DTD/CLIP"
+LOG_DIR="/scratch/gs4133/zhd/CP/outputs/logs/cp/SimCLR/pretrained/DTD/CLIP"
 SLURM_LOG_DIR="/scratch/gs4133/zhd/CP/outputs/slurm-log"
 mkdir -p ${DATA_DIR} ${CKPT_DIR} ${LOG_DIR} ${SLURM_LOG_DIR}
 
@@ -87,7 +87,7 @@ TEMPERATURE=0.5
 PROJ_DIM=128
 HIDDEN_DIM=2048
 
-NSAMPLES=(1000 1880)
+NSAMPLES=(100 500 1000 1880)
 
 # ============================================================
 # Run a single experiment

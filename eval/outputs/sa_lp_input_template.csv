@@ -1,0 +1,5 @@
+config,pre_linear_f1,post_linear_f1,post_sa_lp_f1
+MAE-CP+DINOv3+food101+MAX,0.66,0.00,0.00
+MAE-CP+CLIP+food101+MAX,0.70,0.00,0.00
+MAE-CP+DINOv3+galaxy10+MAX,0.50,0.35,0.40
+LeJEPA-CP+DINOv3+food101+MAX,0.66,0.61,0.62
