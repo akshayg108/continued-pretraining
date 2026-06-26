@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=24
 #SBATCH --gres=gpu:v100:1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=96:00:00
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-galaxy10-small-%j.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/simclr-galaxy10-small-%j.err
@@ -81,6 +81,38 @@ PROJ_DIM=128
 HIDDEN_DIM=2048
 
 NSAMPLES=(14188)
+
+# ============================================================
+# Stage this dataset's processed cache to node-local fast storage.
+# HF download_and_prepare() checks the PROCESSED cache only; when it is
+# complete the loader mmaps it directly and never reads downloads/.
+# /scratch random reads were starving the GPU -> low util -> admin cancel.
+# ============================================================
+PROCESSED_SUBPATH="galaxy10"
+SRC_PROC="${DATA_DIR}/stable_datasets/processed/${PROCESSED_SUBPATH}"
+if [ -d "${SRC_PROC}" ]; then
+    NEED_KB=$(( $(du -sk "${SRC_PROC}" | awk '{print $1}') + 5*1024*1024 ))   # dataset size + 5G headroom
+    STAGE_ROOT=""
+    for root in "${TMPDIR:-}" /tmpdata /dev/shm; do
+        [ -n "${root}" ] && [ -d "${root}" ] && [ -w "${root}" ] || continue
+        avail_kb=$(df -Pk "${root}" 2>/dev/null | awk 'NR==2{print $4}')
+        if [ -n "${avail_kb}" ] && [ "${avail_kb}" -ge "${NEED_KB}" ]; then STAGE_ROOT="${root}"; break; fi
+    done
+    if [ -n "${STAGE_ROOT}" ]; then
+        LOCAL_CACHE="${STAGE_ROOT}/cpdata-${SLURM_JOB_ID}"
+        DEST_PROC="${LOCAL_CACHE}/stable_datasets/processed/${PROCESSED_SUBPATH}"
+        echo "===== staging ${SRC_PROC} -> ${DEST_PROC} (root=${STAGE_ROOT}) ====="
+        mkdir -p "$(dirname "${DEST_PROC}")"
+        rsync -a "${SRC_PROC}/" "${DEST_PROC}/"
+        trap 'rm -rf "${LOCAL_CACHE}"' EXIT          # free node-local copy on job exit
+        DATA_DIR="${LOCAL_CACHE}"
+        echo "===== DATA_DIR -> ${DATA_DIR} (node-local; reads now fast) ====="
+    else
+        echo "WARN: no node-local root with >= $((NEED_KB/1024/1024))G free (tried \$TMPDIR /tmpdata /dev/shm); using /scratch."
+    fi
+else
+    echo "WARN: processed cache not found at ${SRC_PROC}; using /scratch DATA_DIR=${DATA_DIR}."
+fi
 
 run_single() {
     local n_samples=$1
