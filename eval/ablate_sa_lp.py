@@ -80,6 +80,45 @@ class LARS(torch.optim.Optimizer):
                 p.add_(st["mu"], alpha=-g["lr"])
 
 
+def load_cp_encoder(backbone, ckpt_path):
+    """Load post-CP weights into a freshly-built backbone, FAILING LOUDLY on key mismatch.
+
+    `load_state_dict(strict=False)` silently no-ops when the checkpoint's key prefix differs
+    from the backbone's (e.g. 'module.backbone.' vs none), leaving the PRETRAINED encoder in
+    place and evaluating the wrong model. We align by common prefix + shape and assert coverage,
+    plus verify a last-block weight actually changed, so a silent no-op can't pass unnoticed.
+    """
+    ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    sd = ck
+    if isinstance(ck, dict):
+        for key in ("state_dict", "model_state_dict", "model"):
+            if key in ck:
+                sd = ck[key]
+                break
+    bk = backbone.state_dict()
+    k0 = next(iter(bk))
+    prefixes = sorted({s[: -len(k0)] for s in sd
+                       if s.endswith(k0) and sd[s].shape == bk[k0].shape}, key=len)
+    best_pref, best_map = "", {}
+    for pref in prefixes + [""]:
+        mapped = {k: sd[pref + k] for k in bk
+                  if (pref + k) in sd and sd[pref + k].shape == bk[k].shape}
+        if len(mapped) > len(best_map):
+            best_pref, best_map = pref, mapped
+    probe = next((k for k in bk if "blocks.11" in k and k.endswith("weight")), k0)
+    before = bk[probe].clone()
+    backbone.load_state_dict(best_map, strict=False)
+    changed = not torch.equal(before, backbone.state_dict()[probe])
+    cov = len(best_map) / max(len(bk), 1)
+    print(f"  ckpt load: prefix={best_pref!r} coverage={len(best_map)}/{len(bk)} ({cov:.1%}); "
+          f"last-block weight changed={changed}")
+    if cov < 0.9 or not changed:
+        raise RuntimeError(
+            f"checkpoint load FAILED (coverage {cov:.1%}, changed={changed}) — would evaluate the "
+            f"PRETRAINED encoder, not the CP one. Sample ckpt keys: {list(sd)[:3]}; backbone key: {k0!r}")
+    return ck
+
+
 def _num_epochs(n, batch_size, min_epochs=150, min_steps=10000):
     """Match production: selective_aggregation_lp_evaluate epoch count."""
     steps_per_epoch = max(n // batch_size, 1)
@@ -209,9 +248,9 @@ def main():
         loader_args, ds_cfg, eval_train_transform=train_tf, val_transform=eval_tf,
         data_dir=args.cache_dir)
 
-    # --- load the post-CP MAE encoder ---
+    # --- load the post-CP MAE encoder (fails loudly if the ckpt does not actually load) ---
     backbone, _ = load_backbone(BACKBONE)
-    load_backbone_from_checkpoint(backbone, str(ckpt), strict=False)
+    load_cp_encoder(backbone, str(ckpt))
     backbone = backbone.to(device).eval()
 
     # --- extract patch tokens once (N, 1+L, D) ---
