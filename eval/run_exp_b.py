@@ -46,10 +46,12 @@ from stable_cp.evaluation.abmilp import ABMILPHead  # noqa: E402
 
 METHODS = {"MAE", "LeJEPA"}                       # CP-method folder names for Exp B
 ENCODERS_OK = {"DINOv3", "CLIP", "MAE"}
-# dataset key -> MAX n_samples (the only size Exp B uses)
+# dataset key -> MAX n_samples (hardcoded; Exp B uses the MAX size only)
 MAX_N = {
     "food101": 75750, "octmnist": 97477, "plant_village": 43596, "organamnist": 34561,
-    "galaxy10": 14188, "fgvc_aircraft": 3334, "cars196": 8144,
+    "galaxy10": 14188, "fgvc_aircraft": 3334, "cars196": 8144, "breastmnist": 546,
+    "cub200": 5994, "dermamnist": 7007, "dtd": 1880, "eurosat": 16200,
+    "flowers102": 1020, "oxford_pet": 3680, "pathmnist": 89996,
 }
 FIELDS = ["method", "encoder", "dataset", "size", "seed", "pool",
           "baseline_lp_f1", "sa_lp_f1", "sa_minus_baseline", "ckpt"]
@@ -80,7 +82,7 @@ def parse_ckpt(path, ckpt_root):
     if not m:
         return None
     enc, timm_id, pool = encoder_from_name(p.stem)
-    ds_key = {"OctMNIST": "octmnist", "OrganAMNIST": "organamnist",
+    ds_key = {"OctMNIST": "octmnist", "OrganAMNIST": "organamnist", "OxfordPet": "oxford_pet",
               "PlantVillage": "plant_village", "FGVC_Aircraft": "fgvc_aircraft"}.get(
         dataset_folder, dataset_folder.lower())
     return dict(method=method, encoder=enc, timm_id=timm_id, pool=pool, dataset=ds_key,
@@ -88,6 +90,7 @@ def parse_ckpt(path, ckpt_root):
 
 
 def discover(ckpt_root):
+    """All post-CP ckpts (parent dir 'cp'), keeping only the hardcoded MAX size per dataset."""
     out = []
     for f in Path(ckpt_root).rglob("*.ckpt"):
         if f.parent.name == "cp":
@@ -99,8 +102,8 @@ def discover(ckpt_root):
 
 
 @torch.no_grad()
-def extract_tokens_f16(model, loader, device):
-    """Full token sequence (N, 1+L, D) as float16 (keeps big datasets in RAM)."""
+def extract_tokens(model, loader, device):
+    """Full token sequence (N, 1+L, D), float32 (fits in RAM with --mem 256G)."""
     toks, labs = [], []
     model.eval()
     for batch in loader:
@@ -110,7 +113,7 @@ def extract_tokens_f16(model, loader, device):
             x, y = batch[0], batch[1]
         feat = model.forward_features(x.to(device))
         assert feat.dim() == 3, f"expected (B,1+L,D) tokens, got {feat.shape}"
-        toks.append(feat.half().cpu().numpy())
+        toks.append(feat.cpu().numpy())
         labs.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
     return np.concatenate(toks), np.concatenate(labs).ravel()
 
@@ -214,16 +217,16 @@ def main():
                 data_dir=args.cache_dir)
 
             model = load_cp_backbone(c["ckpt"], c["timm_id"], device)
-            tr_tok, tr_lab = extract_tokens_f16(model, eval_train_loader, device)
-            te_tok, te_lab = extract_tokens_f16(model, test_loader, device)
+            tr_tok, tr_lab = extract_tokens(model, eval_train_loader, device)
+            te_tok, te_lab = extract_tokens(model, test_loader, device)
 
             # baseline LP on the production pooling (cls / mean), same tokens
             if c["pool"] == "mean":
-                base_tr = tr_tok[:, 1:, :].astype(np.float32).mean(axis=1)
-                base_te = te_tok[:, 1:, :].astype(np.float32).mean(axis=1)
+                base_tr = tr_tok[:, 1:, :].mean(axis=1)
+                base_te = te_tok[:, 1:, :].mean(axis=1)
             else:  # cls
-                base_tr = tr_tok[:, 0, :].astype(np.float32)
-                base_te = te_tok[:, 0, :].astype(np.float32)
+                base_tr = tr_tok[:, 0, :]
+                base_te = te_tok[:, 0, :]
             base_f1 = linear_probe_pytorch_evaluate(
                 base_tr, tr_lab, base_te, te_lab, device=device, lr=args.lr,
                 verbose=False)["linear_pytorch_f1"]

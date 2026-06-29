@@ -7,9 +7,9 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:v100:1
 #SBATCH --exclude=cn253,cn259
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --time=96:00:00
-#SBATCH --array=0-6
+#SBATCH --array=0-14
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/exp-b-%A_%a.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/exp-b-%A_%a.err
 
@@ -37,8 +37,9 @@ nvidia-smi
 # ============================================================
 # Per-dataset config (indexed by array task id)
 # ============================================================
-DATASETS=(food101 octmnist plant_village organamnist galaxy10 fgvc_aircraft cars196)
-SUBPATHS=(food101 med_mnist/octmnist-size=224 plant_village med_mnist/organamnist-size=224 galaxy10 fgvc_aircraft cars196)
+# indices 0-6 keep the original ordering (octmnist=1); 7-14 are the newly-added datasets
+DATASETS=(food101 octmnist plant_village organamnist galaxy10 fgvc_aircraft cars196 breastmnist cub200 dermamnist dtd eurosat flowers102 oxford_pet pathmnist)
+SUBPATHS=(food101 med_mnist/octmnist-size=224 plant_village med_mnist/organamnist-size=224 galaxy10 fgvc_aircraft cars196 med_mnist/breastmnist-size=224 cub200 med_mnist/dermamnist-size=224 dtd eurosat flowers102 oxford_pet med_mnist/pathmnist-size=224)
 i=${SLURM_ARRAY_TASK_ID}
 DATASET=${DATASETS[$i]}
 PROCESSED_SUBPATH=${SUBPATHS[$i]}
