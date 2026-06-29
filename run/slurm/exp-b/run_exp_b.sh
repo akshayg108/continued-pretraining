@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=sa-ablate
+#SBATCH --job-name=exp-b
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -7,15 +7,18 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:v100:1
 #SBATCH --exclude=cn253,cn259
-#SBATCH --mem=64G
-#SBATCH --time=12:00:00
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/sa-ablate-%x-%j.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/sa-ablate-%x-%j.err
+#SBATCH --mem=128G
+#SBATCH --time=96:00:00
+#SBATCH --array=0-6
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/exp-b-%A_%a.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/exp-b-%A_%a.err
+
+# Exp B (Selective-Aggregation LP) — one array task per dataset; stages that dataset node-local.
+# Each task runs {MAE,LeJEPA} x {DINOv3,CLIP,MAE} x <its dataset> x MAX x available seeds.
 
 echo "=========================================="
-echo "SLURM Job ID: $SLURM_JOB_ID"
-echo "Node: $SLURM_NODELIST"
-echo "Start Time: $(date)"
+echo "SLURM Job ID: ${SLURM_JOB_ID}  Array: ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+echo "Node: ${SLURM_NODELIST}   Start: $(date)"
 echo "=========================================="
 
 module load miniconda/3-4.11.0
@@ -32,21 +35,24 @@ python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.
 nvidia-smi
 
 # ============================================================
-# Ablation config — SA-LP recipe debug on a MAE-CP+MAE checkpoint.
-# Change DATASET / NSAMPLES / SEED together if you switch datasets.
+# Per-dataset config (indexed by array task id)
 # ============================================================
+DATASETS=(food101 octmnist plant_village organamnist galaxy10 fgvc_aircraft cars196)
+SUBPATHS=(food101 med_mnist/octmnist-size=224 plant_village med_mnist/organamnist-size=224 galaxy10 fgvc_aircraft cars196)
+i=${SLURM_ARRAY_TASK_ID}
+DATASET=${DATASETS[$i]}
+PROCESSED_SUBPATH=${SUBPATHS[$i]}
+
 DATA_DIR="/scratch/gs4133/zhd/CP/data"
-DATASET="cars196"
-NSAMPLES=8144                 # MAX for cars196
-SEED=42
-PROCESSED_SUBPATH="cars196"   # stable_datasets/processed/<this>
-CKPT_DIR="/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Cars196/MAE"
+CKPT_ROOT="/scratch/gs4133/zhd/CP/outputs/ckpts/cp"
+OUT="eval/outputs/exp_b/${DATASET}.csv"
 NUM_WORKERS=8
 
 # ============================================================
 # Stage this dataset's processed cache to node-local fast storage.
-# HF download_and_prepare() checks the PROCESSED cache only; when it is
-# complete the loader mmaps it directly and never reads downloads/.
+# HF download_and_prepare() checks the PROCESSED cache only; when it is complete the loader
+# mmaps it directly and never reads downloads/. (food101's cache is large; if /tmpdata is too
+# small the size-check falls back to /scratch.)
 # ============================================================
 SRC_PROC="${DATA_DIR}/stable_datasets/processed/${PROCESSED_SUBPATH}"
 if [ -d "${SRC_PROC}" ]; then
@@ -67,24 +73,24 @@ if [ -d "${SRC_PROC}" ]; then
         DATA_DIR="${LOCAL_CACHE}"
         echo "===== DATA_DIR -> ${DATA_DIR} (node-local; reads now fast) ====="
     else
-        echo "WARN: no node-local root with >= $((NEED_KB/1024/1024))G free (tried \$TMPDIR /tmpdata /dev/shm); using /scratch."
+        echo "WARN: no node-local root with >= $((NEED_KB/1024/1024))G free; using /scratch."
     fi
 else
     echo "WARN: processed cache not found at ${SRC_PROC}; using /scratch DATA_DIR=${DATA_DIR}."
 fi
 
 echo "=========================================="
-echo "SA-LP ablation: ${DATASET} (MAE-CP+MAE) n=${NSAMPLES} seed=${SEED}"
-echo "  ckpt-dir: ${CKPT_DIR}"
+echo "Exp B SA-LP: dataset=${DATASET}  (MAE/LeJEPA x DINOv3/CLIP/MAE x MAX x seeds)"
+echo "  ckpt-root: ${CKPT_ROOT}"
 echo "  cache-dir: ${DATA_DIR}"
+echo "  out:       ${OUT}"
 echo "=========================================="
 
-python -u eval/ablate_sa_lp.py \
-    --ckpt-dir "${CKPT_DIR}" \
-    --dataset "${DATASET}" \
-    --n-samples "${NSAMPLES}" \
-    --seed "${SEED}" \
+python -u eval/run_exp_b.py \
+    --ckpt-root "${CKPT_ROOT}" \
     --cache-dir "${DATA_DIR}" \
+    --datasets "${DATASET}" \
+    --out "${OUT}" \
     --num-workers "${NUM_WORKERS}" \
     2>&1
 
