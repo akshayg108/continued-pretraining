@@ -1,0 +1,12 @@
+method,encoder,dataset,size,seed,pool,baseline_lp_f1,sa_lp_f1,sa_minus_baseline,ckpt
+LeJEPA,CLIP,food101,75750,42,cls,0.8079,0.7671,-0.0408,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s42.ckpt
+LeJEPA,DINOv3,food101,75750,42,cls,0.8971,0.8706,-0.0265,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s42.ckpt
+LeJEPA,MAE,food101,75750,42,mean,0.8009,0.7806,-0.0203,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Food101/MAE/all/cp/food101_vit_base_patch16_224.mae_n75750_s42.ckpt
+MAE,CLIP,food101,75750,42,cls,0.0953,0.2385,0.1433,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s42.ckpt
+MAE,CLIP,food101,75750,43,cls,0.1034,0.2334,0.13,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s43.ckpt
+MAE,CLIP,food101,75750,44,cls,0.1014,0.2325,0.1311,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s44.ckpt
+MAE,DINOv3,food101,75750,43,cls,0.2584,0.5739,0.3156,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s43.ckpt
+MAE,DINOv3,food101,75750,44,cls,0.2739,0.5708,0.2969,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s44.ckpt
+MAE,MAE,food101,75750,42,mean,0.4647,0.6753,0.2106,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/MAE/all/cp/food101_vit_base_patch16_224.mae_n75750_s42.ckpt
+MAE,MAE,food101,75750,43,mean,0.4651,0.6776,0.2124,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/MAE/all/cp/food101_vit_base_patch16_224.mae_n75750_s43.ckpt
+MAE,MAE,food101,75750,44,mean,0.4683,0.6769,0.2086,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/Food101/MAE/all/cp/food101_vit_base_patch16_224.mae_n75750_s44.ckpt
