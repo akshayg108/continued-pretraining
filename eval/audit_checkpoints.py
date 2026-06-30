@@ -91,7 +91,9 @@ def audit_one(path):
     gstep = ck.get("global_step", "") if isinstance(ck, dict) else ""
     sd = ck.get("state_dict", ck) if isinstance(ck, dict) else ck
 
-    is_scratch = any(t in path.upper() for t in ("FROM", "SCRATCH", "RANDOM"))
+    # FROM-SCRATCH = the 'random' variant dir (NOT a substring match — the cluster FS root
+    # is /scratch/..., which would false-positive every path).
+    is_scratch = (os.sep + "random" + os.sep) in path or (encoder or "").upper() == "RANDOM"
     diff = ""
     if timm_id and not is_scratch:
         try:
