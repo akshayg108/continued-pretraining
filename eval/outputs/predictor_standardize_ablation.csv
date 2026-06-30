@@ -1,0 +1,5 @@
+target,target_name,variant,block,bal_acc,auc,n,note
+dknn,ΔkNN,global,loo_sphere_DINOv3+CLIP,0.6666666666666667,0.7453703703703703,30,
+dknn,ΔkNN,global,cross_encoder_DINOv3+CLIP->SigLIP,,,0,SigLIP_in_geometry_15_but_no_CP_results_to_score
+dknn,ΔkNN,per_encoder,loo_sphere_DINOv3+CLIP,0.7777777777777777,0.8287037037037037,30,
+dknn,ΔkNN,per_encoder,cross_encoder_DINOv3+CLIP->SigLIP,,,0,SigLIP_in_geometry_15_but_no_CP_results_to_score

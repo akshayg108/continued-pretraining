@@ -24,13 +24,13 @@ eval/
 │
 ├── f2_mechanism/            ── Finding 2: the two forces (spread vs collision), reconstructed
 │   ├── postcp_offsphere.py     Δcv/Δuniformity/Δoverlap → ΔkNN; off-sphere norm-CV REFUTED, uniformity governs
-│   └── sa_lp_compare.py        Exp B (SA-LP): aggregation-failure vs information-loss verdict
+│   └── forces_combined.py      combined two-force rank model (spread + collision; incremental R²)
+│  (Exp B / SA-LP = eval/run_exp_b.py: re-eval post-CP encoders with a learned aggregation pool → outputs/exp_b/)
 │
 ├── f3_growth/               ── Finding 3: transport dynamics over CP data size
 │   └── postcp_growth_analysis.py  spread (uniformity↓) + collision (overlap↑) vs size; peak-before-collision
 │
-├── PLAN_validation_and_writing.md     plans (stay with the code)
-├── PLAN_texture_regime_extension.md   Exp D (texture sub-regime, F1 P1.4)
+├── PLAN_iclr.md                       master plan — status (done) + remaining (Exp D, paper assembly)
 └── outputs/                 all CSVs + console logs
 ```
 
@@ -39,7 +39,7 @@ eval/
 | Finding (v3) | Folder | Scripts | Status |
 |---|---|---|---|
 | **F1** starting position predicts transfer | `f1_position/` | correlate, bivariate, delta_structure | verified (FINDINGS_step2) |
-| **F2** two forces: spread (uniformity↓, helps) vs collision (overlap↑, hurts); norm-CV refuted | `f2_mechanism/` | postcp_offsphere (+ Exp B: sa_lp_compare) | verified (FINDINGS_step4); off-sphere/norm-CV **refuted** |
+| **F2** two forces: spread (uniformity↓, helps) vs collision (overlap↑, hurts); norm-CV refuted | `f2_mechanism/` | postcp_offsphere, forces_combined (+ Exp B: `run_exp_b.py`) | verified (FINDINGS_step4 / step6); off-sphere/norm-CV **refuted** |
 | **F3** transport dynamics (spread then collide with data) | `f3_growth/` | postcp_growth_analysis | verified (FINDINGS_step4) |
 
 ## Run order
@@ -66,8 +66,9 @@ python eval/f1_position/correlate.py --geometry eval/outputs/geometry_15.csv
 python eval/f1_position/bivariate.py
 python eval/f1_position/delta_structure.py
 
-# 6. Exp B (after a CP-repo --aggregation eval fills the input CSV)
-python eval/f2_mechanism/sa_lp_compare.py --input eval/outputs/sa_lp_input.csv --out eval/outputs/sa_lp.csv
+# 6. Exp B (SA-LP) — re-evaluate post-CP encoders with a learned aggregation pool (one job per dataset)
+python eval/run_exp_b.py --ckpt-root <.../ckpts/cp> --cache-dir <.../data> --datasets <ds> --out eval/outputs/exp_b/<ds>.csv
+# then: recovery fraction in eval/outputs/sa_lp_recovery.csv (aggregation-failure vs information-loss verdict)
 ```
 
 ## Conventions
