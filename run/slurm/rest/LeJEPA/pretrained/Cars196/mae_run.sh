@@ -4,11 +4,11 @@
 #SBATCH --account=civil
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=80g
 #SBATCH --exclude=cn253,cn259
-#SBATCH --mem=256G
+#SBATCH --mem=128G
 #SBATCH --time=96:00:00
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-cars196-mae-%j.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/lejepa-cars196-mae-%j.err
@@ -80,7 +80,7 @@ WEIGHT_DECAY=0.05
 FREEZE_EPOCHS=15
 NUM_TRAINED_BLOCKS=2
 KNN_K=20
-NUM_WORKERS=8
+NUM_WORKERS=12
 SEEDS=(44)
 if [ -n "$OVERRIDE_SEED" ]; then SEEDS=($OVERRIDE_SEED); fi
 
