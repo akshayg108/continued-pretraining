@@ -71,7 +71,10 @@ rule · 6. C3 two-force mechanism (+ F2 aggregation) · 7. Practical Guidelines 
 
 **Benchmark:** 4 CP objectives (LeJEPA/SimCLR/MAE/DIET-CP) + FROM-SCRATCH; encoders DINOv3/CLIP/MAE
 (+ **SigLIP-2 held-out**), all ViT-B/16, 768-d; eval kNN (k=20, cosine, macro-F1) / Linear Probe / Fine-tune;
-sizes 100/500/1k/10k/25k/MAX (original 8) + MAX-only (new 7). 15 datasets = 9 OOD + 6 fine-grained.
+sizes: ALL 15 datasets carry 3–6 size tiers (100/500/1k/…/MAX; the original 8 additionally have
+10k/25k tiers; the 7 expansion datasets were back-filled with 100–1000 tiers after the initial
+MAX-only pass — see `eval/outputs/cp_long.csv` for the authoritative coverage). 15 datasets =
+9 OOD + 6 fine-grained.
 
 **Guidelines decision-flow (Section 7):**
 - Step 1 — sphere-native (L2-norm CV < 5 %, DINOv3/CLIP/SigLIP) vs off-sphere (MAE). This sets the SIGN of

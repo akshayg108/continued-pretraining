@@ -48,7 +48,8 @@ DATASET_TYPE = {
     "cub200": "FG", "flowers102": "FG", "oxford_pet": "FG",
 }
 
-# The 7 datasets added in the 15-dataset expansion (only ran at MAX size).
+# The 7 datasets added in the 15-dataset expansion. (NOTE: originally MAX-only; size sweeps
+# were later filled in for all 15 — see cp_long.csv. The flag only marks expansion membership.)
 NEW_DATASETS = {"eurosat", "plant_village", "dtd",
                 "cars196", "cub200", "flowers102", "oxford_pet"}
 
