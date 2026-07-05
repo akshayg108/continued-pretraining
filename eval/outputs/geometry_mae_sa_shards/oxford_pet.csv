@@ -1,0 +1,2 @@
+encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
+MAE_SA,oxford_pet,3680,768,10.022684097290039,1.6268024444580078,0.16231206059455872,-1.331510066986084,-14.23061340739982,-0.8866059184074402,0.03508138656616211,0.04072307162535416,0.41131067411766115,0.36012980760195046,0.36535870504712875,1.2409683962778495,0.326225,0.38192

@@ -1,0 +1,2 @@
+encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
+MAE_SA,eurosat,5000,768,17.330034255981445,4.844731330871582,0.27955693006515503,-0.6449381709098816,-8.865655200874386,-0.4649111032485962,0.24014973640441895,0.31110629312191096,0.6278752563155274,0.32493335070687546,0.32085115695024596,1.2500188543140578,0.00355,0.00991
