@@ -1,5 +1,17 @@
 # Second-Axis & Adjudication-Fixes Plan (companion to PLAN_iclr.md)
 
+> **STATUS 2026-07-06: ALL TASKS COMPLETE.**
+> Task 0 (Sorkhei numbers) + Task 1 (disclosures) + Task 2 (citation fixes) — applied to
+> `findings/FINDINGS_step2.md`, `FINDINGS_step4.md`, `hypothesis/HYPOTHESES_v3.md`,
+> `papers/geometry/CORE_PAPERS.md`, `papers/methods/METHODS_PAPERS.md`,
+> `findings/LITREVIEW_step3.md`. Task 3 (Exp E) / Task 4 (Exp F) / Task 6 (Exp H) — run on
+> the cluster, adjudicated in `findings/FINDINGS_step7_second_axis.md`; Task 5 resolved on
+> existing data (dose confound refuted). Final integration after test3+test4:
+> `findings/FINDINGS_step8_final_integration.md` (adversarial verification 9/9). Task 7
+> (paper-section deltas) folded into `eval/PLAN_iclr.md` R3. Verdicts: P-A partially
+> supported (packing, exploratory), P-B refuted, P-C1 supported-as-gap, P-C2 defused
+> (inversion genuine), P-D refuted as mechanism (DIET-Δwithin sub-prediction hit).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
