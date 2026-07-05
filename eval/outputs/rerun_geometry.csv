@@ -1,4 +1,3 @@
-/scratch/gs4133/zhd/CP/outputs/ckpts/cp/DIET/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s44.ckpt,DIET,CLIP,Food101,75750,44,74,355200,0.2621,OK:trained
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/DIET/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s43.ckpt,DIET,DINOv3,Food101,75750,43,74,355200,0.2662,OK:trained
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/DIET/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s44.ckpt,DIET,DINOv3,Food101,75750,44,74,355200,0.2889,OK:trained
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/DIET/pretrained/Food101/DINOv3/small/cp/food101_vit_base_patch16_dinov3.lvd1689m_n1000_s43.ckpt,DIET,DINOv3,Food101,1000,43,74,4800,0.04813,OK:trained
@@ -33,7 +32,6 @@
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/DINOv3/all/cp/octmnist_vit_base_patch16_dinov3.lvd1689m_n97477_s42.ckpt,LeJEPA,DINOv3,OctMNIST,97477,42,36,70485,0.04833,OK:trained
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s42.ckpt,SimCLR,CLIP,Food101,75750,42,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s43.ckpt,SimCLR,CLIP,Food101,75750,43,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
-/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s44.ckpt,SimCLR,CLIP,Food101,75750,44,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s42.ckpt,SimCLR,DINOv3,Food101,75750,42,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s43.ckpt,SimCLR,DINOv3,Food101,75750,43,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/DINOv3/all/cp/food101_vit_base_patch16_dinov3.lvd1689m_n75750_s44.ckpt,SimCLR,DINOv3,Food101,75750,44,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
@@ -58,3 +56,4 @@
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/PathMNIST/MAE/all/cp/pathmnist_vit_base_patch16_224.mae_n89996_s42.ckpt,SimCLR,MAE,PathMNIST,89996,42,14,10560,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/PathMNIST/MAE/all/cp/pathmnist_vit_base_patch16_224.mae_n89996_s43.ckpt,SimCLR,MAE,PathMNIST,89996,43,14,10560,0,UNTRAINED:died@epoch14(<=frozen)
 /scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/PathMNIST/MAE/all/cp/pathmnist_vit_base_patch16_224.mae_n89996_s44.ckpt,SimCLR,MAE,PathMNIST,89996,44,14,10560,0,UNTRAINED:died@epoch14(<=frozen)
+/scratch/gs4133/zhd/CP/outputs/ckpts/cp/SimCLR/pretrained/Food101/CLIP/all/cp/food101_vit_base_patch16_clip_224.openai_n75750_s44.ckpt,SimCLR,CLIP,Food101,75750,44,14,8880,0,UNTRAINED:died@epoch14(<=frozen)
