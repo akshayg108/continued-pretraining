@@ -8,3 +8,8 @@ MAE,DINOv3,octmnist,97477,44,cls,0.7918,0.9306,0.1388,/scratch/gs4133/zhd/CP/out
 MAE,MAE,octmnist,97477,42,mean,0.7412,0.8956,0.1544,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s42.ckpt
 MAE,MAE,octmnist,97477,43,mean,0.7783,0.9008,0.1225,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s43.ckpt
 MAE,MAE,octmnist,97477,44,mean,0.7909,0.9162,0.1253,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/MAE/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s44.ckpt
+LeJEPA,CLIP,octmnist,97477,42,cls,0.7352,0.8751,0.1399,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/CLIP/all/cp/octmnist_vit_base_patch16_clip_224.openai_n97477_s42.ckpt
+LeJEPA,DINOv3,octmnist,97477,42,cls,0.84,0.9153,0.0752,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/DINOv3/all/cp/octmnist_vit_base_patch16_dinov3.lvd1689m_n97477_s42.ckpt
+LeJEPA,MAE,octmnist,97477,42,mean,0.8381,0.8945,0.0563,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s42.ckpt
+LeJEPA,MAE,octmnist,97477,43,mean,0.8504,0.9,0.0496,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s43.ckpt
+LeJEPA,MAE,octmnist,97477,44,mean,0.8382,0.905,0.0668,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/OctMNIST/MAE/all/cp/octmnist_vit_base_patch16_224.mae_n97477_s44.ckpt

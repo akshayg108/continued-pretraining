@@ -15,3 +15,5 @@ LeJEPA,DINOv3,cars196,8144,42,cls,0.8808,0.9027,0.022,/scratch/gs4133/zhd/CP/out
 LeJEPA,DINOv3,cars196,8144,43,cls,0.8824,0.899,0.0166,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/DINOv3/cp/cars196_vit_base_patch16_dinov3.lvd1689m_n8144_s43.ckpt
 LeJEPA,DINOv3,cars196,8144,44,cls,0.8813,0.8952,0.0139,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/DINOv3/cp/cars196_vit_base_patch16_dinov3.lvd1689m_n8144_s44.ckpt
 LeJEPA,MAE,cars196,8144,42,mean,0.176,0.3273,0.1513,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/MAE/cp/cars196_vit_base_patch16_224.mae_n8144_s42.ckpt
+LeJEPA,MAE,cars196,8144,43,mean,0.196,0.3439,0.1479,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/MAE/cp/cars196_vit_base_patch16_224.mae_n8144_s43.ckpt
+LeJEPA,MAE,cars196,8144,44,mean,0.1869,0.3365,0.1496,/scratch/gs4133/zhd/CP/outputs/ckpts/cp/LeJEPA/pretrained/Cars196/MAE/cp/cars196_vit_base_patch16_224.mae_n8144_s44.ckpt
