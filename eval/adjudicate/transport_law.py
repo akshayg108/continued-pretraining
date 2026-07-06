@@ -55,10 +55,12 @@ def main():
           f"{tf.dataset.nunique()} datasets)")
 
     # ---- T3 first: identity must hold before anything else is interpretable ------------
-    worst = tf.resid_identity.abs().max()
-    print(f"\nT3 identity check: max |total - trans - between - within| = {worst:.2e} "
-          f"-> {'PASS' if worst < 1e-8 else 'FAIL — NUMERICAL BUG, STOP'}")
-    if worst >= 1e-8:
+    # Relative gate: features are float32, so the exact identity holds only to ~1e-6
+    # relative accumulation precision (verified exact on float64 synthetic data).
+    worst = (tf.resid_identity.abs() / tf.total_energy).max()
+    print(f"\nT3 identity check: max |resid| / total_energy = {worst:.2e} "
+          f"-> {'PASS' if worst < 1e-4 else 'FAIL — NUMERICAL BUG, STOP'}")
+    if worst >= 1e-4:
         return
 
     # ---- cell means over seeds -----------------------------------------------------------

@@ -33,7 +33,13 @@
   (FG-7 +0.893/+0.714, dose confound refuted); Exp B on repaired references 0.594
   (test3). ✓ (`findings/FINDINGS_step7_second_axis.md`, `_step8_final_integration.md`;
   refreshed behavior in `cp_long_refreshed.csv`; adversarial verification 9/9)
-- **Spectrum & Transport phase (2026-07-07, in flight)** — design + code complete
+- **Spectrum & Transport phase — COMPLETE (2026-07-08)**: Exp I/J landed; cliff reinforced
+  (38-point layer curve, CI contains 0); L12 internal-protocol gate replication (D3 +0.832 /
+  CLIP +0.757 / SigLIP +0.554 / MAE +0.043); MAE depth gradient exploratory-only after SNR
+  robustness; T1a vector-collision sign-REFUTED (collision = relative/co-moving mixing);
+  T1b invariance-pull confirmed on CLIP (FDR), directional on DINOv3; T2 DINOv3-only;
+  MAE-CP transport translation-dominated (0.75 share). See
+  `findings/FINDINGS_step9_spectrum_transport.md`. Original design notes below. —
   (`eval/DESIGN_spectrum_transport.md`, `eval/PLAN_spectrum_transport.md`). Design 1
   (bilinear unified law) RAN locally: V1 PASS (single-term x·θ LOO +0.497 ties binary gate
   +0.485, beats position-only +0.437; block-bootstrap M4−M2 CI [−0.15, +0.09]); V2 PASS

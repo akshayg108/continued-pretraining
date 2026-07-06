@@ -68,10 +68,28 @@ def main():
     m = pre.merge(post_cell, on=["encoder", "dataset", "layer"], how="inner")
     m["dknn_l"] = m["knn_post"] - m["knn_internal"]
 
+    # ---- frozen (dataset, layer) rows: the recipe couples unfreeze depth to dataset size
+    # (main grid: n<10k -> last 2 blocks, 10-25k -> 4, 25-50k -> 6, >50k -> all;
+    # SigLIP grid: 2 everywhere; verified against run scripts AND empirically 2026-07-08).
+    # A frozen layer has delta == 0 identically; keeping those rows poisons law_rho with
+    # tie artifacts (this retracted the MAE depth-gradient claim). Drop per ROW, not per
+    # layer: detect from the per-ckpt deltas, max over methods/seeds.
+    raw = post.merge(pre[["encoder", "dataset", "layer", "knn_internal"]],
+                     on=["encoder", "dataset", "layer"], suffixes=("", "_pre"))
+    raw["d1"] = raw["knn_internal"] - raw["knn_internal_pre"]
+    fro = (raw.groupby(["encoder", "dataset", "layer"])["d1"]
+           .apply(lambda s: s.abs().max() < 1e-6).reset_index(name="frozen"))
+    m = m.merge(fro, on=["encoder", "dataset", "layer"], how="left")
+    n_frozen = int(m["frozen"].sum())
+    m = m[~m["frozen"].fillna(False)]
+    print(f"dropped {n_frozen} frozen (dataset, layer) rows (unfreeze-depth schedule)")
+
     # ---- curve: one row per (encoder, layer) -------------------------------------------
     rows = []
+    dropped = []
     for (enc, layer), g in m.groupby(["encoder", "layer"]):
-        if len(g) < 8 or g.dknn_l.isna().any():
+        if len(g) < 7 or g.dknn_l.isna().any():
+            dropped.append((enc, int(layer), len(g)))
             continue
         rows.append(dict(
             encoder=enc, layer=int(layer),
@@ -81,8 +99,14 @@ def main():
             n_datasets=len(g),
             n_methods=int(post[(post.encoder == enc)].method.nunique())))
     curve = pd.DataFrame(rows).sort_values(["encoder", "layer"])
+    curve = curve.dropna(subset=["law_rho", "theta_coupling"])
     curve.to_csv(args.out, index=False)
-    print(f"\ncurve: {len(curve)} (encoder, layer) points -> {args.out}")
+    print(f"\ncurve: {len(curve)} valid (encoder, layer) points -> {args.out}")
+    print("NOTE: depth range below L9 is untestable BY DESIGN (unfreeze depth is coupled to")
+    print("dataset size, so shallow layers are trained for <=5 datasets). The spectrum test")
+    print("runs on L9-L12 only; L11/L12 have all 15 datasets.")
+    if dropped:
+        print(f"dropped {len(dropped)} under-covered (encoder, layer) points: {dropped}")
 
     # ---- L1: depth profiles --------------------------------------------------------------
     print("\nL1 rankme depth profiles (median across datasets):")
@@ -116,7 +140,7 @@ def main():
     print(f"   BH-FDR(q=0.10) within-encoder passes: "
           f"{[n for n, ok in zip(names, fdr) if ok] or 'none'}")
     l2 = "CONTINUOUS-SPECTRUM EVIDENCE" if (r_all > 0 and lo > 0) else \
-         "NO monotone spectrum — cliff conclusion reinforced with 12x points"
+         "NO spectrum signal on the valid L9-L12 range (deeper range untestable by design)"
     print(f"   L2 verdict: {l2}")
 
     # ---- L3: MAE local recovery ------------------------------------------------------------

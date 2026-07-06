@@ -35,6 +35,7 @@ from geometry_metrics import (ENCODERS, load_target_dataset, load_imagenet_val, 
                               extract_features)
 from postcp_features import load_cp_backbone  # noqa: E402
 from postcp_class_sweep import discover  # noqa: E402
+from layerwise_postcp import died_before_unfreeze  # noqa: E402
 
 ROOT = _P(__file__).resolve().parent.parent.parent
 FIELDS = ["method", "encoder", "dataset", "size", "seed", "n",
@@ -109,6 +110,9 @@ def main():
         if c["ckpt"] in done:
             continue
         try:
+            if died_before_unfreeze(c["ckpt"]):
+                print(f"  SKIP untrained (died before unfreeze): {c['ckpt']}")
+                continue
             key = (c["encoder"], c["dataset"])
             if c["dataset"] not in loaders:
                 loaders[c["dataset"]] = load_target_dataset(

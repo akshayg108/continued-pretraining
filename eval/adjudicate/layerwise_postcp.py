@@ -35,8 +35,21 @@ from postcp_class_sweep import discover, MAX_N, DS_FOLDER  # noqa: E402
 
 ROOT = _P(__file__).resolve().parent.parent.parent
 SIGLIP_TIMM = "vit_base_patch16_siglip_224.v2_webli"
+UNFREEZE_EPOCH = 15   # CP recipe: backbone frozen for epochs 0-14; ckpts that died before
+                      # the unfreeze are bit-identical to the pretrained encoder (audit
+                      # 2026-06-30 found 6 such SigLIP MAX ckpts) -> degenerate delta rows.
 FIELDS = ["method", "encoder", "dataset", "size", "seed", "layer",
           "uniformity_t2", "knn_internal", "ckpt"]
+
+
+def died_before_unfreeze(ckpt_path):
+    """True if the Lightning epoch field shows the backbone never unfroze."""
+    try:
+        ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        epoch = int(ck.get("epoch", -1)) if isinstance(ck, dict) else -1
+    except Exception:
+        return False
+    return 0 <= epoch < UNFREEZE_EPOCH
 
 
 def discover_siglip(siglip_root):
@@ -108,6 +121,9 @@ def main():
         if c["ckpt"] in done:
             continue
         try:
+            if died_before_unfreeze(c["ckpt"]):
+                print(f"  SKIP untrained (died before unfreeze): {c['ckpt']}")
+                continue
             if c["dataset"] not in loaders:
                 loaders[c["dataset"]] = load_target_dataset(
                     c["dataset"], args.download_dir, args.processed_dir)
