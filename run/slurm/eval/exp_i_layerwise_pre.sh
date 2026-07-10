@@ -13,7 +13,7 @@
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/expI-layer-pre-%j.err
 
 # ============================================================
-# Exp I (pre-CP side) — layer-wise virtual encoders (eval/layerwise_geometry.py).
+# Exp I (pre-CP side) — layer-wise virtual encoders (eval/utils/layerwise_geometry.py).
 # SINGLE job (no array): 4 encoders x 15 datasets x 12 blocks, per-layer geometry +
 # internal kNN. No ImageNet, no checkpoints — timm pretrained weights only.
 # Reads datasets straight from /scratch (60 light passes; staging all 15 would cost
@@ -41,7 +41,7 @@ nvidia-smi
 
 DATA_ROOT="/scratch/gs4133/zhd/CP/data"
 
-python -u eval/layerwise_geometry.py \
+python -u eval/utils/layerwise_geometry.py \
     --download-dir  "${DATA_ROOT}/stable_datasets/downloads" \
     --processed-dir "${DATA_ROOT}/stable_datasets/processed" \
     --output eval/outputs/layerwise_pre.csv \

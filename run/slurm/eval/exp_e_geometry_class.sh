@@ -14,7 +14,7 @@
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/expE-geoclass-%A_%a.err
 
 # ============================================================
-# Exp E — second-axis PRE-CP geometry (eval/geometry_class.py).
+# Exp E — second-axis PRE-CP geometry (eval/utils/geometry_class.py).
 # One array task per dataset (exp-b idiom); each task runs ALL 4 encoders
 # (DINOv3/MAE/CLIP/SigLIP, timm pretrained — NO CP checkpoints touched) on its
 # dataset + ImageNet-val, and writes a per-dataset shard CSV.
@@ -98,7 +98,7 @@ echo "=========================================="
 echo "Exp E geometry_class: dataset=${DATASET}  encoders=DINOv3 MAE CLIP SigLIP"
 echo "=========================================="
 
-python -u eval/geometry_class.py \
+python -u eval/utils/geometry_class.py \
     --datasets "${DATASET}" \
     --imagenet-dir  "${IMAGENET_DIR}" \
     --download-dir  "${DL_DIR}" \

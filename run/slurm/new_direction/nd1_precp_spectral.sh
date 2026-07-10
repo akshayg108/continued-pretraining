@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=expH-postclass
+#SBATCH --job-name=nd1-spectral
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,25 +8,21 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
+#SBATCH --time=4:00:00
 #SBATCH --array=0-14
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/expH-postclass-%A_%a.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/expH-postclass-%A_%a.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd1-spectral-%A_%a.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd1-spectral-%A_%a.err
 
 # ============================================================
-# Exp H — post-CP class-anchored geometry at MAX (eval/utils/postcp_class_sweep.py).
-# One array task per dataset: processes that dataset's MAX checkpoints
-# (4 methods x 3 encoders x seeds, ~36 ckpts), computing within/between-class
-# spread + cdnv on the production pooled readout. Feeds P-D (does CP-induced
-# WITHIN-class spreading mediate the DeltaFT side of the reversal?).
-# No ImageNet needed. Reads ckpts only — safe to run while post-cp evaluations
-# of other jobs are still in flight (they never rewrite ckpts).
-# NOTE: run AFTER the retrained ckpts are in place (test1 all-PASS = they are).
+# ND1 — pre-CP spectral geometry (rankme / alpha-ReQ / coherence / VCI), 4 encoders
+# x 1 dataset per array task (eval/new_direction/nd1_precp_spectral.py). ZERO ckpts,
+# public timm weights only. Feeds nd1_verdict.py (A4 SigLIP diagnosis) and the ND2/ND4
+# pre-CP baselines.
 #
 # After the whole array finishes, concat shards on the login node:
-#   python -c "import glob,pandas as pd; pd.concat([pd.read_csv(f) for f in sorted(glob.glob('eval/outputs/postcp_class_shards/*.csv'))]).to_csv('eval/outputs/postcp_class_max.csv', index=False)"
-# and send me eval/outputs/postcp_class_max.csv.
-# Queue-friendly tip:  sbatch --array=0-14%5 run/slurm/eval/exp_h_postcp_class.sh
+#   python -c "import glob,pandas as pd; pd.concat([pd.read_csv(f) for f in sorted(glob.glob('eval/outputs/nd1_precp_shards/*.csv'))]).to_csv('eval/outputs/nd1_precp_spectral.csv', index=False)"
+# and send me eval/outputs/nd1_precp_spectral.csv.
+# Queue-friendly tip:  sbatch --array=0-14%5 run/slurm/new_direction/nd1_precp_spectral.sh
 # ============================================================
 
 echo "=========================================="
@@ -45,9 +41,6 @@ export PYTHONFAULTHANDLER=1
 python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 nvidia-smi
 
-# ============================================================
-# Per-dataset config (indexed by array task id) — same order as exp-b
-# ============================================================
 DATASETS=(food101 octmnist plant_village organamnist galaxy10 fgvc_aircraft cars196 breastmnist cub200 dermamnist dtd eurosat flowers102 oxford_pet pathmnist)
 SUBPATHS=(food101 med_mnist/octmnist-size=224 plant_village med_mnist/organamnist-size=224 galaxy10 fgvc_aircraft cars196 med_mnist/breastmnist-size=224 cub200 med_mnist/dermamnist-size=224 dtd eurosat flowers102 oxford_pet med_mnist/pathmnist-size=224)
 i=${SLURM_ARRAY_TASK_ID}
@@ -57,12 +50,11 @@ PROCESSED_SUBPATH=${SUBPATHS[$i]}
 DATA_ROOT="/scratch/gs4133/zhd/CP/data"
 DL_DIR="${DATA_ROOT}/stable_datasets/downloads"
 PROC_DIR="${DATA_ROOT}/stable_datasets/processed"
-CKPT_ROOT="/scratch/gs4133/zhd/CP/outputs/ckpts/cp"
-OUT_DIR="eval/outputs/postcp_class_shards"
+OUT_DIR="eval/outputs/nd1_precp_shards"
 mkdir -p "${OUT_DIR}"
 
 # ============================================================
-# Stage this dataset's processed cache node-local (no ImageNet needed)
+# Stage this dataset's processed cache node-local
 # ============================================================
 SRC_PROC="${PROC_DIR}/${PROCESSED_SUBPATH}"
 if [ -d "${SRC_PROC}" ]; then
@@ -89,19 +81,15 @@ else
     echo "WARN: processed cache not found at ${SRC_PROC}; using /scratch."
 fi
 
-# ============================================================
-# Run: all MAX ckpts of this dataset (4 methods x 3 encoders x seeds)
-# ============================================================
 echo "=========================================="
-echo "Exp H postcp_class_sweep: dataset=${DATASET}  ckpt-root=${CKPT_ROOT}"
+echo "ND1 pre-CP spectral: dataset=${DATASET}"
 echo "=========================================="
 
-python -u eval/utils/postcp_class_sweep.py \
-    --ckpt-root "${CKPT_ROOT}" \
+python -u eval/new_direction/nd1_precp_spectral.py \
     --datasets "${DATASET}" \
     --download-dir  "${DL_DIR}" \
     --processed-dir "${PROC_DIR}" \
-    --out "${OUT_DIR}/${DATASET}.csv" \
+    --output "${OUT_DIR}/${DATASET}.csv" \
     2>&1
 
 echo ""

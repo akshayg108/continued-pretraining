@@ -15,7 +15,7 @@
 
 # ============================================================
 # Exp I (post-CP side) — per-layer kNN + uniformity for MAX checkpoints
-# (eval/adjudicate/layerwise_postcp.py). One array task per dataset.
+# (eval/F4_gate/layerwise_postcp.py). One array task per dataset.
 # Methods: LeJEPA/SimCLR/DIET on {DINOv3, CLIP, MAE} (main grid) + LeJEPA/SimCLR on
 # SigLIP (cp-siglip root; auto-skipped with a warning if the root is absent).
 # No ImageNet needed. Checkpoints are read from /scratch (many small reads — that is
@@ -95,7 +95,7 @@ echo "=========================================="
 echo "Exp I layerwise_postcp: dataset=${DATASET}"
 echo "=========================================="
 
-python -u eval/adjudicate/layerwise_postcp.py \
+python -u eval/F4_gate/layerwise_postcp.py \
     --datasets "${DATASET}" \
     --ckpt-root "${CKPT_ROOT}" \
     --siglip-root "${SIGLIP_ROOT}" \

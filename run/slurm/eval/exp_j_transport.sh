@@ -14,7 +14,7 @@
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/expJ-transport-%A_%a.err
 
 # ============================================================
-# Exp J — transport-field decomposition (eval/adjudicate/transport_field.py).
+# Exp J — transport-field decomposition (eval/F2_forces/transport_field.py).
 # One array task per dataset. ALL 4 methods (incl. MAE-CP) x {DINOv3, CLIP, MAE} x MAX.
 # Per task: 3 pre-CP extractions + 3 ImageNet extractions (cached in RAM) + ~36 post-CP
 # checkpoint extractions. Dataset + ImageNet-val ARE staged node-local (exp_e idiom).
@@ -99,7 +99,7 @@ echo "=========================================="
 echo "Exp J transport_field: dataset=${DATASET}"
 echo "=========================================="
 
-python -u eval/adjudicate/transport_field.py \
+python -u eval/F2_forces/transport_field.py \
     --datasets "${DATASET}" \
     --ckpt-root "${CKPT_ROOT}" \
     --imagenet-dir  "${IMAGENET_DIR}" \

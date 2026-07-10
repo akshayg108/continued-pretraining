@@ -13,7 +13,7 @@
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/L-geo-%j.err
 
 # ============================================================
-# cp-L R1 appetizer — ViT-L pre-CP geometry (eval/geometry_vitL.py).
+# cp-L R1 appetizer — ViT-L pre-CP geometry (eval/F5_decision_score/geometry_vitL.py).
 # ZERO TRAINING; run this FIRST, before any cp-L training job:
 # if the R1 rank-stability verdict at the end of the log FAILs (uniformity or
 # overlap rank correlation vs ViT-B <= 0.8), STOP and reconsider before
@@ -43,7 +43,7 @@ nvidia-smi
 
 DATA_ROOT="/scratch/gs4133/zhd/CP/data"
 
-python -u eval/geometry_vitL.py \
+python -u eval/F5_decision_score/geometry_vitL.py \
     --imagenet-dir  "${DATA_ROOT}/imagenet_val" \
     --download-dir  "${DATA_ROOT}/stable_datasets/downloads" \
     --processed-dir "${DATA_ROOT}/stable_datasets/processed" \

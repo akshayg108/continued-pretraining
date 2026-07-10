@@ -14,7 +14,7 @@
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/expF-maesa-%A_%a.err
 
 # ============================================================
-# Exp F — MAE readout-confound ablation (eval/adjudicate/mae_sa_geometry.py).
+# Exp F — MAE readout-confound ablation (eval/F4_gate/mae_sa_geometry.py).
 # One array task per dataset. Uses the PRE-CP MAE encoder only (timm pretrained,
 # no CP checkpoints): extracts full token sequences on the <=5000 train subset,
 # trains a depth-1 ABMILP SA head (Exp-B recipe), pools BOTH the target subset
@@ -99,7 +99,7 @@ echo "=========================================="
 echo "Exp F mae_sa_geometry: dataset=${DATASET}"
 echo "=========================================="
 
-python -u eval/adjudicate/mae_sa_geometry.py \
+python -u eval/F4_gate/mae_sa_geometry.py \
     --datasets "${DATASET}" \
     --imagenet-dir  "${IMAGENET_DIR}" \
     --download-dir  "${DL_DIR}" \
