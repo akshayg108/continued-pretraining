@@ -11,10 +11,14 @@ the returned CSVs). Pre-registered readouts are declared in each adjudicator's d
 | ND2 | F2: do the two forces have the Li et al. spectral signature (expansion / consolidation) along the size axis? | `nd2_spectral_sweep.py` -> `nd2_spectral_sweep.csv` | `nd2_verdict.py` |
 | ND3 | A3: is DTD augmentation-dominated along its class-discriminative directions (Jing Thm 1)? | `nd3_augvar.py` -> `nd3_augvar.csv` | `nd3_verdict.py` |
 | ND4 | A2: does the method head buffer spectral reshaping away from the backbone (projector-as-buffer), tracking the gate? | `nd4_projector_spectra.py` -> `nd4_projector_spectra.csv` | `nd4_verdict.py` |
+| ND6 | Round-2 theory (NEW_DIRECTION_R2.md): does task-model alignment C(rho) give a universal level law and explain the SigLIP coupling anomaly; does the omniscient LP risk beat rankme/alpha; is hubness a universal kNN-level correlate? | `nd6_alignment.py` -> `nd6_alignment.csv` | `nd6_verdict.py` |
 
 Shared metric definitions: `spectral_metrics.py` (rankme / alpha-ReQ / coherence / VCI,
 implemented verbatim from the papers in `papers/new_direction/`; run it directly for the
-synthetic self-test).
+synthetic self-test). ND6's omniscient-risk implementation (Wei 2022 Eq. 1+4) is validated
+against Monte-Carlo ridge regression: `python eval/new_direction/nd6_alignment.py --selftest`.
+ND6 runs like ND1 (array 0-14, no ckpts, ~10-20 min/task); its verdict additionally needs
+nd1_precp_spectral.csv (baselines) and results.xlsx (knn_pre / lp_pre levels).
 
 ## Run order
 
