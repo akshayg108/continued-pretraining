@@ -1,2 +1,0 @@
-encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
-MAE_SA,cub200,5000,768,10.484742164611816,2.131875514984131,0.20333123207092285,-1.3957881927490234,-15.317136410157932,-0.9167951345443726,0.0468863844871521,0.04581686892811132,0.4001393055340121,0.3777275813013749,0.3660250089536379,1.2047859658842641,0.33065,0.40325

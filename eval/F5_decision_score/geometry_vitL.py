@@ -29,7 +29,7 @@ from geometry_metrics import (TARGET_DATASETS, load_target_dataset, load_imagene
                               extract_features, l2_norm_stats, wang_isola_uniformity,
                               mmd_rbf_components, neighbor_overlap)
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 TIMM_ID = "vit_large_patch16_dinov3.lvd1689m"   # registered in stable_cp/utils/backbone.py
 FIELDS = ["encoder", "dataset", "n_samples", "l2_norm_cv", "uniformity_t2",
           "neighbor_overlap_k50", "mmd_rbf"]

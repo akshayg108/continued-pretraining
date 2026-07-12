@@ -405,7 +405,7 @@ def main():
         ["stats_pass_refreshed.csv", "eval/F1_position_law/stats_pass_refreshed.py（外部核验后新增）", "pre-CP 几何 + 刷新 Δ", "刷新 3 方法族 36 项 BH-FDR：D3/CLIP 全 18 项（含 6 组反号）过 q=0.10", "12 的 FDR 依据"],
         ["preregister_siglip.csv", "2026-06-19 冻结存档（predictor 管线）", "pre-CP 几何（SigLIP 未见）", "冻结的逐数据集 p_help 与预测（三通道）", "13 的预注册凭证"],
         ["exp_b/*.csv", "eval/F6_aggregation/run_exp_b.py（逐数据集 shard）", "post-CP ckpt + SA 头（含 LeJEPA 对照臂）", "baseline_lp_f1 / sa_lp_f1 / 差值", "19 的原始层"],
-        ["rest_behavior.csv", "_archive/eval/rest/test4_behavior_deltas.py（验证代码，已归档）", "重跑 ckpt 的训练日志", "60 格新行为（复制检验的输入）", "12 复制检验行"],
+        ["rest_behavior.csv", "_archive/eval/rest/test4_behavior_deltas.py（验证代码，已归档）", "重跑 ckpt 的训练日志", "59 个种子级重跑行为（聚合为 31 个混合格；复制检验的输入）", "12 复制检验行"],
         ["By Method (SigLIP)（results.xlsx）", "SigLIP 网格训练日志", "pre+post 水平值（非 Δ）", "knn/lp/ft 的 pre 与 post 水平", "15(e) Sorkhei 含 SigLIP 与 V3 的输入"],
     ], columns=["文件", "生成脚本", "pre/post 编码器", "关键公式/指标", "用于表"]))
     s.sec("公式速查（文字版；Word 版公式见 report_v2.docx 第 4 章）")

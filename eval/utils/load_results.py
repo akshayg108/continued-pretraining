@@ -92,6 +92,12 @@ def load_long(xlsx_path=RESULTS_XLSX, sheet="By Datasets"):
     raw["size"] = [s for s, _ in sizes]
     raw["is_max"] = [m for _, m in sizes]
     raw["is_new"] = raw["dataset_key"].isin(NEW_DATASETS)
+    # guard against near-duplicate rows in the xlsx (audit 2026-07-12: six stale
+    # flowers102 n=100 twins once shipped alongside their n=102 rows)
+    dup = raw.duplicated(subset=["Group", "Method", "Backbone", "dataset_key", "size"])
+    if dup.any():
+        bad = raw.loc[dup, ["Group", "Method", "Backbone", "dataset_key", "size"]]
+        raise ValueError(f"results.xlsx contains duplicate run keys:\n{bad.to_string()}")
     return raw.reset_index(drop=True)
 
 
@@ -113,6 +119,11 @@ def add_size_canon(frame, dataset_col="dataset_key", size_col="size"):
 if __name__ == "__main__":
     df = load_long()
     out = ROOT / "eval" / "outputs" / "cp_long.csv"
+    if out.exists():
+        import pandas as _pd
+        old_n = len(_pd.read_csv(out))
+        if old_n != len(df):
+            print(f"NOTE: row count changes {old_n} -> {len(df)} (xlsx is the source of truth)")
     df.to_csv(out, index=False)
     print(f"rows={len(df)}  datasets={df.dataset_key.nunique()}  "
           f"methods={sorted(df.Method.unique())}  backbones={sorted(df.Backbone.unique())}")

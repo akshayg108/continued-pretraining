@@ -36,9 +36,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sweep", default=str(ROOT / "eval/outputs/postcp_sweep.csv"))
+    # defaults = the CANONICAL protocol (CORRECTIONS.md item 3 -> 106/117 = 90.6%):
+    # hygiene-fixed sweep + refreshed behavior deltas. The deprecated pre-fix pair
+    # (postcp_sweep.csv + results.xlsx) gave 106/119 = 89.1%.
+    ap.add_argument("--sweep", default=str(ROOT / "eval/outputs/postcp_sweep_fixed.csv"))
     ap.add_argument("--geometry", default=str(ROOT / "eval/outputs/geometry_15.csv"))
-    ap.add_argument("--results", default=None)
+    ap.add_argument("--results", default=str(ROOT / "eval/outputs/cp_long_refreshed.csv"))
     ap.add_argument("--min-sizes", type=int, default=3)
     ap.add_argument("--out", default=str(ROOT / "eval/outputs/postcp_growth_analysis.csv"))
     args = ap.parse_args()
@@ -56,7 +59,10 @@ def main():
     g["pre_overlap"] = g.apply(lambda r: pre_ov.get((r.encoder, r.dataset), np.nan), axis=1)
     g["delta_overlap"] = g.post_overlap - g.pre_overlap
 
-    df = load_long(args.results) if args.results else load_long()
+    if args.results and str(args.results).endswith(".csv"):
+        df = pd.read_csv(args.results)      # cp_long_refreshed.csv (canonical deltas)
+    else:
+        df = load_long(args.results) if args.results else load_long()
     dk = (df.groupby(["Method", "Backbone", "dataset_key", "size"])["dknn"].mean().reset_index()
             .rename(columns={"Method": "method_cp", "Backbone": "encoder", "dataset_key": "dataset"}))
     g = add_size_canon(g, "dataset", "size")

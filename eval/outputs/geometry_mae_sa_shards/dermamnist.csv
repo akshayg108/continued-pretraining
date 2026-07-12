@@ -1,2 +1,0 @@
-encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
-MAE_SA,dermamnist,5000,768,17.62313461303711,3.9911043643951416,0.22646960616111755,-0.5538742542266846,-14.780957876642868,-0.28794071078300476,0.6376097202301025,0.5626021270145688,0.7541695397825963,0.3838891384751393,0.2877282756215834,0.9161147928923189,0.009025,0.0119

@@ -27,7 +27,9 @@ SPHERE = ["DINOv3", "CLIP"]
 
 
 def build():
-    sw = pd.read_csv(ROOT / "eval/outputs/postcp_sweep.csv")
+    # switched to the checkpoint-hygiene-fixed sweep (audit 2026-07-12); the numbers
+    # quoted in FINDINGS_step2 were computed on the pre-fix postcp_sweep.csv.
+    sw = pd.read_csv(ROOT / "eval/outputs/postcp_sweep_fixed.csv")
     sw = sw[sw.variant == "pretrained"].copy(); sw["method_cp"] = sw.method + "-CP"
     post = (sw.groupby(["method_cp", "encoder", "dataset", "size"])
               .agg(post_unif=("uniformity_t2", "mean"), post_ov=("neighbor_overlap_k50", "mean")).reset_index())

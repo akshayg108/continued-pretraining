@@ -1,2 +1,0 @@
-encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
-MAE_SA,fgvc_aircraft,3334,768,12.368868827819824,2.1620495319366455,0.1747976690530777,-0.7012243866920471,-19.49745513726932,-0.5054705739021301,0.2958291172981262,0.32213001797771534,0.6039312914348017,0.3191552893258789,0.30047828139148264,1.377983113309685,0.058875,0.07279

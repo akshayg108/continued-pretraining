@@ -1,2 +1,0 @@
-encoder,dataset,n_samples,embed_dim,l2_norm_mean,l2_norm_std,l2_norm_cv,uniformity_t2,uniformity_t2_raw,uniformity_at_gamma,cosine_dist_centroid,mmd_rbf,mmd_m_pp_target,mmd_m_qq_imagenet,mmd_m_pq_cross,mmd_gamma,neighbor_overlap_k20,neighbor_overlap_k50
-MAE_SA,plant_village,5000,768,11.687427520751953,2.1192336082458496,0.18132592737674713,-0.8458313345909119,-15.257790495634922,-0.5715644359588623,0.24399161338806152,0.29999845710938544,0.5670616079116045,0.35395734463578776,0.31051024771900343,1.2531704327096445,0.0271,0.04607

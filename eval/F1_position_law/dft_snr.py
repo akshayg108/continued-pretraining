@@ -11,12 +11,15 @@ but mean |ΔFT| is only ~1/4-1/8 of |ΔkNN| and FT is near-saturated. This scrip
      Compare the z-distribution of dft vs dknn/dlp.
   B. Method sign-agreement: does sign(dft) agree between LeJEPA-CP and SimCLR-CP per
      (encoder, dataset) more than chance? (If dft were pure noise, agreement ~50%.)
+     CANONICAL protocol (CORRECTIONS.md item 7): deltas from cp_long_refreshed.csv
+     -> 40/45 = 88.9%. Sections A/C/D stay on results.xlsx via load_long() because the
+     refreshed CSV's seed-std/level columns are pre-blend for the 31 blended cells.
   C. Reversal survival: recompute Spearman(geometry, dft) per sphere encoder on
      (i) all 15, (ii) only cells with z >= 1, (iii) weighting by min(z, 3).
   D. Headroom control: is |dft| (and dft itself) explained by FT saturation (1 - ft_pre)?
      partial Spearman(geometry, dft | ft_pre headroom).
 
-CPU-only, existing artifacts. Run: python eval/adjudicate/dft_snr.py
+CPU-only, existing artifacts. Run: python eval/F1_position_law/dft_snr.py
 """
 import sys
 from pathlib import Path as _P
@@ -70,16 +73,25 @@ def main():
     print("\n" + "=" * 78)
     print("B. sign(dft) agreement between LeJEPA-CP and SimCLR-CP (per encoder x dataset, MAX)")
     print("=" * 78)
-    piv = inv.pivot_table(index=["Backbone", "dataset_key"], columns="Method", values="dft")
-    piv = piv.dropna()
+    # canonical: refreshed deltas (CORRECTIONS.md item 7 -> 40/45 = 88.9%)
+    ref = pd.read_csv(ROOT / "eval/outputs/cp_long_refreshed.csv")
+    ref_inv = ref[ref.Backbone.isin(["DINOv3", "CLIP", "MAE"])
+                  & ref.Method.isin(INV) & ref.is_max]
+    piv = ref_inv.pivot_table(index=["Backbone", "dataset_key"], columns="Method",
+                              values="dft").dropna()
     agree = (np.sign(piv[INV[0]]) == np.sign(piv[INV[1]]))
     print(f"  overall: {agree.sum()}/{len(agree)} = {agree.mean():.2f} "
           f"(binom p vs 0.5 = {binomtest(int(agree.sum()), len(agree), 0.5).pvalue:.4f})")
     for enc in ["DINOv3", "CLIP", "MAE"]:
         a = agree.loc[enc]
         print(f"    {enc:7s} {a.sum()}/{len(a)} = {a.mean():.2f}")
-    # same for dknn as reference
-    pivk = inv.pivot_table(index=["Backbone", "dataset_key"], columns="Method", values="dknn").dropna()
+    piv_old = inv.pivot_table(index=["Backbone", "dataset_key"], columns="Method",
+                              values="dft").dropna()
+    a_old = (np.sign(piv_old[INV[0]]) == np.sign(piv_old[INV[1]]))
+    print(f"  (legacy pre-refresh protocol: {a_old.sum()}/{len(a_old)} = {a_old.mean():.2f})")
+    # same for dknn as reference (refreshed protocol)
+    pivk = ref_inv.pivot_table(index=["Backbone", "dataset_key"], columns="Method",
+                               values="dknn").dropna()
     ak = (np.sign(pivk[INV[0]]) == np.sign(pivk[INV[1]]))
     print(f"  reference dknn agreement: {ak.sum()}/{len(ak)} = {ak.mean():.2f}")
 

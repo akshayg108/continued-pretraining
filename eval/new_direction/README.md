@@ -13,6 +13,7 @@ the returned CSVs). Pre-registered readouts are declared in each adjudicator's d
 | ND4 | A2: does the method head buffer spectral reshaping away from the backbone (projector-as-buffer), tracking the gate? | `nd4_projector_spectra.py` -> `nd4_projector_spectra.csv` | `nd4_verdict.py` |
 | ND6 | Round-2 theory (NEW_DIRECTION_R2.md): does task-model alignment C(rho) give a universal level law and explain the SigLIP coupling anomaly; does the omniscient LP risk beat rankme/alpha; is hubness a universal kNN-level correlate? | `nd6_alignment.py` -> `nd6_alignment.csv` | `nd6_verdict.py` |
 | ND7 | The story's spine: does CP move class information UP the ranking (Delta cC_K on MAX ckpts), does placement mediate the rank->kNN link, and is there a placement attractor? | `nd7_placement.py` -> `nd7_placement.csv` | `nd7_verdict.py` (needs nd6 + nd1 CSVs local) |
+| ND8 | Round-3 (NEW_DIRECTION_R3.md): does hubness-corrected/centered overlap (or Sun kNN-distance) cure the position feature's shape-entanglement, and does swapping it into the frozen tool beat v1 on the SigLIP + ViT-L holdouts? | `nd8_overlap_upgrade.py` -> `nd8_overlap.csv` (needs ImageNet-val bank; 5 encoders incl. DINOv3L) | `nd8_verdict.py` (algorithms TDD-tested in `test_nd8_position_metrics.py`) |
 
 Shared metric definitions: `spectral_metrics.py` (rankme / alpha-ReQ / coherence / VCI,
 implemented verbatim from the papers in `papers/new_direction/`; run it directly for the

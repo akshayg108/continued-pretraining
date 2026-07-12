@@ -42,7 +42,9 @@ def partial_spearman(x, y, controls):
 
 def load_joined():
     """Rebuild the F2 join from raw artifacts (mirrors forces_combined.csv but keeps size + seeds)."""
-    sw = pd.read_csv(OUT / "postcp_sweep.csv")
+    # postcp_sweep_fixed.csv = the checkpoint-hygiene-fixed sweep (merge_rest_geometry);
+    # the pre-fix postcp_sweep.csv gave -0.552/-0.380/-0.572/-0.346 (audit 2026-07-12).
+    sw = pd.read_csv(OUT / "postcp_sweep_fixed.csv")
     sw = sw[(sw["variant"] == "pretrained") & sw["encoder"].isin(["DINOv3", "CLIP", "MAE"])].copy()
     sw["dk"] = sw["dataset"].str.lower()
     sw["Method"] = sw["method"].map(MMAP)

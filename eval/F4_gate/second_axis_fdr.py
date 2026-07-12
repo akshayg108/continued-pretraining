@@ -19,6 +19,7 @@ from pathlib import Path as _P
 sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
 sys.path.insert(0, str(_P(__file__).resolve().parent.parent / 'utils'))
 sys.path.insert(0, str(_P(__file__).resolve().parent))
+sys.path.insert(0, str(_P(__file__).resolve().parent.parent / 'F7_packing_exploratory'))  # correlate_second_axis moved there
 
 import numpy as np
 import pandas as pd
