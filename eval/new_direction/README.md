@@ -13,7 +13,15 @@ the returned CSVs). Pre-registered readouts are declared in each adjudicator's d
 | ND4 | A2: does the method head buffer spectral reshaping away from the backbone (projector-as-buffer), tracking the gate? | `nd4_projector_spectra.py` -> `nd4_projector_spectra.csv` | `nd4_verdict.py` |
 | ND6 | Round-2 theory (NEW_DIRECTION_R2.md): does task-model alignment C(rho) give a universal level law and explain the SigLIP coupling anomaly; does the omniscient LP risk beat rankme/alpha; is hubness a universal kNN-level correlate? | `nd6_alignment.py` -> `nd6_alignment.csv` | `nd6_verdict.py` |
 | ND7 | The story's spine: does CP move class information UP the ranking (Delta cC_K on MAX ckpts), does placement mediate the rank->kNN link, and is there a placement attractor? | `nd7_placement.py` -> `nd7_placement.csv` | `nd7_verdict.py` (needs nd6 + nd1 CSVs local) |
-| ND8 | Round-3 (NEW_DIRECTION_R3.md): does hubness-corrected/centered overlap (or Sun kNN-distance) cure the position feature's shape-entanglement, and does swapping it into the frozen tool beat v1 on the SigLIP + ViT-L holdouts? | `nd8_overlap_upgrade.py` -> `nd8_overlap.csv` (needs ImageNet-val bank; 5 encoders incl. DINOv3L) | `nd8_verdict.py` (algorithms TDD-tested in `test_nd8_position_metrics.py`) |
+| ND8 | Round-3 (NEW_DIRECTION_R3.md): does hubness-corrected/centered overlap (or Sun kNN-distance) cure the position feature's shape-entanglement, and does swapping it into the frozen tool beat v1 on the SigLIP + ViT-L holdouts? | `nd8_overlap_upgrade.py` -> `nd8_overlap.csv` (needs ImageNet-val bank; 5 encoders incl. DINOv3L) | `nd8_verdict.py` (algorithms TDD-tested in `test_nd8_position_metrics.py`; ND8-2 scoring repaired 2026-07-15, CORRECTIONS #13) |
+| ND9 | Operator-transport theory #1 (theory_unification_2026-07-15): is the SigLIP-2 alignment deficit a CAPTURE deficit (total task power in the span — the factor cC(rho) normalizes away) or conditional-placement-only; does ridge-weighted accessibility A(kappa) serve the LP level? | `nd9_capture.py` -> `nd9_capture.csv` (pre-CP, 4 encoders x 15 ds, nd6 protocol) | `nd9_verdict.py` (metrics TDD-tested in `test_nd9_task_operator.py`) |
+| ND10 | Operator-transport theory #2: decompose the pre->post accessibility change into eigenvalue flow (dA_spec) vs basis rotation (dA_rot) on matched samples — the operator version of "rank thermostat + placement tide"; are they independent trackers of dknn? | `nd10_operator_transport.py` -> `nd10_operator.csv` (MAX ckpts, nd7 population) | `nd10_verdict.py` (ND10-1..3) |
+| ND11 | Operator-transport theory #3 (the T3 slot): does a LOCAL cosine-kNN graph quantity (neighbour label purity / graph placement) carry the kNN benefit sign that global spectra provably cannot? | same pass as ND10 (graph columns in `nd10_operator.csv`) | `nd10_verdict.py` (ND11-1..3) |
+
+Local (CPU, no cluster): `f5_label_aware_challenge.py` — replication of the v3 re-audit's
+label-aware feature challenge on the SigLIP holdout (run 2026-07-16: v1 13/15, cC_K-only
+10/15, knn_pre-only 8/15, v1+cC_K 13/15 — reproduces the re-audit exactly; the T2 slot is
+closed: even label-aware placement does not beat the label-free tool).
 
 Shared metric definitions: `spectral_metrics.py` (rankme / alpha-ReQ / coherence / VCI,
 implemented verbatim from the papers in `papers/new_direction/`; run it directly for the

@@ -103,10 +103,12 @@ def main():
     nd6 = pd.read_csv(OUT / "nd6_alignment.csv")[["encoder", "dataset", "cC_K"]]
     b = nd8[nd8.encoder.isin(ENCS_B)].merge(geo, on=["encoder", "dataset"]) \
                                      .merge(nd6, on=["encoder", "dataset"])
-    knn = load_long()
-    knn = (knn[knn.is_max & knn.Backbone.isin(["DINOv3", "CLIP", "MAE"])]
-           .groupby(["Backbone", "dataset_key"]).knn_pre.mean().reset_index()
-           .rename(columns={"Backbone": "encoder", "dataset_key": "dataset"}))
+    # FIX 2026-07-15 (v3 re-audit finding): the first release built the level table from
+    # load_long() for D3/CLIP/MAE only and silently dropped SigLIP, while the docstring
+    # pre-registers ND8-2 as a >=2/4 rule over all four ViT-B encoders. Use the shared
+    # 4-encoder extraction (SigLIP level from its own xlsx sheet, as in nd6_verdict).
+    from nd1_verdict import knn_pre_levels
+    knn = knn_pre_levels()
 
     # ---- ND8-0 validation ----------------------------------------------------------------
     diff = (b.overlap_raw - b.neighbor_overlap_k50).abs()
@@ -131,11 +133,16 @@ def main():
               f"{'CURES' if beats >= 3 and pos >= 2 else 'no cure'}")
 
     # ---- ND8-2 level utility ---------------------------------------------------------------
-    bk = b.merge(knn, on=["encoder", "dataset"])   # 3 encoders (SigLIP knn via xlsx omitted)
-    print("\nND8-2 |rho(feature, knn_pre)| per encoder (D3/CLIP/MAE):")
+    bk = b.merge(knn, on=["encoder", "dataset"])
+    print("\nND8-2 |rho(feature, knn_pre)| per encoder (all 4; pass = variant >= raw on >=2/4):")
     lev = {v: {e: abs(spearmanr(bk[bk.encoder == e][v], bk[bk.encoder == e].knn_pre)
-                      .correlation) for e in ["DINOv3", "CLIP", "MAE"]} for v in FEATS}
-    print(pd.DataFrame(lev).T.round(3).to_string())
+                      .correlation) for e in ENCS_B} for v in FEATS}
+    lev_t = pd.DataFrame(lev).T
+    print(lev_t.round(3).to_string())
+    raw_lev = lev_t.loc["overlap_raw"]
+    for v in FEATS[1:]:
+        keeps = int((lev_t.loc[v] >= raw_lev).sum())
+        print(f"  {v:>18}: >= raw on {keeps}/4 -> {'pass' if keeps >= 2 else 'FAIL'}")
 
     # ---- ND8-3 mechanism -------------------------------------------------------------------
     print("\nND8-3 mechanism: median k-occurrence skewness per protocol + centrality:")
