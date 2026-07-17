@@ -43,15 +43,19 @@ from nd9_task_operator import _svd_powers, accessibility_curve, centered_kta
 ROOT = Path(__file__).resolve().parent.parent.parent
 KAPPA_RELS = [1e-6, 1e-4, 1e-2, 1e-1, 1.0, 10.0]
 KAPPA_COLS = [f"acc_r{r:g}".replace("-", "m").replace(".", "p") for r in KAPPA_RELS]
-FIELDS = (["encoder", "dataset", "n_samples", "embed_dim", "n_classes",
-           "capture_raw", "capture_cen", "kta_cen"]
+FIELDS = (["encoder", "dataset", "n_samples", "embed_dim", "n_classes", "numerical_rank",
+           "s_min", "s_max", "capture_raw", "capture_cen", "kta_cen"]
           + KAPPA_COLS + ["acc_auc_log", "cC_K_check"])
 
 
 def capture_row(feat, labels):
     """All ND9 statistics for one (encoder, dataset) cell."""
     _, lam, p_raw, p_cen, y2_raw, y2_cen, n_cls = _svd_powers(feat, labels)
+    live = lam > 0
     row = {"n_samples": len(feat), "embed_dim": feat.shape[1], "n_classes": n_cls,
+           "numerical_rank": int(live.sum()),        # post rank-mask fix 2026-07-16
+           "s_min": float(np.sqrt(lam[live].min() * len(feat))) if live.any() else 0.0,
+           "s_max": float(np.sqrt(lam.max() * len(feat))),
            "capture_raw": float(p_raw.sum() / y2_raw),
            "capture_cen": float(p_cen.sum() / y2_cen),
            "kta_cen": centered_kta(feat, labels)}
@@ -69,7 +73,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--download-dir", type=str, default=str(ROOT / "eval/data/downloads"))
     ap.add_argument("--processed-dir", type=str, default=str(ROOT / "eval/data/processed"))
-    ap.add_argument("--output", type=str, default=str(ROOT / "eval/outputs/nd9_capture.csv"))
+    ap.add_argument("--output", type=str,
+                    default=str(ROOT / "eval/outputs/nd9_capture_rankaware.csv"))
     ap.add_argument("--encoders", nargs="+", default=None)
     ap.add_argument("--datasets", nargs="+", default=None)
     ap.add_argument("--device", type=str, default=None)
@@ -85,9 +90,14 @@ def main():
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = set()
-    if out_path.exists():
+    if out_path.exists() and out_path.stat().st_size > 0:
         with open(out_path) as f:
-            done = {(r["encoder"], r["dataset"]) for r in csv.DictReader(f)}
+            rd = csv.DictReader(f)
+            # schema guard: the rank-aware rerun (2026-07-16) must not resume onto a
+            # shard written by the pre-mask layout — misaligned columns, wrong numbers
+            assert rd.fieldnames == FIELDS, \
+                f"{out_path} has a different column layout — use a fresh --output"
+            done = {(r["encoder"], r["dataset"]) for r in rd}
         print(f"Resume: {len(done)} rows present")
 
     write_header = (not out_path.exists()) or out_path.stat().st_size == 0

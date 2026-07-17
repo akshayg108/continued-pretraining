@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=nd9-capture
+#SBATCH --job-name=nd12-operator
 #SBATCH --partition=nvidia
 #SBATCH --account=civil
 #SBATCH --nodes=1
@@ -8,21 +8,24 @@
 #SBATCH --gres=gpu:v100:1
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
-#SBATCH --time=4:00:00
+#SBATCH --time=12:00:00
 #SBATCH --array=0-14
-#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd9-capture-%A_%a.out
-#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd9-capture-%A_%a.err
+#SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd12-operator-%A_%a.out
+#SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/nd12-operator-%A_%a.err
 
 # ============================================================
-# ND9 — task capture + centered KTA + spectral accessibility on PRE-CP features,
-# 4 encoders x 1 dataset per array task (eval/new_direction/nd9_capture.py). ZERO ckpts,
-# public timm weights only. Same protocol/scale as nd6: one 5000-point SVD per cell (no kNN, no risk solve).
+# ND12 — evaluator-matched graph placement (k=20, class-balanced, distance-weighted) on
+# MAX checkpoints via the EXTENDED nd10 driver (fresh shard dir — old shards have the pre-extension column layout and are rejected by the header guard). Three graph variants per side => ~6 Laplacian eigh per cell; still inside the 12h cap.
+# Methods LeJEPA/SimCLR/DIET on {DINOv3, CLIP, MAE} + LeJEPA/SimCLR on SigLIP
+# (cp-siglip root; auto-skipped with a warning if absent). No head loading — backbone
+# features only, so lighter than nd4. Log lines: "SKIP untrained" = dead ckpt guard
+# (audit ckpts were replaced by reruns, so expect 0); "CELL FAIL" = extraction failure.
+# Checkpoints read from /scratch; the dataset IS staged node-local.
 #
 # After the whole array finishes, concat shards on the login node:
-#   python -c "import glob,pandas as pd; pd.concat([pd.read_csv(f) for f in sorted(glob.glob('eval/outputs/nd9_capture_rankaware_shards/*.csv'))]).to_csv('eval/outputs/nd9_capture_rankaware.csv', index=False)"
-# and send me eval/outputs/nd9_capture_rankaware.csv. (Rank-aware rerun 2026-07-16: fresh dir,
-#  old nd9_capture_shards/ stays untouched; the driver's schema guard rejects old-layout files.)
-# Queue-friendly tip:  sbatch --array=0-14%5 run/slurm/new_direction/nd9_capture.sh
+#   python -c "import glob,pandas as pd; pd.concat([pd.read_csv(f) for f in sorted(glob.glob('eval/outputs/nd12_operator_shards/*.csv'))]).to_csv('eval/outputs/nd12_operator.csv', index=False)"
+# and send me eval/outputs/nd12_operator.csv.
+# Queue-friendly tip:  sbatch --array=0-14%5 run/slurm/new_direction/nd12_operator.sh
 # ============================================================
 
 echo "=========================================="
@@ -32,7 +35,7 @@ echo "=========================================="
 module load miniconda/3-4.11.0
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate env
-set -euo pipefail   # rank-aware rerun hardening (Codex follow-up 2026-07-16)
+set -euo pipefail   # strict mode after env init (module/conda are not -eu-safe)
 
 cd /scratch/gs4133/zhd/CP/continued-pretraining
 export PYTHONPATH="$(pwd):$(pwd)/..:${PYTHONPATH:-}"
@@ -51,7 +54,9 @@ PROCESSED_SUBPATH=${SUBPATHS[$i]}
 DATA_ROOT="/scratch/gs4133/zhd/CP/data"
 DL_DIR="${DATA_ROOT}/stable_datasets/downloads"
 PROC_DIR="${DATA_ROOT}/stable_datasets/processed"
-OUT_DIR="eval/outputs/nd9_capture_rankaware_shards"
+CKPT_ROOT="/scratch/gs4133/zhd/CP/outputs/ckpts/cp"
+SIGLIP_ROOT="/scratch/gs4133/zhd/CP/outputs/ckpts/cp-siglip"
+OUT_DIR="eval/outputs/nd12_operator_shards"
 mkdir -p "${OUT_DIR}"
 
 # ============================================================
@@ -83,14 +88,16 @@ else
 fi
 
 echo "=========================================="
-echo "ND9 capture: dataset=${DATASET}"
+echo "ND12 evaluator-matched graph: dataset=${DATASET}"
 echo "=========================================="
 
-python -u eval/new_direction/nd9_capture.py \
+python -u eval/new_direction/nd10_operator_transport.py \
     --datasets "${DATASET}" \
+    --ckpt-root "${CKPT_ROOT}" \
+    --siglip-root "${SIGLIP_ROOT}" \
     --download-dir  "${DL_DIR}" \
     --processed-dir "${PROC_DIR}" \
-    --output "${OUT_DIR}/${DATASET}.csv" \
+    --out "${OUT_DIR}/${DATASET}.csv" \
     2>&1
 
 echo ""

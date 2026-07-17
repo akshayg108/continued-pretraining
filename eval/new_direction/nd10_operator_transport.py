@@ -46,16 +46,81 @@ from postcp_features import load_cp_backbone                                  # 
 from geometry_metrics import load_target_dataset, extract_features            # noqa: E402
 from nd4_projector_spectra import discover_siglip_all, max_only, METHODS      # noqa: E402
 from nd9_task_operator import (spectrum_transplant_decomposition,             # noqa: E402
-                               graph_label_metrics)
+                               graph_label_metrics, vote_operator_metrics)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 GRAPH_K, GRAPH_NMAX = 10, 2000
 DECOMP_COLS = ["dA_total", "dA_spec", "dA_rot", "A_pre", "A_post", "dcC_K", "affinity_topK"]
+# GRAPH_VARIANTS: legacy k=10 unweighted/unbalanced (ND10/ND11 protocol) + the ND12
+# evaluator-matched variants (k=20 to match the kNN evaluator; class-balanced to match
+# macro-F1; m20wb additionally distance-weighted). Codex-audit follow-up 2026-07-16.
+GRAPH_VARIANTS = {"": dict(k=GRAPH_K),
+                  "_m20b": dict(k=20, class_balanced=True),
+                  "_m20wb": dict(k=20, weighted=True, class_balanced=True)}
+GRAPH_COLS = (["knn_purity_pre", "knn_purity_post", "purity_macro20_pre",
+               "purity_macro20_post"]
+              + [f"graph_cC_K{v}_{s}" for v in GRAPH_VARIANTS for s in ("pre", "post")])
+# ND12 I1: the true evaluator vote operator (test-to-train, inverse-distance, k=20);
+# gate/bridge quantities only — see ND12_PREREG.md role restriction
+VOTE_COLS = ["knn_f1_hat_pre", "knn_f1_hat_post", "vote_margin_pre", "vote_margin_post",
+             "vote_pos_frac_pre", "vote_pos_frac_post", "n_test"]
+TEST_CAP = 2000
 FIELDS = (["method", "encoder", "dataset", "size", "seed", "n_samples", "n_classes"]
-          + DECOMP_COLS
-          + ["knn_purity_pre", "knn_purity_post", "graph_cC_K_pre", "graph_cC_K_post",
-             "graph_n_used", "ckpt"])
+          + DECOMP_COLS + GRAPH_COLS + VOTE_COLS + ["graph_n_used", "ckpt"])
 KEY = ("method", "encoder", "dataset", "size", "seed")
+
+
+def _capped_loader(hf_ds, cap):
+    """Deterministic stratified cap (seed 42) + eval loader, as in load_target_dataset."""
+    from torch.utils.data import DataLoader
+    from geometry_metrics import StableDatasetWrapper, eval_transform
+    if len(hf_ds) > cap:
+        labels = np.array(hf_ds["label"]).ravel()
+        try:
+            from sklearn.model_selection import train_test_split
+            sel, _ = train_test_split(np.arange(len(hf_ds)), train_size=cap,
+                                      stratify=labels, random_state=42)
+        except ValueError:                       # singleton classes: plain seeded draw
+            sel = np.random.RandomState(42).choice(len(hf_ds), cap, replace=False)
+        hf_ds = hf_ds.select(sorted(np.asarray(sel).tolist()))
+    return DataLoader(StableDatasetWrapper(hf_ds, eval_transform()),
+                      batch_size=256, num_workers=4, shuffle=False)
+
+
+def load_vote_loaders(name, download_dir, processed_dir, cap=TEST_CAP):
+    """(vote_bank_loader_or_None, query_loader) for the ND12 vote proxy.
+
+    Datasets with a real test asset: bank = None (the standard G1 train cloud is
+    reused — bank/query disjoint because they come from different assets); query =
+    splits[2] capped at TEST_CAP. Datasets whose class ships only a train asset
+    (galaxy10 — round-4 review): REUSE stable_cp.data.datasets._split_single_dataset
+    (seed 42, 80/10/10 — the real evaluator's own manual-split protocol) for BOTH
+    sides, so bank and query are disjoint by construction and the split matches the
+    protocol that produced results.xlsx; the G1 full-cloud loader stays untouched."""
+    from geometry_metrics import DS_REGISTRY
+    ds_class, config_name, splits, extra_kwargs = DS_REGISTRY[name]
+    kwargs = dict(extra_kwargs)
+    if config_name is not None:
+        kwargs["config_name"] = config_name
+    try:
+        hf_test = ds_class(split=splits[2], download_dir=str(download_dir),
+                           processed_cache_dir=str(processed_dir), **kwargs)
+        return None, _capped_loader(hf_test, cap)
+    except Exception as e:
+        from stable_cp.data.datasets import _split_single_dataset
+        print(f"  NOTE: {name} has no loadable '{splits[2]}' asset ({type(e).__name__}) "
+              f"-> evaluator manual split (seed 42, 80/10/10) for the vote proxy")
+        full = ds_class(split="train", download_dir=str(download_dir),
+                        processed_cache_dir=str(processed_dir), **kwargs)
+        bank = _split_single_dataset(full, "train", seed=42)
+        query = _split_single_dataset(full, "test", seed=42)
+        return _capped_loader(bank, 5000), _capped_loader(query, cap)
+
+
+def graph_rows(feat, labels):
+    """All graph variants for one feature cloud -> {suffix: metrics dict}."""
+    return {v: graph_label_metrics(feat, labels, n_max=GRAPH_NMAX, **kw)
+            for v, kw in GRAPH_VARIANTS.items()}
 
 
 def main():
@@ -85,14 +150,33 @@ def main():
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = set()
-    if out_path.exists():
+    if out_path.exists() and out_path.stat().st_size > 0:
         with open(out_path) as f:
-            done = {tuple(str(r[k]) for k in KEY) for r in csv.DictReader(f)}
+            rd = csv.DictReader(f)
+            # header-drift guard: resuming a shard written by an older FIELDS layout
+            # would silently misalign appended rows (Codex-audit era hardening)
+            assert rd.fieldnames == FIELDS, \
+                f"{out_path} was written with a different column layout — use a fresh --out"
+            done = {tuple(str(r[k]) for k in KEY) for r in rd}
     cfgs = [c for c in cfgs if tuple(str(c[k]) for k in KEY) not in done]
     print(f"{len(cfgs)} MAX checkpoints to process ({len(done)} done)  device={device}")
 
+    loaders, test_loaders, pre_cache = {}, {}, {}
+    # pre_cache[(encoder, dataset)] = (feat, labels, graph_row, test_feat, test_labels, vote)
+    # FAIL-FAST (round-3 review): build BOTH loaders for every dataset in this shard
+    # BEFORE the checkpoint loop. A dataset whose test split is unsupported (manual
+    # splits etc.) must kill the shard immediately with a clear error — not burn 12h
+    # of per-cell silent CELL FAILs.
+    vote_bank_loaders = {}
+    for ds in sorted({c["dataset"] for c in cfgs}):
+        loaders[ds] = load_target_dataset(ds, args.download_dir, args.processed_dir)
+        vote_bank_loaders[ds], test_loaders[ds] = load_vote_loaders(
+            ds, args.download_dir, args.processed_dir)
+        print(f"  loaders OK: {ds} (train batches {len(loaders[ds])}, "
+              f"query batches {len(test_loaders[ds])}, "
+              f"vote bank: {'manual-split' if vote_bank_loaders[ds] else 'G1 cloud'})")
+
     import timm
-    loaders, pre_cache = {}, {}   # pre_cache[(encoder, dataset)] = (feat, labels, graph_row)
 
     def pre_features(c):
         key = (c["encoder"], c["dataset"])
@@ -100,11 +184,15 @@ def main():
             model = timm.create_model(c["timm_id"], pretrained=True,
                                       num_classes=0).eval().to(device)
             feat, labels = extract_features(model, loaders[c["dataset"]], device, c["pool"])
+            tfeat, tlabels = extract_features(model, test_loaders[c["dataset"]], device,
+                                              c["pool"])
+            bl = vote_bank_loaders[c["dataset"]]
+            bank = extract_features(model, bl, device, c["pool"]) if bl else (feat, labels)
             del model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            g = graph_label_metrics(feat, labels, k=GRAPH_K, n_max=GRAPH_NMAX)
-            pre_cache[key] = (feat, labels, g)
+            vote = vote_operator_metrics(bank[0], bank[1], tfeat, tlabels, k=20)
+            pre_cache[key] = (feat, labels, graph_rows(feat, labels), tfeat, tlabels, vote)
         return pre_cache[key]
 
     write_header = (not out_path.exists()) or out_path.stat().st_size == 0
@@ -122,26 +210,47 @@ def main():
                 continue
             model = None
             try:
-                if c["dataset"] not in loaders:
-                    loaders[c["dataset"]] = load_target_dataset(
-                        c["dataset"], args.download_dir, args.processed_dir)
-                feat0, labels0, g0 = pre_features(c)
+                feat0, labels0, g0, tfeat0, tlabels0, vote0 = pre_features(c)
                 model = load_cp_backbone(c["ckpt"], c["timm_id"], device)
                 feat1, labels1 = extract_features(model, loaders[c["dataset"]], device,
                                                   c["pool"])
-                if not np.isfinite(feat1).all():
+                tfeat1, tlabels1 = extract_features(model, test_loaders[c["dataset"]],
+                                                    device, c["pool"])
+                bl = vote_bank_loaders[c["dataset"]]
+                bank1 = (extract_features(model, bl, device, c["pool"]) if bl
+                         else None)                    # manual-split datasets only
+                del model
+                model = None
+                if not np.isfinite(feat1).all() or not np.isfinite(tfeat1).all():
                     print("  CELL FAIL (non-finite features — diverged ckpt?) — skipping")
                     continue
                 # matched-sample guard: the decomposition is meaningless if rows drift
                 assert np.array_equal(labels0, labels1), "pre/post label sequences differ"
+                assert np.array_equal(tlabels0, tlabels1), "pre/post label sequences differ (test)"
                 dec = spectrum_transplant_decomposition(feat0, feat1, labels0)
-                g1 = graph_label_metrics(feat1, labels1, k=GRAPH_K, n_max=GRAPH_NMAX)
+                g1 = graph_rows(feat1, labels1)
+                if bank1 is not None:
+                    vote1 = vote_operator_metrics(bank1[0], bank1[1], tfeat1, tlabels1, k=20)
+                else:
+                    vote1 = vote_operator_metrics(feat1, labels1, tfeat1, tlabels1, k=20)
                 row = {k: c[k] for k in KEY}
                 row.update(ckpt=c["ckpt"], n_samples=len(feat1),
                            n_classes=len(np.unique(labels1)),
-                           knn_purity_pre=g0["knn_purity"], knn_purity_post=g1["knn_purity"],
-                           graph_cC_K_pre=g0["graph_cC_K"], graph_cC_K_post=g1["graph_cC_K"],
-                           graph_n_used=g1["n_used"])
+                           knn_purity_pre=g0[""]["knn_purity"],
+                           knn_purity_post=g1[""]["knn_purity"],
+                           purity_macro20_pre=g0["_m20b"]["knn_purity_macro"],
+                           purity_macro20_post=g1["_m20b"]["knn_purity_macro"],
+                           graph_n_used=g1[""]["n_used"])
+                for v in GRAPH_VARIANTS:
+                    row[f"graph_cC_K{v}_pre"] = g0[v]["graph_cC_K"]
+                    row[f"graph_cC_K{v}_post"] = g1[v]["graph_cC_K"]
+                row.update(knn_f1_hat_pre=vote0["knn_f1_hat"],
+                           knn_f1_hat_post=vote1["knn_f1_hat"],
+                           vote_margin_pre=vote0["vote_margin_mean"],
+                           vote_margin_post=vote1["vote_margin_mean"],
+                           vote_pos_frac_pre=vote0["vote_margin_pos_frac"],
+                           vote_pos_frac_post=vote1["vote_margin_pos_frac"],
+                           n_test=vote1["n_test"])
                 row.update({k: dec[k] for k in DECOMP_COLS})
             except Exception as e:
                 if "label sequences differ" in str(e):

@@ -62,6 +62,28 @@ def test_capture_in_unit_interval_and_low_for_orthogonal_features():
     assert cap["capture_cen"] < 0.2, cap["capture_cen"]
 
 
+def test_capture_zero_features_is_zero():
+    """An all-zero feature matrix spans nothing: capture must be 0, not the energy of
+    Y along arbitrary null-direction basis vectors (Codex audit 2026-07-16)."""
+    X = np.zeros((200, 50))
+    y = rng.randint(0, 4, 200)
+    cap = task_capture(X, y)
+    assert abs(cap["capture_raw"]) < 1e-10, cap
+    assert abs(cap["capture_cen"]) < 1e-10, cap
+
+
+def test_capture_identity_holds_for_rank_deficient_features():
+    """Rank-5 features embedded in 50 dims: capture must still equal the lstsq R^2
+    (directions with zero singular value are NOT in col(X) and must not contribute)."""
+    A = rng.randn(200, 5) @ rng.randn(5, 50)
+    y = rng.randint(0, 4, 200)
+    Yc = _onehot_centered(y)
+    coef, *_ = np.linalg.lstsq(A, Yc, rcond=None)
+    r2 = 1.0 - ((Yc - A @ coef) ** 2).sum() / (Yc ** 2).sum()
+    cap = task_capture(A, y)
+    assert abs(cap["capture_cen"] - r2) < 1e-8, (cap["capture_cen"], r2)
+
+
 # ------------------------------------------------------- accessibility_curve
 def test_accessibility_limits_and_monotonicity():
     """A(kappa->0) == capture; A is nonincreasing in kappa; A >= 0."""
@@ -168,6 +190,117 @@ def test_graph_metrics_random_labels():
     out = graph_label_metrics(X, y, k=10, seed=1)
     assert out["knn_purity"] < 0.65, out
     assert out["graph_cC_K"] < 0.2, out
+
+
+# ---------------------------------------------- evaluator-matched graph variants (ND12)
+def test_graph_matched_defaults_reproduce_legacy():
+    """weighted=False, class_balanced=False, k=10 must reproduce the ND10-era numbers
+    exactly (backward compatibility of the extended signature)."""
+    X = rng.randn(300, 10)
+    y = rng.randint(0, 2, 300)
+    a = graph_label_metrics(X, y, k=10, seed=1)
+    b = graph_label_metrics(X, y, k=10, seed=1, weighted=False, class_balanced=False)
+    assert a["graph_cC_K"] == b["graph_cC_K"] and a["knn_purity"] == b["knn_purity"]
+
+
+def test_class_balanced_equals_unbalanced_for_equal_classes():
+    """With perfectly balanced classes, per-class energy normalization is a no-op."""
+    a = rng.randn(100, 8) * 0.05 + np.eye(8)[0]
+    b = rng.randn(100, 8) * 0.05 + np.eye(8)[1]
+    X = np.vstack([a, b]); y = np.array([0] * 100 + [1] * 100)
+    u = graph_label_metrics(X, y, k=10, seed=1, class_balanced=False)
+    v = graph_label_metrics(X, y, k=10, seed=1, class_balanced=True)
+    assert abs(u["graph_cC_K"] - v["graph_cC_K"]) < 1e-9, (u, v)
+
+
+def test_class_balanced_lifts_minority_class_signal():
+    """THREE classes (binary is a provable no-op: the two centered one-hot columns are
+    collinear with equal energy): a tight minority cluster (30 pts, clean low-frequency
+    label signal) vs two diffuse majority classes (135 pts each, labels assigned at
+    random = graph noise). Balancing must lift the minority's share of low-frequency
+    label energy."""
+    minority = rng.randn(30, 10) * 0.03 + 3 * np.eye(10)[0]
+    majority = rng.randn(270, 10)
+    X = np.vstack([minority, majority])
+    y = np.concatenate([np.zeros(30, int), rng.randint(1, 3, 270)])
+    u = graph_label_metrics(X, y, k=10, seed=1, class_balanced=False)
+    v = graph_label_metrics(X, y, k=10, seed=1, class_balanced=True)
+    assert v["graph_cC_K"] > u["graph_cC_K"] + 0.05, (u["graph_cC_K"], v["graph_cC_K"])
+
+
+def test_macro_purity_discounts_majority_class_inflation():
+    """Random labels at 90/10 imbalance: micro purity ~ 0.82 (majority self-matches),
+    macro purity ~ 0.5 — the macro column must not inherit the inflation."""
+    X = rng.randn(400, 10)
+    y = (rng.rand(400) < 0.1).astype(int)
+    out = graph_label_metrics(X, y, k=20, seed=1)
+    assert out["knn_purity"] > out["knn_purity_macro"] + 0.2, out
+
+
+def test_weighted_graph_separated_clusters_still_clean():
+    """Similarity-weighted Laplacian on well-separated clusters keeps placement high."""
+    a = rng.randn(150, 10) * 0.05 + np.eye(10)[0]
+    b = rng.randn(150, 10) * 0.05 + np.eye(10)[1]
+    X = np.vstack([a, b]); y = np.array([0] * 150 + [1] * 150)
+    out = graph_label_metrics(X, y, k=20, seed=1, weighted=True, class_balanced=True)
+    assert out["graph_cC_K"] > 0.5, out
+    assert out["knn_purity"] > 0.95, out
+
+
+# ------------------------------------------------- true vote operator (ND12, I1)
+def test_vote_margin_sign_matches_sklearn_prediction():
+    """For every query: margin > 0 iff the sklearn evaluator-protocol prediction is
+    correct (weights='distance', metric='cosine', k=20) — the margin must be the
+    signed version of exactly the evaluator's argmax."""
+    from nd9_task_operator import vote_operator_metrics
+    Xtr, ytr = rng.randn(400, 16), rng.randint(0, 5, 400)
+    Xte, yte = rng.randn(150, 16), rng.randint(0, 5, 150)
+    out = vote_operator_metrics(Xtr, ytr, Xte, yte, k=20, return_per_query=True)
+    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.preprocessing import normalize
+    knn = KNeighborsClassifier(n_neighbors=20, metric="cosine", weights="distance")
+    knn.fit(normalize(Xtr), ytr)
+    pred = knn.predict(normalize(Xte))
+    agree = ((out["margins"] > 0) == (pred == yte))
+    assert agree.mean() > 0.99, agree.mean()          # ties may cost isolated points
+
+
+def test_vote_f1_equals_evaluator_protocol_f1():
+    """knn_f1_hat must equal macro-F1 over ALL classes of the sklearn evaluator
+    prediction (torchmetrics convention: absent classes count as zero)."""
+    from nd9_task_operator import vote_operator_metrics
+    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.preprocessing import normalize
+    from sklearn.metrics import f1_score
+    Xtr, ytr = rng.randn(300, 12), rng.randint(0, 4, 300)
+    Xte, yte = rng.randn(120, 12), rng.randint(0, 4, 120)
+    out = vote_operator_metrics(Xtr, ytr, Xte, yte, k=20)
+    knn = KNeighborsClassifier(n_neighbors=20, metric="cosine", weights="distance")
+    knn.fit(normalize(Xtr), ytr)
+    ref = f1_score(yte, knn.predict(normalize(Xte)), average="macro",
+                   labels=np.arange(4), zero_division=0)
+    assert abs(out["knn_f1_hat"] - ref) < 1e-10, (out["knn_f1_hat"], ref)
+
+
+def test_vote_separated_clusters_full_margin():
+    """Clean clusters: F1 == 1 and margins ~ +1 (true class takes all the weight)."""
+    from nd9_task_operator import vote_operator_metrics
+    Xtr = np.vstack([rng.randn(100, 8) * 0.03 + np.eye(8)[i] for i in (0, 1)])
+    ytr = np.array([0] * 100 + [1] * 100)
+    Xte = np.vstack([rng.randn(40, 8) * 0.03 + np.eye(8)[i] for i in (0, 1)])
+    yte = np.array([0] * 40 + [1] * 40)
+    out = vote_operator_metrics(Xtr, ytr, Xte, yte, k=20)
+    assert out["knn_f1_hat"] == 1.0
+    assert out["vote_margin_mean"] > 0.95, out
+
+
+def test_vote_k_capped_at_bank_size():
+    """k > n_train must not crash (evaluator caps k = min(k, n_train))."""
+    from nd9_task_operator import vote_operator_metrics
+    Xtr, ytr = rng.randn(12, 6), rng.randint(0, 2, 12)
+    Xte, yte = rng.randn(9, 6), rng.randint(0, 2, 9)
+    out = vote_operator_metrics(Xtr, ytr, Xte, yte, k=20)
+    assert out["n_bank"] == 12 and np.isfinite(out["vote_margin_mean"])
 
 
 if __name__ == "__main__":

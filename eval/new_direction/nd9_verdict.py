@@ -4,7 +4,14 @@ nd9_verdict.py — ND9 (CPU adjudicator): is the SigLIP-2 alignment deficit a CA
 deficit, a conditional-PLACEMENT deficit, or both — and does the readout-weighted
 accessibility serve the LP level better than the placement share alone?
 
-Pre-registered readouts (declared 2026-07-16, BEFORE nd9_capture.csv existed):
+Pre-registered readouts (declared 2026-07-16, BEFORE nd9_capture.csv existed; rank-aware
+rerun amendments declared 2026-07-16 before nd9_capture_rankaware.csv existed):
+  ND9-R RANK ACCEPTANCE (rerun gate, Codex follow-up): 60 rows, 60 unique cells, no
+        NaN; numerical_rank == min(n_samples, embed_dim) on EVERY cell (i.e. full row
+        rank: 768 on the 56 non-degenerate cells, n_samples on breastmnist's 4).
+        Any true rank deficiency -> capture keeps its pending tag AND the nd6-era cC
+        definitions must be revisited before further use. Per-row capture diff vs the
+        pre-mask nd9_capture.csv is reported (expected ~0 when full-rank).
   ND9-0 VALIDATION: cC_K_check reproduces nd6_alignment.cC_K on the 60 ViT-B cells
         (max |diff| < 0.01). Fails -> stop, protocol drifted.
   ND9-1 PRIMARY (deficit decomposition): sign test SigLIP vs CLIP on capture_cen,
@@ -59,14 +66,46 @@ def sign_test(a_minus_b):
 
 
 def main():
-    path = OUT / "nd9_capture.csv"
+    path = OUT / "nd9_capture_rankaware.csv"
     if not path.exists():
-        sys.exit(f"MISSING {path} — run the ND9 GPU pass first "
+        sys.exit(f"MISSING {path} — run the rank-aware ND9 pass first "
                  f"(run/slurm/new_direction/nd9_capture.sh), concat shards:\n"
                  f"  python -c \"import glob,pandas as pd; pd.concat([pd.read_csv(f) for f in "
-                 f"sorted(glob.glob('eval/outputs/nd9_capture_shards/*.csv'))])"
-                 f".to_csv('eval/outputs/nd9_capture.csv', index=False)\"")
+                 f"sorted(glob.glob('eval/outputs/nd9_capture_rankaware_shards/*.csv'))])"
+                 f".to_csv('eval/outputs/nd9_capture_rankaware.csv', index=False)\"")
     nd9 = pd.read_csv(path)
+
+    # ---- ND9-R rank acceptance (rerun gate) -------------------------------------------------
+    assert len(nd9) == 60, f"expected 60 rows, got {len(nd9)}"
+    assert not nd9.duplicated(["encoder", "dataset"]).any(), "duplicate cells"
+    assert not nd9.isna().any().any(), "NaN cells in the rank-aware pass"
+    expected = np.minimum(nd9.n_samples, nd9.embed_dim)
+    deficient = nd9[nd9.numerical_rank != expected]
+    print(f"ND9-R rank acceptance: rank == min(n, d) on {len(nd9) - len(deficient)}/60 "
+          f"(s_min range {nd9.s_min.min():.3g}..{nd9.s_min.max():.3g})")
+    if len(deficient):
+        print(deficient[["encoder", "dataset", "n_samples", "embed_dim",
+                         "numerical_rank"]].to_string(index=False))
+        print("  -> TRUE RANK DEFICIENCY — STOP (hardened 2026-07-16, Codex round 3): "
+              "capture keeps its pending tag, the ND9-1..3 verdicts below would be "
+              "void, and the nd6-era cC definitions must be revisited first.")
+        sys.exit(1)
+    print("  -> PASS — full row rank everywhere; capture's pending tag is lifted")
+    old_path = OUT / "nd9_capture.csv"
+    if old_path.exists():
+        old = pd.read_csv(old_path)[["encoder", "dataset", "capture_cen"]] \
+            .rename(columns={"capture_cen": "capture_cen_old"})
+        d = nd9.merge(old, on=["encoder", "dataset"])
+        d["diff"] = (d.capture_cen - d.capture_cen_old).abs()
+        print(f"  per-row capture diff vs pre-mask pass: max {d['diff'].max():.2e}, "
+              f"mean {d['diff'].mean():.2e}")
+        big = d[d["diff"] > 1e-6]
+        if len(big):
+            print("  rows with |diff| > 1e-6:")
+            print(big[["encoder", "dataset", "capture_cen_old", "capture_cen",
+                       "diff"]].to_string(index=False))
+        else:
+            print("  all 60 rows within 1e-6 of the pre-mask pass")
     nd6_path = OUT / "nd6_alignment.csv"
     if not nd6_path.exists():
         sys.exit(f"MISSING {nd6_path} — the ND9-0 gate needs the ND6 baselines locally")
