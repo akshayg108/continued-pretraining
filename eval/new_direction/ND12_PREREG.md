@@ -87,8 +87,12 @@ ND12-3  sensitivity panel: the ND12-1 comparison re-run with m20wb and legacy k1
 - Test split availability is validated FAIL-FAST at shard start (all loaders built
   before the checkpoint loop). galaxy10 ships only a train asset (round-4 confirmed):
   its vote bank AND query come from stable_cp.data.datasets._split_single_dataset
-  (seed 42, 80/10/10 — the real evaluator's own manual split), disjoint by
-  construction; the G1 full-cloud loader is untouched.
+  (80/10/10) — the real evaluator's own split FUNCTION, but with the STANDARDIZED
+  seed 42 (round-5 correction: training runs passed their per-run seed 1/2/3, so
+  results.xlsx's galaxy10 numbers average three different partitions; our fixed-42
+  split matches none of them exactly — consistent with the standardized-proxy
+  convention, and G2 is rank-level). Bank/query disjoint by construction; the G1
+  full-cloud loader is untouched.
 
 ## What ND12 cannot conclude regardless of outcome (declared)
 

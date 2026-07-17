@@ -92,29 +92,32 @@ def load_vote_loaders(name, download_dir, processed_dir, cap=TEST_CAP):
 
     Datasets with a real test asset: bank = None (the standard G1 train cloud is
     reused — bank/query disjoint because they come from different assets); query =
-    splits[2] capped at TEST_CAP. Datasets whose class ships only a train asset
-    (galaxy10 — round-4 review): REUSE stable_cp.data.datasets._split_single_dataset
-    (seed 42, 80/10/10 — the real evaluator's own manual-split protocol) for BOTH
-    sides, so bank and query are disjoint by construction and the split matches the
-    protocol that produced results.xlsx; the G1 full-cloud loader stays untouched."""
+    splits[2] capped at TEST_CAP. galaxy10 (train-asset-only, round-4 review): REUSE
+    stable_cp.data.datasets._split_single_dataset (80/10/10 — the real evaluator's
+    split FUNCTION) with the STANDARDIZED seed 42. Round-5 note: training runs used
+    their per-run seed (1/2/3), so this matches no single run's partition — that is
+    the declared standardized-proxy convention, not an identity claim. Bank and
+    query are disjoint by construction; the G1 full-cloud loader stays untouched."""
     from geometry_metrics import DS_REGISTRY
     ds_class, config_name, splits, extra_kwargs = DS_REGISTRY[name]
     kwargs = dict(extra_kwargs)
     if config_name is not None:
         kwargs["config_name"] = config_name
-    try:
-        hf_test = ds_class(split=splits[2], download_dir=str(download_dir),
-                           processed_cache_dir=str(processed_dir), **kwargs)
-        return None, _capped_loader(hf_test, cap)
-    except Exception as e:
+    # Round-5 fix: EXPLICIT branch, not a catch-all — a cache/download failure on any
+    # other dataset must abort the shard (preflight fail-fast), never silently degrade
+    # into a manual split. galaxy10 is the one known train-asset-only dataset.
+    if name == "galaxy10":
         from stable_cp.data.datasets import _split_single_dataset
-        print(f"  NOTE: {name} has no loadable '{splits[2]}' asset ({type(e).__name__}) "
-              f"-> evaluator manual split (seed 42, 80/10/10) for the vote proxy")
+        print(f"  NOTE: {name} is train-asset-only -> evaluator split function, "
+              f"standardized seed 42, 80/10/10 (proxy convention) for the vote proxy")
         full = ds_class(split="train", download_dir=str(download_dir),
                         processed_cache_dir=str(processed_dir), **kwargs)
         bank = _split_single_dataset(full, "train", seed=42)
         query = _split_single_dataset(full, "test", seed=42)
         return _capped_loader(bank, 5000), _capped_loader(query, cap)
+    hf_test = ds_class(split=splits[2], download_dir=str(download_dir),
+                       processed_cache_dir=str(processed_dir), **kwargs)
+    return None, _capped_loader(hf_test, cap)
 
 
 def graph_rows(feat, labels):
