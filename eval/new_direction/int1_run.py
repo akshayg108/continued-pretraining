@@ -43,7 +43,25 @@ FEAT = OUT / "int1_features"
 RESULT = OUT / "int1_results.csv"
 FIELDS = ["encoder", "dataset", "transform", "param", "knn_f1", "lp_f1",
           "rankme_raw_bank", "rankme_l2_bank", "capture_l2", "cC_K_l2", "alpha_cp",
-          "query_oos_frac"]
+          "query_oos_frac", "rankme_target"]
+
+# the 14 mandatory grid keys; power_cp is required per cell iff an nd7 target exists
+BASE_KEYS = ([("identity", ""), ("rotation", "0"), ("rotation", "1")]
+             + [("power", a) for a in ("0.25", "0.5", "0.75", "1.5", "2.0")]
+             + [("demote", d) for d in ("64", "256", "512")] + [("shuffle", "0")]
+             + [("combo", c) for c in ("0.5|256", "2.0|256")])
+
+
+def cell_complete(done, enc, ds, has_target):
+    """Resume acceptance for one cell (Codex round-4: exact key-set check — a
+    sentinel + row-count heuristic could mark a cell complete when a required
+    surgery is missing but a stale extra row pads the count)."""
+    have = {(t, p) for (e, d, t, p) in done if (e, d) == (enc, ds)}
+    if not all(k in have for k in BASE_KEYS):
+        return False
+    if has_target and not any(t == "power_cp" for t, _ in have):
+        return False
+    return True
 
 
 def lp_f1(bank_X, bank_y, query_X, query_y):
@@ -112,11 +130,8 @@ def main():
             f.flush()
         for ci, cell in enumerate(cells):
             enc, ds = cell.split("__")
-            expected = 14 + (1 if targets.get((enc, ds)) is not None else 0)
-            if all((enc, ds, n_, p_) in done for n_, p_ in
-                   [("identity", ""), ("rotation", "0"), ("rotation", "1"),
-                    ("shuffle", "0"), ("combo", "0.5|256"), ("combo", "2.0|256")]
-                   ) and sum(k[:2] == (enc, ds) for k in done) >= expected:
+            if cell_complete(done, enc, ds,
+                             has_target=targets.get((enc, ds)) is not None):
                 continue                                   # cell complete: skip SVD/calibration
             z = np.load(FEAT / f"{cell}.npz")
             bX = z["bank_X"].astype(np.float64)
@@ -152,7 +167,9 @@ def main():
                            capture_l2=capture_of(sb_l2, by),
                            cC_K_l2=cC_K_of(sb_l2, by),
                            alpha_cp="" if alpha_cp is None else f"{alpha_cp:.4f}",
-                           query_oos_frac=oos)
+                           query_oos_frac=oos,
+                           rankme_target="" if (name != "power_cp" or tgt is None)
+                                         else f"{float(tgt):.4f}")
                 w.writerow(row)
                 f.flush()
             print(f"[{ci + 1}/{len(cells)}] {cell} done")

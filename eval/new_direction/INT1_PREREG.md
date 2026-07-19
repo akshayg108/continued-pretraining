@@ -1,4 +1,4 @@
-# INT1 pre-registration — CONSOLIDATED OPERATIVE RULES v1.5
+# INT1 pre-registration — CONSOLIDATED OPERATIVE RULES v1.6
 
 Frozen 2026-07-19, BEFORE any real INT1 data exists (the feature dump has not been
 launched). Sections 1-6 below are the SINGLE authoritative protocol; the amendment
@@ -69,10 +69,11 @@ T4  COMBO (interaction arm): demote(block 16, depth 256) then power(alpha),
 ## 3. Gates (fail -> stop before interpretation)
 
 G0    CENSUS: exact 4 x 15 cell set (membership, not count); unique (encoder,
-      dataset, transform, param) keys; full mandatory grid per cell (power_cp
-      optional where no nd7 target exists); ALL numeric metric columns finite
-      (knn_f1, lp_f1, rankme_raw_bank, rankme_l2_bank, capture_l2, cC_K_l2,
-      query_oos_frac). Fail -> stop.
+      dataset, transform, param) keys; full mandatory grid per cell; NO rows
+      beyond the frozen grid (stale/foreign transforms fail); power_cp REQUIRED
+      on every cell (ND7 provides 60/60 rank targets) with finite rankme_target;
+      ALL numeric metric columns finite (knn_f1, lp_f1, rankme_raw_bank,
+      rankme_l2_bank, capture_l2, cC_K_l2, query_oos_frac). Fail -> stop.
 G-NC  rotation control, JOINT per cell: a cell passes iff |delta kNN-F1| < 0.005
       AND |delta LP-F1| < 0.005; required on >= 58/60 cells for both seeds.
       Fail -> harness bug, stop. (Unscreened — the negative control is raw.)
@@ -84,9 +85,13 @@ G-P   contamination gate, per transform: excluded from causal readouts iff
                             |log-RankMe movement under extreme alphas|
             combo:          intends both axes — only (b) applies; OR
         (b) median |post-L2 capture drift| > 0.05.
-      PER-CELL CAPTURE SCREEN: additionally, any (cell, transform) row with
-      |capture_l2 drift| > 0.05 leaves that transform's effect estimates
-      (INT1-1/2/3/4/5); screened counts and cell lists are always reported.
+      PER-ROW CAPTURE SCREEN: additionally, any (cell, dose) ROW with
+      |capture_l2 drift| > 0.05 leaves the effect estimates (INT1-1/2/3/4/5);
+      clean doses of the same cell STAY (the screening unit is the row, not the
+      cell). Screened counts and (cell, dose) lists are always reported.
+      COVERAGE FLOOR: a screened estimate carries decision weight only if >= 45
+      unique cells spanning >= 12 datasets remain; below the floor the affected
+      readout is NO VERDICT (undecidable), never "no".
       Absolute drifts always reported; pre-L2 preservation exact by construction.
 G2-LP LP proxy reproduction: Spearman rho between identity-cell sklearn LP F1 and
       the paper pipeline's lp_pre at the 45 MAX levels (is_max only, main-grid
@@ -95,37 +100,49 @@ G2-LP LP proxy reproduction: Spearman rho between identity-cell sklearn LP F1 an
       EVERY LP conclusion (INT1-1/2/3/5 LP flags) carries [proxy-internal] and
       paper-LP claims are not licensed. No stop either way; SigLIP never enters.
 T3-FS FIRST-STAGE gate, per T3 grade: the grade enters the INT1-2 trend/decision
-      only if its median |cC_K_l2 drift| >= 0.05 (it must actually move the
-      scale assignment); dropped grades are reported with their value.
+      only if its median |cC_K_l2 drift| >= 0.05, computed on the SAME capture-
+      screened row subset that enters the F1 estimate (first stage and effect use
+      identical eligibility); dropped grades are reported with their value.
 
 ## 4. Pre-registered readouts
+
+All verdicts are THREE-STATE (v1.6): YES / no / NO VERDICT — a readout whose
+decision doses are all excluded, uncomputable, or below the coverage floor is
+UNDECIDABLE and must never be reported as a negative result.
 
 INT1-1 SPECTRUM EFFECT: PRIMARY decision at the two frozen extreme doses alpha in
        {0.25, 2.0}, each read at a Bonferroni-adjusted 97.5% dataset-block
        bootstrap CI (2000 draws, seed 0; family-wise 5% per readout). "Functional
        spectrum effect" = CI excludes 0 at either primary dose (per readout,
-       reported separately). alphas {0.5, 0.75, 1.5} form the descriptive
-       dose-response panel (95% CIs, no decision weight). Direction not
-       pre-specified.
-INT1-2 T3 EFFECT: decided at the DEEPEST grade passing G-P and T3-FS (95% CI
-       excludes 0) AND |mean effect| monotone non-decreasing across the
-       non-excluded DEMOTE grades, evaluated SEPARATELY per readout (kNN and LP
-       each use their own trend). Interpretation as "placement effect" only on
-       pass (see T3 naming rule).
+       reported separately); NO VERDICT if no primary dose is evaluable (G-P +
+       coverage). alphas {0.5, 0.75, 1.5} form the descriptive dose-response
+       panel (95% CIs, no decision weight). Direction not pre-specified.
+INT1-2 T3 EFFECT: decided at the DEEPEST grade passing G-P, T3-FS and the
+       coverage floor (95% CI excludes 0) AND |mean effect| monotone
+       non-decreasing across the surviving DEMOTE grades, evaluated SEPARATELY
+       per readout (kNN and LP each use their own trend). NO VERDICT if no grade
+       survives. Interpretation as "placement effect" only on pass (naming rule).
 INT1-3 OPERATOR SPECIFICITY: paired per-cell contrast (delta kNN - delta LP).
        DECISION: family-pooled CI at Bonferroni-adjusted 98.33% level (3 families
        — power, demote, shuffle — family-wise 5%); "operator-specific response" =
-       pooled CI excludes 0 for at least one family. Per-dose panel always
-       reported at 95% (descriptive).
-INT1-4 CP RECONSTRUCTION (T2c): Spearman rho(surgical dknn(alpha_cp), realized
-       dknn) over non-excluded power_cp cells (realized = 2-method mean dknn;
-       SigLIP cells from c2_siglip_score). G-P-excluded cells dropped. Reported
-       with dataset-block bootstrap CI (2000 draws, seed 0); no pass threshold.
+       pooled CI excludes 0 for at least one family; per family NO VERDICT on
+       full exclusion or coverage failure. Per-dose panel always reported at 95%
+       (descriptive).
+INT1-4 RANKME-MATCHED POWER-PATH CALIBRATION (T2c): Spearman rho(surgical
+       dknn(alpha_cp), realized dknn) over power_cp cells surviving BOTH G-P and
+       the calibration acceptance: achieved bank RankMe within 2% relative error
+       of the nd7 target AND alpha_cp off the search bounds (<= 0.06 or >= 3.99
+       rejected as clamped); rejected cells reported with reasons. (realized =
+       2-method mean dknn; SigLIP cells from c2_siglip_score.) Reported with
+       dataset-block bootstrap CI (2000 draws, seed 0); no pass threshold.
+       INTERPRETATION RESTRICTION: rho ~ 0 rules out THIS RankMe-matched power
+       path only — it does NOT establish that the missing factor is capture,
+       local topology, or non-linear information.
 INT1-5 INTERACTION: per readout, factorial contrast delta(combo) - delta(power
        alpha) - delta(demote 256) at the 2 combo doses, each at a Bonferroni-
        adjusted 97.5% block CI (family-wise 5% per readout over the 2 doses).
-       "Interaction present" (per readout) = CI excludes 0 at either dose.
-       Skipped with a note if any component is G-P-excluded.
+       "Interaction present" (per readout) = CI excludes 0 at either computable
+       dose; NO VERDICT if neither dose is computable (exclusion/coverage).
 
 ## 5. Decision tree (declared verbatim, GPT5.6)
 
@@ -137,7 +154,9 @@ INT1-5 INTERACTION: per readout, factorial contrast delta(combo) - delta(power
 - Neither works: the current theory remains a descriptive account.
 - Surgery cannot reproduce realized CP changes (INT1-4 ~ 0): the missing factor is
   capture, local topology, or non-linear information.
-(Read with the T3 naming rule and the G2-LP scope tag.)
+(Read with the T3 naming rule, the G2-LP scope tag, and the INT1-4 interpretation
+restriction: the last branch's "missing factor" list is the hypothesis space the
+next experiment discriminates, NOT a conclusion INT1-4 itself licenses.)
 
 ## 6. Declared limitations
 
@@ -177,3 +196,15 @@ INT1-5 INTERACTION: per readout, factorial contrast delta(combo) - delta(power
   print-only); per-cell capture screen; T3 first-stage gate + naming rule
   ("iso-spectral eigendirection-scale reassignment" until INT1-2 passes);
   prereg consolidated into this single operative rule set.
+- v1.6 (Codex round-4): capture screen unit corrected to the ROW (cell x dose) —
+  the v1.5 cell-level drop removed clean doses of a contaminated cell from
+  pooled estimates (verified: 4-row repro kept 2 instead of 3); G0 additionally
+  rejects rows beyond the frozen grid and REQUIRES power_cp per cell (ND7 has
+  60/60 targets) with finite rankme_target; run resume switched to an exact
+  key-set check (the sentinel + row-count heuristic could false-complete a cell
+  with a stale extra row); three-state verdicts (YES / no / NO VERDICT) for
+  INT1-1/2/3/5; coverage floor (45 cells / 12 datasets) for decision-bearing
+  screened estimates; T3 first stage computed on the same screened subset as
+  the effect; INT1-4 renamed "RankMe-matched power-path calibration" with an
+  explicit calibration acceptance (2% RankMe tolerance, clamped alphas
+  rejected, run records rankme_target) and an interpretation restriction.

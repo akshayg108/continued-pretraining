@@ -1,34 +1,41 @@
 #!/usr/bin/env python3
 """
 int1_verdict.py — INT1 (CPU adjudicator). Gates and readouts are FROZEN in
-eval/new_direction/INT1_PREREG.md (consolidated operative rules v1.5, all
+eval/new_direction/INT1_PREREG.md (consolidated operative rules v1.6, all
 amendments pre-data); this file implements them one-to-one:
 
   G0     census: EXACT 4 x 15 cell set, unique keys, full mandatory grid per cell,
-         ALL numeric metric columns finite (power_cp optional). Fail -> stop.
+         NO rows beyond the frozen grid, power_cp REQUIRED per cell (ND7 60/60)
+         with finite rankme_target, ALL metric columns finite. Fail -> stop.
   G-NC   rotation negative control: JOINT per-cell |delta kNN| AND |delta LP|
          < 0.005 on >= 58/60 cells for both seeds. Fail -> harness bug, stop.
   G-P    contamination gate: transform excluded iff cross-family drift ratio
-         R > 0.5 OR median |capture drift| > 0.05. Additionally a PER-CELL capture
-         screen (v1.5): cells with |capture drift| > 0.05 leave that transform's
-         effect estimates (count reported).
+         R > 0.5 OR median |capture drift| > 0.05. Additionally a PER-ROW capture
+         screen (v1.6): any (cell, dose) row with |capture drift| > 0.05 leaves
+         the estimates — clean doses of the same cell stay. Decision-bearing
+         estimates also need coverage: >= 45 kept cells over >= 12 datasets,
+         else NO VERDICT.
   G2-LP  LP proxy reproduction: identity-cell sklearn LP F1 vs the paper PyTorch
          lp_pre at the 45 MAX levels (is_max only, exact-count asserted). rho >=
          0.9 -> lp_connectable; otherwise every LP conclusion downstream carries
          the [proxy-internal] tag (explicit status, not just a printed note).
-  T3     first-stage gate (v1.5): a grade enters the placement trend/decision only
-         if its median |cC_K drift| >= 0.05 (it must actually move placement).
-         Until INT1-2 passes with this gate the T3 family is described as
+  T3     first-stage gate on the SAME screened subset as the F1 estimate (v1.6):
+         a grade enters the trend/decision only if its screened median |cC_K
+         drift| >= 0.05. Until INT1-2 passes, the T3 family is described as
          "iso-spectral eigendirection-scale reassignment", not placement causality.
-  INT1-1 spectrum: PRIMARY doses alpha {0.25, 2.0} at Bonferroni 97.5% block CIs.
-  INT1-2 placement: decided at the deepest non-excluded first-stage-passing grade;
-         per-readout demote monotonicity.
+  INT1-1 spectrum: PRIMARY doses alpha {0.25, 2.0} at Bonferroni 97.5% block CIs;
+         verdict is YES / no / NO VERDICT (no evaluable primary dose).
+  INT1-2 placement: decided at the deepest grade passing G-P + first-stage +
+         coverage; per-readout demote monotonicity; NO VERDICT if none passes.
   INT1-3 operator specificity: family-pooled contrast at Bonferroni 98.33% CIs
-         (3 families, family-wise 5%); per-dose panel descriptive (95%).
-  INT1-4 CP reconstruction: rho over non-excluded power_cp cells; reported, no
-         threshold.
+         (3 families, family-wise 5%); per-dose panel descriptive (95%);
+         NO VERDICT per family on exclusion/coverage failure.
+  INT1-4 RankMe-matched power-path calibration: rho over power_cp cells that
+         survive G-P + calibration acceptance (achieved RankMe within 2% of the
+         nd7 target, alpha off the search bounds). Reported, no threshold; near 0
+         rules out THIS power path only — it does not localize the missing factor.
   INT1-5 interaction: per readout, the 2 combo doses at Bonferroni 97.5% CIs;
-         interaction = significant at either dose (per readout).
+         YES / no / NO VERDICT (no computable dose).
 
 Run (local): python eval/new_direction/int1_verdict.py
 """
@@ -97,9 +104,10 @@ def placement_flags(trend):
 
 
 def g0_gate(r, cells=None):
-    """G0 census (v1.5 strict): unique keys; the EXACT expected cell set (default
+    """G0 census (v1.6 strict): unique keys; the EXACT expected cell set (default
     the real 4 x 15 grid) — membership, not just count; full mandatory grid per
-    cell; every numeric metric column finite. power_cp is optional per cell."""
+    cell; NO rows beyond the frozen grid; power_cp REQUIRED per cell (ND7 has
+    60/60 targets) with finite rankme_target; every metric column finite."""
     cells = tuple(cells) if cells is not None else EXPECTED_CELLS
     msgs = []
     dup = r.duplicated(["encoder", "dataset", "transform", "param"])
@@ -116,6 +124,23 @@ def g0_gate(r, cells=None):
         miss = [tp for tp in EXPECTED_GRID if (e, d) + tp not in have]
         if miss:
             msgs.append(f"{e}__{d} missing {miss}")
+    grid_ok = set(EXPECTED_GRID)
+    bad_rows = [(e, d, t, p) for e, d, t, p
+                in r[["encoder", "dataset", "transform", "param"]].values
+                if (t, p) not in grid_ok and t != "power_cp"]
+    if bad_rows:
+        msgs.append(f"unexpected transform rows (beyond the frozen grid): "
+                    f"{bad_rows[:10]}{' ...' if len(bad_rows) > 10 else ''}")
+    pcp = r[r["transform"] == "power_cp"]
+    no_pcp = sorted((got & want)
+                    - set(map(tuple, pcp[["encoder", "dataset"]].values)))
+    if no_pcp:
+        msgs.append(f"power_cp missing for cells: {no_pcp}")
+    if "rankme_target" not in r.columns:
+        msgs.append("metric column absent: rankme_target")
+    elif len(pcp) and not np.isfinite(
+            pd.to_numeric(pcp["rankme_target"], errors="coerce")).all():
+        msgs.append("non-finite rankme_target in power_cp rows")
     for col in METRIC_COLS:
         if col not in r.columns:
             msgs.append(f"metric column absent: {col}")
@@ -134,26 +159,80 @@ def drop_excluded(r, excluded):
 
 
 def screened_deltas(sub, ident, thr=CAP_THR):
-    """Per-cell deltas vs identity with the v1.5 capture screen: cells whose
-    |capture_l2 drift| exceeds thr leave this transform's effect estimate.
-    thr=None disables the screen (G-NC uses the raw negative control)."""
-    j = sub.set_index(["encoder", "dataset"])
-    dk = (j.knn_f1 - ident.knn_f1).dropna()
-    dl = (j.lp_f1 - ident.lp_f1).dropna()
+    """Per-ROW deltas vs identity with the capture screen (v1.6): any (cell, dose)
+    row with |capture_l2 drift| > thr leaves the estimate — clean doses of the
+    same cell STAY (round-4 fix: the old cell-index drop removed them too).
+    Order-safe positional construction; thr=None disables the screen (G-NC)."""
+    s = sub.reset_index(drop=True)
+    keys = pd.MultiIndex.from_arrays([s.encoder, s.dataset])
+    dk_v = s.knn_f1.values - ident.knn_f1.reindex(keys).values
+    dl_v = s.lp_f1.values - ident.lp_f1.reindex(keys).values
+    keep = np.isfinite(dk_v) & np.isfinite(dl_v)
     dropped = []
-    if thr is not None and "capture_l2" in j.columns:
-        capd = (j.capture_l2 - ident.capture_l2).abs()
-        dropped = sorted(capd[capd > thr].index)
-        if dropped:
-            dk = dk.drop(dropped, errors="ignore")
-            dl = dl.drop(dropped, errors="ignore")
-    return dk, dl, np.array([i[1] for i in dk.index]), dropped
+    if thr is not None and "capture_l2" in s.columns:
+        drift = np.abs(s.capture_l2.values - ident.capture_l2.reindex(keys).values)
+        bad = np.nan_to_num(drift, nan=0.0) > thr
+        params = (s["param"].astype(str).values if "param" in s.columns
+                  else np.array([""] * len(s)))
+        dropped = sorted({(e, d, p) for e, d, p, b
+                          in zip(s.encoder, s.dataset, params, bad) if b})
+        keep &= ~bad
+    idx = keys[keep]
+    dk = pd.Series(dk_v[keep], index=idx)
+    dl = pd.Series(dl_v[keep], index=idx)
+    return dk, dl, np.array([i[1] for i in idx]), dropped
 
 
-def first_stage_move(sub, ident):
-    """v1.5 T3 first-stage relevance: median |cC_K_l2 drift| of this grade."""
-    j = sub.set_index(["encoder", "dataset"])
-    return float((j.cC_K_l2 - ident.cC_K_l2).dropna().abs().median())
+def first_stage_move(sub, ident, thr=CAP_THR):
+    """v1.6 T3 first-stage relevance: median |cC_K_l2 drift| over the SAME
+    capture-screened rows that enter the F1 estimate (round-4 alignment)."""
+    s = sub.reset_index(drop=True)
+    keys = pd.MultiIndex.from_arrays([s.encoder, s.dataset])
+    d = s.cC_K_l2.values - ident.cC_K_l2.reindex(keys).values
+    keep = np.isfinite(d)
+    if thr is not None and "capture_l2" in s.columns and "capture_l2" in ident.columns:
+        drift = np.abs(s.capture_l2.values - ident.capture_l2.reindex(keys).values)
+        keep &= ~(np.nan_to_num(drift, nan=0.0) > thr)
+    return float(np.median(np.abs(d[keep])))
+
+
+COV_MIN_CELLS = 45                             # v1.6 frozen coverage floor for any
+COV_MIN_DS = 12                                # decision-bearing screened estimate
+
+
+def coverage_ok(keys, min_cells=COV_MIN_CELLS, min_datasets=COV_MIN_DS):
+    """v1.6: a screened estimate carries decision weight only with enough of the
+    grid left — >= min_cells unique cells spanning >= min_datasets datasets."""
+    cells = set(map(tuple, keys))
+    return len(cells) >= min_cells and len({d for _, d in cells}) >= min_datasets
+
+
+def tri_verdict(n_evaluated, any_sig):
+    """YES / no / NO VERDICT (round-4: when every decision dose is excluded or
+    uncomputable, the answer is undecidable — it must not read as a negative)."""
+    if n_evaluated == 0:
+        return "NO VERDICT"
+    return "YES" if any_sig else "no"
+
+
+def calibration_ok(df, tol=0.02, lo_clamp=0.06, hi_clamp=3.99):
+    """v1.6 T2c acceptance: a power_cp cell enters INT1-4 only if the calibrated
+    alpha sits off the search bounds AND the achieved bank RankMe hits the nd7
+    target within tol relative error. Returns (mask, reasons)."""
+    alpha = pd.to_numeric(df["alpha_cp"], errors="coerce")
+    target = pd.to_numeric(df["rankme_target"], errors="coerce")
+    achieved = pd.to_numeric(df["rankme_raw_bank"], errors="coerce")
+    rel = (achieved - target).abs() / target.abs().clip(lower=1e-12)
+    clamped = (alpha <= lo_clamp) | (alpha >= hi_clamp)
+    ok = (np.isfinite(rel) & (rel <= tol) & ~clamped).values
+    reasons = []
+    n_miss = int((np.isfinite(rel) & (rel > tol) & ~clamped).sum())
+    if n_miss:
+        reasons.append(f"{n_miss} cells missed the RankMe target beyond the 2% tolerance")
+    n_cl = int(clamped.fillna(True).sum())
+    if n_cl:
+        reasons.append(f"{n_cl} cells clamped at the alpha search bounds")
+    return ok, reasons
 
 
 def main():
@@ -185,8 +264,9 @@ def main():
     def deltas(sub, thr=CAP_THR, label=None):
         dk, dl, ds_, dropped = screened_deltas(sub, ident, thr=thr)
         if dropped:
-            print(f"    capture screen: {len(dropped)} cells left "
-                  f"{label or 'this readout'}: {[f'{e}__{d}' for e, d in dropped]}")
+            print(f"    capture screen: {len(dropped)} rows left "
+                  f"{label or 'this readout'}: "
+                  f"{[f'{e}__{d}[{p}]' for e, d, p in dropped]}")
         return dk, dl, ds_
 
     # ---- G-NC rotation control (joint per cell; unscreened negative control) ---------------
@@ -278,6 +358,7 @@ def main():
     # ---- INT1-1 spectrum effect ------------------------------------------------------------
     print("\nINT1-1 spectrum effect (mean delta vs identity, dataset-block bootstrap):")
     any_sig = {"knn": False, "lp": False}
+    n_primary_eval = 0
     for a in ("0.25", "0.5", "0.75", "1.5", "2.0"):
         if ("power", a) in excluded:
             print(f"  alpha={a:>4}: G-P-excluded")
@@ -286,19 +367,22 @@ def main():
         level = 97.5 if primary else 95.0     # Bonferroni over the two primary doses
         dk, dl, ds_ = deltas(r[(r["transform"] == "power") & (r.param == a)],
                              label=f"power[{a}]")
+        cov = coverage_ok(dk.index)
         ck = block_ci(dk.values, ds_, level=level)
         cl = block_ci(dl.values, ds_, level=level)
         sk, sl = (ck[0] > 0 or ck[1] < 0), (cl[0] > 0 or cl[1] < 0)
-        if primary:
+        if primary and cov:
+            n_primary_eval += 1
             any_sig["knn"] |= sk
             any_sig["lp"] |= sl
         print(f"  alpha={a:>4}{' P' if primary else '  '}: "
               f"dkNN {dk.mean():+.4f} CI{level:g}[{ck[0]:+.4f},{ck[1]:+.4f}]"
               f"{' *' if sk else '  '}  dLP {dl.mean():+.4f} "
-              f"CI{level:g}[{cl[0]:+.4f},{cl[1]:+.4f}]{' *' if sl else ''}")
+              f"CI{level:g}[{cl[0]:+.4f},{cl[1]:+.4f}]{' *' if sl else ''}"
+              f"{'' if cov else '  [COVERAGE FAIL — no decision weight]'}")
     print("  -> functional spectrum effect (PRIMARY doses only, family-wise 5%): "
-          f"kNN {'YES' if any_sig['knn'] else 'no'}, "
-          f"LP {'YES' if any_sig['lp'] else 'no'}{LP_TAG}"
+          f"kNN {tri_verdict(n_primary_eval, any_sig['knn'])}, "
+          f"LP {tri_verdict(n_primary_eval, any_sig['lp'])}{LP_TAG}"
           "  (non-primary alphas are the descriptive dose-response panel)")
 
     # ---- INT1-2 placement effect (T3 = iso-spectral eigendirection-scale reassignment) -----
@@ -311,12 +395,17 @@ def main():
             print(f"  {name:>7}[{param:>3}]: G-P-excluded")
             continue
         sub = r[(r["transform"] == name) & (r.param == param)]
-        fs = first_stage_move(sub, ident)
+        fs = first_stage_move(sub, ident)      # v1.6: on the screened subset
         if fs < FS_THR:
             print(f"  {name:>7}[{param:>3}]: first-stage median |d cC_K| = {fs:.4f} "
                   f"< {FS_THR} — no placement movement, dropped from trend/decision")
             continue
         dk, dl, ds_ = deltas(sub, label=f"{name}[{param}]")
+        if not coverage_ok(dk.index):
+            print(f"  {name:>7}[{param:>3}]: insufficient screened coverage "
+                  f"(<{COV_MIN_CELLS} cells or <{COV_MIN_DS} datasets) — dropped "
+                  "from trend/decision")
+            continue
         ck, cl = block_ci(dk.values, ds_), block_ci(dl.values, ds_)
         trend.append((name, param, dk.mean(), dl.mean(), ck, cl))
         print(f"  {name:>7}[{param:>3}]: fs {fs:.3f}  dkNN {dk.mean():+.4f} "
@@ -329,8 +418,8 @@ def main():
               f"functional placement effect: kNN {'YES' if f['pk'] else 'no'}, "
               f"LP {'YES' if f['pl'] else 'no'}{LP_TAG}")
     else:
-        print("  -> no T3 grade passes G-P + first-stage — no placement verdict "
-              "(pre-declared branch)")
+        print("  -> NO VERDICT: no T3 grade passes G-P + first-stage + coverage "
+              "(pre-declared branch — undecidable, not negative)")
 
     # ---- INT1-3 operator specificity -------------------------------------------------------
     print("\nINT1-3 operator specificity (paired dkNN - dLP; family-pooled CI at "
@@ -347,9 +436,13 @@ def main():
             print(f"    {fam}[{p}]: mean {diff.mean():+.4f} CI95[{ci[0]:+.4f},{ci[1]:+.4f}]")
         rows = r[(r["transform"] == fam) & r.param.isin(keep)]
         if not len(rows):
+            print(f"  {fam:>7} POOLED: NO VERDICT (all doses G-P-excluded)")
             continue
         dk, dl, _ = deltas(rows, label=f"{fam} pooled contrast")
         diff = (dk - dl).dropna()
+        if not coverage_ok(diff.index):
+            print(f"  {fam:>7} POOLED: NO VERDICT (insufficient screened coverage)")
+            continue
         ds_ = np.array([i[1] for i in diff.index])
         ci = block_ci(diff.values, ds_, level=100.0 - 5.0 / 3.0)
         sig = ci[0] > 0 or ci[1] < 0
@@ -357,11 +450,17 @@ def main():
               f"CI98.33[{ci[0]:+.4f},{ci[1]:+.4f}]"
               f"{' * operator-specific' + LP_TAG if sig else ''}")
 
-    # ---- INT1-4 CP reconstruction ----------------------------------------------------------
+    # ---- INT1-4 RankMe-matched power-path calibration --------------------------------------
     sub = drop_excluded(r[r["transform"] == "power_cp"], excluded)
     n_dropped = len(r[r["transform"] == "power_cp"]) - len(sub)
     if n_dropped:
         print(f"\nINT1-4: {n_dropped} G-P-excluded power_cp cells dropped")
+    if len(sub):
+        mask, reasons = calibration_ok(sub)    # v1.6 T2c acceptance
+        if (~mask).sum():
+            print(f"INT1-4: {int((~mask).sum())} power_cp cells rejected by "
+                  f"calibration acceptance ({'; '.join(reasons)})")
+        sub = sub[mask]
     if len(sub):
         dk, _, _ = deltas(sub, label="power_cp")
         df = load_long()
@@ -390,16 +489,20 @@ def main():
             if len(np.unique(b[idx])) > 1:
                 boots.append(spearmanr(a[idx], b[idx]).correlation)
         ci = (float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5)))
-        print(f"\nINT1-4 CP reconstruction (n={len(pairs)}): "
+        print(f"\nINT1-4 RankMe-matched power-path calibration (n={len(pairs)}): "
               f"rho(surgical dknn @ alpha_cp, realized dknn) = {rho:+.3f} "
               f"CI[{ci[0]:+.3f},{ci[1]:+.3f}] "
-              f"(reported; no threshold — near 0 means the spectral motion alone does "
-              f"not reproduce the realized CP pattern)")
+              f"(reported; no threshold — near 0 rules out THIS RankMe-matched "
+              f"power path only; it does not localize the missing factor)")
+    else:
+        print("\nINT1-4: NO VERDICT (no power_cp cells survive G-P + calibration "
+              "acceptance)")
 
     # ---- INT1-5 interaction ----------------------------------------------------------------
     print("\nINT1-5 interaction (delta combo - delta power - delta demote[256]; per "
           "readout, Bonferroni 97.5% CIs over the 2 combo doses):")
     int5_sig = {"kNN": False, "LP": False}
+    int5_eval = {"kNN": 0, "LP": 0}
     for cp in COMBO_PARAMS:
         alpha = cp.split("|")[0]
         needed = [("combo", cp), ("power", alpha), ("demote", "256")]
@@ -413,14 +516,19 @@ def main():
             parts[t] = (dk, dl)
         for lab, i in (("kNN", 0), ("LP", 1)):
             contrast = (parts["combo"][i] - parts["power"][i] - parts["demote"][i]).dropna()
+            if not coverage_ok(contrast.index):
+                print(f"  combo[{cp}] {lab}: insufficient screened coverage — "
+                      "no decision weight")
+                continue
             ds_ = np.array([ix[1] for ix in contrast.index])
             ci = block_ci(contrast.values, ds_, level=97.5)
             sig = ci[0] > 0 or ci[1] < 0
             int5_sig[lab] |= sig
+            int5_eval[lab] += 1
             print(f"  combo[{cp}] {lab}: mean {contrast.mean():+.4f} "
                   f"CI97.5[{ci[0]:+.4f},{ci[1]:+.4f}]{' *' if sig else ''}")
-    print(f"  -> interaction: kNN {'YES' if int5_sig['kNN'] else 'no'}, "
-          f"LP {'YES' if int5_sig['LP'] else 'no'}{LP_TAG}")
+    print(f"  -> interaction: kNN {tri_verdict(int5_eval['kNN'], int5_sig['kNN'])}, "
+          f"LP {tri_verdict(int5_eval['LP'], int5_sig['LP'])}{LP_TAG}")
 
     print(f"\nLP scope for ALL LP conclusions above: "
           f"{'paper-connectable (G2-LP >= 0.9)' if lp_connectable else 'proxy-internal (G2-LP < 0.9 or unavailable)'}")
