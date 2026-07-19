@@ -19,6 +19,8 @@ the returned CSVs). Pre-registered readouts are declared in each adjudicator's d
 | ND11 | Operator-transport theory #3 (the T3 slot): does a LOCAL cosine-kNN graph quantity (neighbour label purity / graph placement) carry the kNN benefit sign that global spectra provably cannot? | same pass as ND10 (graph columns in `nd10_operator.csv`) | `nd10_verdict.py` (ND11-1..3) |
 | ND12 | REDEFINED 2026-07-16 (Codex critique adopted; frozen in `ND12_PREREG.md`): (a) TRUE vote operator — test-to-train, inverse-distance k=20, exact zero_shot_eval protocol — as evaluator-reproduction gate + bridge (role-restricted, never evidence); (b) PRIMARY = leave-one-dataset-out incremental value of graph placement (m20b frozen) over global scalars {d_rankme, d_cC_K}; gap-closing demoted (circularity). | extended `nd10_operator_transport.py` (test-split extraction + vote columns) -> `nd12_operator.csv` | `nd12_verdict.py` (G1/G2 gates + ND12-1..3) |
 
+| INT1 | Intervention-1 (post-ND causal phase, `INT1_PREREG.md` v1.3): counterfactual surgery on frozen pre-CP features — rotation negative control / spectral power (incl. CP-calibrated alpha) / graded iso-spectral demotion — does geometry causally matter for kNN/LP at fixed information? | `int1_features_dump.py` -> `int1_features/*.npz` (GPU dump; surgery + eval run LOCALLY: `int1_run.py` -> `int1_results.csv`) | `int1_verdict.py` (G-NC/G-P gates + INT1-1..4; surgery TDD in `test_int1_surgery.py`) |
+
 Local (CPU, no cluster): `f5_label_aware_challenge.py` — replication of the v3 re-audit's
 label-aware feature challenge on the SigLIP holdout (run 2026-07-16: v1 13/15, cC_K-only
 10/15, knn_pre-only 8/15, v1+cC_K 13/15 — reproduces the re-audit exactly; the T2 slot is

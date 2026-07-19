@@ -7,7 +7,7 @@ accessibility serve the LP level better than the placement share alone?
 Pre-registered readouts (declared 2026-07-16, BEFORE nd9_capture.csv existed; rank-aware
 rerun amendments declared 2026-07-16 before nd9_capture_rankaware.csv existed):
   ND9-R RANK ACCEPTANCE (rerun gate, Codex follow-up): 60 rows, 60 unique cells, no
-        NaN; numerical_rank == min(n_samples, embed_dim) on EVERY cell (i.e. full row
+        NaN; numerical_rank == min(n_samples, embed_dim) on EVERY cell (maximal numerical
         rank: 768 on the 56 non-degenerate cells, n_samples on breastmnist's 4).
         Any true rank deficiency -> capture keeps its pending tag AND the nd6-era cC
         definitions must be revisited before further use. Per-row capture diff vs the
@@ -90,7 +90,7 @@ def main():
               "capture keeps its pending tag, the ND9-1..3 verdicts below would be "
               "void, and the nd6-era cC definitions must be revisited first.")
         sys.exit(1)
-    print("  -> PASS — full row rank everywhere; capture's pending tag is lifted")
+    print("  -> PASS — maximal numerical rank min(n, d) everywhere; capture's pending tag is lifted")
     old_path = OUT / "nd9_capture.csv"
     if old_path.exists():
         old = pd.read_csv(old_path)[["encoder", "dataset", "capture_cen"]] \
