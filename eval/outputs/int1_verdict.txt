@@ -1,0 +1,133 @@
+G0 census: PASS
+note: 1 cells with query_oos_frac > 0.05 (surgery acts only on the in-span part — dose diluted, not annihilated): ['DINOv3__breastmnist']
+cells: 60 — transforms per cell: 15..15
+G-NC rotation seed 0: joint |dkNN|&|dLP| < 0.005 on 60/60 (max 0.0000/0.0020)
+G-NC rotation seed 1: joint |dkNN|&|dLP| < 0.005 on 60/60 (max 0.0000/0.0020)
+  -> PASS
+
+G-P contamination gate (excluded iff cross-family R > 0.5 OR median |capture drift| > 0.05):
+  intended movements: placement (shuffle) median |d cC_K| = 0.3393; spectrum (alpha 0.25/2.0) median |d log rankme| = 2.3288
+      power[0.25]: R = 0.04 (cC_K drift 0.0141 / placement move 0.3393; capture drift 0.0029) -> ok
+      power[0.5]: R = 0.02 (cC_K drift 0.0079 / placement move 0.3393; capture drift 0.0032) -> ok
+      power[0.75]: R = 0.01 (cC_K drift 0.0031 / placement move 0.3393; capture drift 0.0017) -> ok
+      power[1.5]: R = 0.01 (cC_K drift 0.0029 / placement move 0.3393; capture drift 0.0021) -> ok
+      power[2.0]: R = 0.01 (cC_K drift 0.0038 / placement move 0.3393; capture drift 0.0028) -> ok
+   power_cp[0.7652]: R = 0.01 (cC_K drift 0.0021 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[0.7800]: R = 0.01 (cC_K drift 0.0027 / placement move 0.3393; capture drift 0.0011) -> ok
+   power_cp[0.8204]: R = 0.03 (cC_K drift 0.0100 / placement move 0.3393; capture drift 0.0071) -> ok
+   power_cp[0.8326]: R = 0.01 (cC_K drift 0.0027 / placement move 0.3393; capture drift 0.0009) -> ok
+   power_cp[0.8469]: R = 0.01 (cC_K drift 0.0045 / placement move 0.3393; capture drift 0.0011) -> ok
+   power_cp[0.8596]: R = 0.00 (cC_K drift 0.0011 / placement move 0.3393; capture drift 0.0013) -> ok
+   power_cp[0.8631]: R = 0.41 (cC_K drift 0.1401 / placement move 0.3393; capture drift 0.0003) -> ok
+   power_cp[0.8852]: R = 0.00 (cC_K drift 0.0001 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[0.8865]: R = 0.01 (cC_K drift 0.0019 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[0.9009]: R = 0.02 (cC_K drift 0.0054 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[0.9098]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0012) -> ok
+   power_cp[0.9105]: R = 0.00 (cC_K drift 0.0005 / placement move 0.3393; capture drift 0.0004) -> ok
+   power_cp[0.9151]: R = 0.01 (cC_K drift 0.0032 / placement move 0.3393; capture drift 0.0003) -> ok
+   power_cp[0.9195]: R = 0.01 (cC_K drift 0.0027 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[0.9225]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[0.9237]: R = 0.00 (cC_K drift 0.0003 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[0.9259]: R = 0.01 (cC_K drift 0.0024 / placement move 0.3393; capture drift 0.0014) -> ok
+   power_cp[0.9261]: R = 0.00 (cC_K drift 0.0009 / placement move 0.3393; capture drift 0.0003) -> ok
+   power_cp[0.9266]: R = 0.01 (cC_K drift 0.0022 / placement move 0.3393; capture drift 0.0006) -> ok
+   power_cp[0.9280]: R = 0.00 (cC_K drift 0.0006 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[0.9368]: R = 0.00 (cC_K drift 0.0006 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[0.9843]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[0.9952]: R = 0.00 (cC_K drift 0.0000 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[0.9994]: R = 0.00 (cC_K drift 0.0001 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[0.9997]: R = 0.00 (cC_K drift 0.0000 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[1.0012]: R = 0.00 (cC_K drift 0.0000 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[1.0065]: R = 0.00 (cC_K drift 0.0001 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[1.0108]: R = 0.00 (cC_K drift 0.0006 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[1.0249]: R = 0.00 (cC_K drift 0.0005 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[1.0341]: R = 0.00 (cC_K drift 0.0005 / placement move 0.3393; capture drift 0.0003) -> ok
+   power_cp[1.0398]: R = 0.00 (cC_K drift 0.0008 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[1.0444]: R = 0.00 (cC_K drift 0.0005 / placement move 0.3393; capture drift 0.0004) -> ok
+   power_cp[1.0488]: R = 0.00 (cC_K drift 0.0011 / placement move 0.3393; capture drift 0.0006) -> ok
+   power_cp[1.0587]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0008) -> ok
+   power_cp[1.0814]: R = 0.00 (cC_K drift 0.0014 / placement move 0.3393; capture drift 0.0002) -> ok
+   power_cp[1.0817]: R = 0.00 (cC_K drift 0.0007 / placement move 0.3393; capture drift 0.0018) -> ok
+   power_cp[1.0989]: R = 0.01 (cC_K drift 0.0021 / placement move 0.3393; capture drift 0.0006) -> ok
+   power_cp[1.0991]: R = 0.00 (cC_K drift 0.0005 / placement move 0.3393; capture drift 0.0004) -> ok
+   power_cp[1.0999]: R = 0.00 (cC_K drift 0.0004 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[1.1052]: R = 0.00 (cC_K drift 0.0003 / placement move 0.3393; capture drift 0.0005) -> ok
+   power_cp[1.1120]: R = 0.01 (cC_K drift 0.0022 / placement move 0.3393; capture drift 0.0004) -> ok
+   power_cp[1.1136]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0011) -> ok
+   power_cp[1.1153]: R = 0.00 (cC_K drift 0.0001 / placement move 0.3393; capture drift 0.0004) -> ok
+   power_cp[1.1221]: R = 0.02 (cC_K drift 0.0077 / placement move 0.3393; capture drift 0.0001) -> ok
+   power_cp[1.1334]: R = 0.00 (cC_K drift 0.0003 / placement move 0.3393; capture drift 0.0010) -> ok
+   power_cp[1.1414]: R = 0.00 (cC_K drift 0.0004 / placement move 0.3393; capture drift 0.0012) -> ok
+   power_cp[1.1619]: R = 0.00 (cC_K drift 0.0007 / placement move 0.3393; capture drift 0.0012) -> ok
+   power_cp[1.1649]: R = 0.01 (cC_K drift 0.0046 / placement move 0.3393; capture drift 0.0036) -> ok
+   power_cp[1.1657]: R = 0.00 (cC_K drift 0.0013 / placement move 0.3393; capture drift 0.0007) -> ok
+   power_cp[1.1735]: R = 0.00 (cC_K drift 0.0003 / placement move 0.3393; capture drift 0.0023) -> ok
+   power_cp[1.1937]: R = 0.01 (cC_K drift 0.0039 / placement move 0.3393; capture drift 0.0019) -> ok
+   power_cp[1.1967]: R = 0.00 (cC_K drift 0.0013 / placement move 0.3393; capture drift 0.0019) -> ok
+   power_cp[1.2108]: R = 0.00 (cC_K drift 0.0006 / placement move 0.3393; capture drift 0.0017) -> ok
+   power_cp[1.2279]: R = 0.01 (cC_K drift 0.0020 / placement move 0.3393; capture drift 0.0000) -> ok
+   power_cp[1.2315]: R = 0.01 (cC_K drift 0.0029 / placement move 0.3393; capture drift 0.0032) -> ok
+   power_cp[1.2345]: R = 0.00 (cC_K drift 0.0016 / placement move 0.3393; capture drift 0.0022) -> ok
+   power_cp[1.2417]: R = 0.01 (cC_K drift 0.0039 / placement move 0.3393; capture drift 0.0049) -> ok
+   power_cp[1.2548]: R = 0.00 (cC_K drift 0.0012 / placement move 0.3393; capture drift 0.0058) -> ok
+   power_cp[1.2994]: R = 0.00 (cC_K drift 0.0002 / placement move 0.3393; capture drift 0.0014) -> ok
+   power_cp[1.3298]: R = 0.01 (cC_K drift 0.0025 / placement move 0.3393; capture drift 0.0009) -> ok
+     demote[64]: R = 0.07 (log-rankme drift 0.1529 / spectrum move 2.3288; capture drift 0.0356) -> ok
+     demote[256]: R = 0.06 (log-rankme drift 0.1428 / spectrum move 2.3288; capture drift 0.0385) -> ok
+     demote[512]: R = 0.06 (log-rankme drift 0.1467 / spectrum move 2.3288; capture drift 0.0360) -> ok
+    shuffle[0]: R = 0.06 (log-rankme drift 0.1494 / spectrum move 2.3288; capture drift 0.0358) -> ok
+      combo[0.5|256]: R = 0.00 (moves both axes by design; capture drift 0.0039) -> ok
+      combo[2.0|256]: R = 0.00 (moves both axes by design; capture drift 0.1479) -> EXCLUDED capture>0.05
+
+G2-LP proxy reproduction (n=45 MAX-level cells): rho(sklearn LP identity F1, paper PyTorch lp_pre @ MAX) = +0.909 -> connectable (ordering-level)
+  (paper LP = unregularized 10k-step Adam probe, continued_pretraining results_json 'linear_pytorch_f1'; INT1 LP = deterministic sklearn C=1.0 probe. SigLIP cells have no paper LP.)
+
+INT1-1 spectrum effect (mean delta vs identity, dataset-block bootstrap):
+  alpha=0.25 P: dkNN +0.0721 CI97.5[+0.0264,+0.1047] *  dLP +0.1250 CI97.5[+0.0871,+0.1626] *
+  alpha= 0.5  : dkNN +0.0547 CI95[+0.0408,+0.0691] *  dLP +0.1216 CI95[+0.1017,+0.1477] *
+  alpha=0.75  : dkNN +0.0240 CI95[+0.0186,+0.0304] *  dLP +0.0779 CI95[+0.0639,+0.0956] *
+  alpha= 1.5  : dkNN -0.0379 CI95[-0.0470,-0.0306] *  dLP -0.1494 CI95[-0.1862,-0.1217] *
+  alpha= 2.0 P: dkNN -0.0746 CI97.5[-0.0934,-0.0598] *  dLP -0.2665 CI97.5[-0.3324,-0.2082] *
+  -> functional spectrum effect (PRIMARY doses only, family-wise 5%): kNN YES, LP YES  (non-primary alphas are the descriptive dose-response panel)
+
+INT1-2 T3 effect (iso-spectral eigendirection-scale reassignment; decided at deepest non-excluded first-stage-passing grade):
+   demote[ 64]: first-stage median |d cC_K| = 0.0199 < 0.05 — no placement movement, dropped from trend/decision
+    capture screen: 25 rows left demote[256]: ['CLIP__dermamnist[256]', 'CLIP__eurosat[256]', 'CLIP__galaxy10[256]', 'CLIP__octmnist[256]', 'CLIP__organamnist[256]', 'CLIP__pathmnist[256]', 'CLIP__plant_village[256]', 'DINOv3__dermamnist[256]', 'DINOv3__galaxy10[256]', 'DINOv3__octmnist[256]', 'DINOv3__pathmnist[256]', 'MAE__dermamnist[256]', 'MAE__eurosat[256]', 'MAE__galaxy10[256]', 'MAE__octmnist[256]', 'MAE__organamnist[256]', 'MAE__pathmnist[256]', 'MAE__plant_village[256]', 'SigLIP__dermamnist[256]', 'SigLIP__eurosat[256]', 'SigLIP__galaxy10[256]', 'SigLIP__octmnist[256]', 'SigLIP__organamnist[256]', 'SigLIP__pathmnist[256]', 'SigLIP__plant_village[256]']
+   demote[256]: insufficient screened coverage (<45 cells or <12 datasets) — dropped from trend/decision
+    capture screen: 25 rows left demote[512]: ['CLIP__dermamnist[512]', 'CLIP__eurosat[512]', 'CLIP__galaxy10[512]', 'CLIP__octmnist[512]', 'CLIP__organamnist[512]', 'CLIP__pathmnist[512]', 'CLIP__plant_village[512]', 'DINOv3__dermamnist[512]', 'DINOv3__galaxy10[512]', 'DINOv3__octmnist[512]', 'DINOv3__pathmnist[512]', 'MAE__dermamnist[512]', 'MAE__eurosat[512]', 'MAE__galaxy10[512]', 'MAE__octmnist[512]', 'MAE__organamnist[512]', 'MAE__pathmnist[512]', 'MAE__plant_village[512]', 'SigLIP__dermamnist[512]', 'SigLIP__eurosat[512]', 'SigLIP__galaxy10[512]', 'SigLIP__octmnist[512]', 'SigLIP__organamnist[512]', 'SigLIP__pathmnist[512]', 'SigLIP__plant_village[512]']
+   demote[512]: insufficient screened coverage (<45 cells or <12 datasets) — dropped from trend/decision
+    capture screen: 25 rows left shuffle[0]: ['CLIP__dermamnist[0]', 'CLIP__eurosat[0]', 'CLIP__galaxy10[0]', 'CLIP__octmnist[0]', 'CLIP__organamnist[0]', 'CLIP__pathmnist[0]', 'CLIP__plant_village[0]', 'DINOv3__dermamnist[0]', 'DINOv3__galaxy10[0]', 'DINOv3__octmnist[0]', 'DINOv3__pathmnist[0]', 'MAE__dermamnist[0]', 'MAE__eurosat[0]', 'MAE__galaxy10[0]', 'MAE__octmnist[0]', 'MAE__organamnist[0]', 'MAE__pathmnist[0]', 'MAE__plant_village[0]', 'SigLIP__dermamnist[0]', 'SigLIP__eurosat[0]', 'SigLIP__galaxy10[0]', 'SigLIP__octmnist[0]', 'SigLIP__organamnist[0]', 'SigLIP__pathmnist[0]', 'SigLIP__plant_village[0]']
+  shuffle[  0]: insufficient screened coverage (<45 cells or <12 datasets) — dropped from trend/decision
+  -> NO VERDICT: no T3 grade passes G-P + first-stage + coverage (pre-declared branch — undecidable, not negative)
+
+INT1-3 operator specificity (paired dkNN - dLP; family-pooled CI at Bonferroni 98.33% decides; per-dose panel descriptive):
+    power[0.25]: mean -0.0529 CI95[-0.0702,-0.0359]
+    power[0.5]: mean -0.0668 CI95[-0.0847,-0.0524]
+    power[0.75]: mean -0.0538 CI95[-0.0682,-0.0418]
+    power[1.5]: mean +0.1115 CI95[+0.0885,+0.1394]
+    power[2.0]: mean +0.1919 CI95[+0.1471,+0.2384]
+    power POOLED: mean +0.0260 CI98.33[+0.0051,+0.0437] * operator-specific
+    capture screen: 25 rows left demote[64] contrast: ['CLIP__dermamnist[64]', 'CLIP__eurosat[64]', 'CLIP__galaxy10[64]', 'CLIP__octmnist[64]', 'CLIP__organamnist[64]', 'CLIP__pathmnist[64]', 'CLIP__plant_village[64]', 'DINOv3__dermamnist[64]', 'DINOv3__galaxy10[64]', 'DINOv3__octmnist[64]', 'DINOv3__pathmnist[64]', 'MAE__dermamnist[64]', 'MAE__eurosat[64]', 'MAE__galaxy10[64]', 'MAE__octmnist[64]', 'MAE__organamnist[64]', 'MAE__pathmnist[64]', 'MAE__plant_village[64]', 'SigLIP__dermamnist[64]', 'SigLIP__eurosat[64]', 'SigLIP__galaxy10[64]', 'SigLIP__octmnist[64]', 'SigLIP__organamnist[64]', 'SigLIP__pathmnist[64]', 'SigLIP__plant_village[64]']
+    demote[64]: mean -0.1147 CI95[-0.1570,-0.0847]
+    capture screen: 25 rows left demote[256] contrast: ['CLIP__dermamnist[256]', 'CLIP__eurosat[256]', 'CLIP__galaxy10[256]', 'CLIP__octmnist[256]', 'CLIP__organamnist[256]', 'CLIP__pathmnist[256]', 'CLIP__plant_village[256]', 'DINOv3__dermamnist[256]', 'DINOv3__galaxy10[256]', 'DINOv3__octmnist[256]', 'DINOv3__pathmnist[256]', 'MAE__dermamnist[256]', 'MAE__eurosat[256]', 'MAE__galaxy10[256]', 'MAE__octmnist[256]', 'MAE__organamnist[256]', 'MAE__pathmnist[256]', 'MAE__plant_village[256]', 'SigLIP__dermamnist[256]', 'SigLIP__eurosat[256]', 'SigLIP__galaxy10[256]', 'SigLIP__octmnist[256]', 'SigLIP__organamnist[256]', 'SigLIP__pathmnist[256]', 'SigLIP__plant_village[256]']
+    demote[256]: mean -0.1516 CI95[-0.1956,-0.1191]
+    capture screen: 25 rows left demote[512] contrast: ['CLIP__dermamnist[512]', 'CLIP__eurosat[512]', 'CLIP__galaxy10[512]', 'CLIP__octmnist[512]', 'CLIP__organamnist[512]', 'CLIP__pathmnist[512]', 'CLIP__plant_village[512]', 'DINOv3__dermamnist[512]', 'DINOv3__galaxy10[512]', 'DINOv3__octmnist[512]', 'DINOv3__pathmnist[512]', 'MAE__dermamnist[512]', 'MAE__eurosat[512]', 'MAE__galaxy10[512]', 'MAE__octmnist[512]', 'MAE__organamnist[512]', 'MAE__pathmnist[512]', 'MAE__plant_village[512]', 'SigLIP__dermamnist[512]', 'SigLIP__eurosat[512]', 'SigLIP__galaxy10[512]', 'SigLIP__octmnist[512]', 'SigLIP__organamnist[512]', 'SigLIP__pathmnist[512]', 'SigLIP__plant_village[512]']
+    demote[512]: mean -0.1693 CI95[-0.2068,-0.1412]
+    capture screen: 75 rows left demote pooled contrast: ['CLIP__dermamnist[256]', 'CLIP__dermamnist[512]', 'CLIP__dermamnist[64]', 'CLIP__eurosat[256]', 'CLIP__eurosat[512]', 'CLIP__eurosat[64]', 'CLIP__galaxy10[256]', 'CLIP__galaxy10[512]', 'CLIP__galaxy10[64]', 'CLIP__octmnist[256]', 'CLIP__octmnist[512]', 'CLIP__octmnist[64]', 'CLIP__organamnist[256]', 'CLIP__organamnist[512]', 'CLIP__organamnist[64]', 'CLIP__pathmnist[256]', 'CLIP__pathmnist[512]', 'CLIP__pathmnist[64]', 'CLIP__plant_village[256]', 'CLIP__plant_village[512]', 'CLIP__plant_village[64]', 'DINOv3__dermamnist[256]', 'DINOv3__dermamnist[512]', 'DINOv3__dermamnist[64]', 'DINOv3__galaxy10[256]', 'DINOv3__galaxy10[512]', 'DINOv3__galaxy10[64]', 'DINOv3__octmnist[256]', 'DINOv3__octmnist[512]', 'DINOv3__octmnist[64]', 'DINOv3__pathmnist[256]', 'DINOv3__pathmnist[512]', 'DINOv3__pathmnist[64]', 'MAE__dermamnist[256]', 'MAE__dermamnist[512]', 'MAE__dermamnist[64]', 'MAE__eurosat[256]', 'MAE__eurosat[512]', 'MAE__eurosat[64]', 'MAE__galaxy10[256]', 'MAE__galaxy10[512]', 'MAE__galaxy10[64]', 'MAE__octmnist[256]', 'MAE__octmnist[512]', 'MAE__octmnist[64]', 'MAE__organamnist[256]', 'MAE__organamnist[512]', 'MAE__organamnist[64]', 'MAE__pathmnist[256]', 'MAE__pathmnist[512]', 'MAE__pathmnist[64]', 'MAE__plant_village[256]', 'MAE__plant_village[512]', 'MAE__plant_village[64]', 'SigLIP__dermamnist[256]', 'SigLIP__dermamnist[512]', 'SigLIP__dermamnist[64]', 'SigLIP__eurosat[256]', 'SigLIP__eurosat[512]', 'SigLIP__eurosat[64]', 'SigLIP__galaxy10[256]', 'SigLIP__galaxy10[512]', 'SigLIP__galaxy10[64]', 'SigLIP__octmnist[256]', 'SigLIP__octmnist[512]', 'SigLIP__octmnist[64]', 'SigLIP__organamnist[256]', 'SigLIP__organamnist[512]', 'SigLIP__organamnist[64]', 'SigLIP__pathmnist[256]', 'SigLIP__pathmnist[512]', 'SigLIP__pathmnist[64]', 'SigLIP__plant_village[256]', 'SigLIP__plant_village[512]', 'SigLIP__plant_village[64]']
+   demote POOLED: NO VERDICT (insufficient screened coverage)
+    capture screen: 25 rows left shuffle[0] contrast: ['CLIP__dermamnist[0]', 'CLIP__eurosat[0]', 'CLIP__galaxy10[0]', 'CLIP__octmnist[0]', 'CLIP__organamnist[0]', 'CLIP__pathmnist[0]', 'CLIP__plant_village[0]', 'DINOv3__dermamnist[0]', 'DINOv3__galaxy10[0]', 'DINOv3__octmnist[0]', 'DINOv3__pathmnist[0]', 'MAE__dermamnist[0]', 'MAE__eurosat[0]', 'MAE__galaxy10[0]', 'MAE__octmnist[0]', 'MAE__organamnist[0]', 'MAE__pathmnist[0]', 'MAE__plant_village[0]', 'SigLIP__dermamnist[0]', 'SigLIP__eurosat[0]', 'SigLIP__galaxy10[0]', 'SigLIP__octmnist[0]', 'SigLIP__organamnist[0]', 'SigLIP__pathmnist[0]', 'SigLIP__plant_village[0]']
+    shuffle[0]: mean -0.1295 CI95[-0.1827,-0.0923]
+    capture screen: 25 rows left shuffle pooled contrast: ['CLIP__dermamnist[0]', 'CLIP__eurosat[0]', 'CLIP__galaxy10[0]', 'CLIP__octmnist[0]', 'CLIP__organamnist[0]', 'CLIP__pathmnist[0]', 'CLIP__plant_village[0]', 'DINOv3__dermamnist[0]', 'DINOv3__galaxy10[0]', 'DINOv3__octmnist[0]', 'DINOv3__pathmnist[0]', 'MAE__dermamnist[0]', 'MAE__eurosat[0]', 'MAE__galaxy10[0]', 'MAE__octmnist[0]', 'MAE__organamnist[0]', 'MAE__pathmnist[0]', 'MAE__plant_village[0]', 'SigLIP__dermamnist[0]', 'SigLIP__eurosat[0]', 'SigLIP__galaxy10[0]', 'SigLIP__octmnist[0]', 'SigLIP__organamnist[0]', 'SigLIP__pathmnist[0]', 'SigLIP__plant_village[0]']
+  shuffle POOLED: NO VERDICT (insufficient screened coverage)
+
+INT1-4 RankMe-matched power-path calibration (n=60): rho(surgical dknn @ alpha_cp, realized dknn) = +0.463 CI[+0.222,+0.639] (reported; no threshold — near 0 rules out THIS RankMe-matched power path only; it does not localize the missing factor)
+
+INT1-5 interaction (delta combo - delta power - delta demote[256]; per readout, Bonferroni 97.5% CIs over the 2 combo doses):
+    capture screen: 25 rows left demote[256] (INT1-5): ['CLIP__dermamnist[256]', 'CLIP__eurosat[256]', 'CLIP__galaxy10[256]', 'CLIP__octmnist[256]', 'CLIP__organamnist[256]', 'CLIP__pathmnist[256]', 'CLIP__plant_village[256]', 'DINOv3__dermamnist[256]', 'DINOv3__galaxy10[256]', 'DINOv3__octmnist[256]', 'DINOv3__pathmnist[256]', 'MAE__dermamnist[256]', 'MAE__eurosat[256]', 'MAE__galaxy10[256]', 'MAE__octmnist[256]', 'MAE__organamnist[256]', 'MAE__pathmnist[256]', 'MAE__plant_village[256]', 'SigLIP__dermamnist[256]', 'SigLIP__eurosat[256]', 'SigLIP__galaxy10[256]', 'SigLIP__octmnist[256]', 'SigLIP__organamnist[256]', 'SigLIP__pathmnist[256]', 'SigLIP__plant_village[256]']
+  combo[0.5|256] kNN: insufficient screened coverage — no decision weight
+  combo[0.5|256] LP: insufficient screened coverage — no decision weight
+  combo[2.0|256]: component excluded by G-P — contrast not computed
+  -> interaction: kNN NO VERDICT, LP NO VERDICT
+
+LP scope for ALL LP conclusions above: paper-connectable (G2-LP >= 0.9)
+Decision tree: read the flags above against INT1_PREREG.md §Decision tree.

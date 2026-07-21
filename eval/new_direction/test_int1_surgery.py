@@ -188,6 +188,53 @@ def test_combo_acts_as_identity_on_query_complement_when_n_lt_d():
     assert np.abs(out_after - q_out).max() < 1e-8
 
 
+# ---------------------------------------------- INT2: spectrum transplant (A5)
+def test_transplant_replaces_singular_values_in_rank_order():
+    X, _ = _cloud()
+    target = np.linspace(200.0, 100.0, X.shape[1])          # well above post values
+    M = fit_surgery(X, kind="transplant", s_target=target)
+    s_new = np.sort(np.linalg.svd(apply_surgery(X, M), compute_uv=False))[::-1]
+    assert np.allclose(s_new, target, rtol=1e-6)
+
+
+def test_transplant_shorter_target_keeps_post_tail():
+    X, _ = _cloud()
+    s_post = np.sort(np.linalg.svd(X, compute_uv=False))[::-1]
+    target = np.linspace(300.0, 200.0, 10)                  # top-10 only, above tail
+    M = fit_surgery(X, kind="transplant", s_target=target)
+    s_new = np.sort(np.linalg.svd(apply_surgery(X, M), compute_uv=False))[::-1]
+    assert np.allclose(s_new[:10], target, rtol=1e-6)
+    assert np.allclose(np.sort(s_new[10:]), np.sort(s_post[10:]), rtol=1e-6)
+
+
+def test_transplant_acts_as_identity_on_query_complement_when_n_lt_d():
+    X, _ = _thin_cloud()
+    q = rng.randn(5, X.shape[1])
+    _, q_out = _oos_split(q, X)
+    M = fit_surgery(X, kind="transplant", s_target=np.linspace(5.0, 1.0, 20))
+    _, out_after = _oos_split(apply_surgery(q, M), X)
+    assert np.abs(out_after - q_out).max() < 1e-8
+
+
+# ------------------------------------- INT2: fast spectrum-side RankMe calibration
+def test_rankme_from_s_matches_matrix_rankme():
+    from int1_surgery import rankme_from_s
+    X, _ = _cloud()
+    s = np.linalg.svd(X, compute_uv=False)
+    assert abs(rankme_from_s(s) - rankme_raw(X)) < 1e-9
+
+
+def test_calibrate_alpha_from_s_matches_full_recompute():
+    from int1_surgery import calibrate_alpha_from_s, calibrate_alpha, rankme_from_s
+    X, _ = _cloud(n=800, d=64)
+    s = np.linalg.svd(X, compute_uv=False)
+    target = rankme_raw(X) * 0.6
+    a_fast = calibrate_alpha_from_s(s, target_rankme=target)
+    a_slow = calibrate_alpha(X, target_rankme=target)
+    assert abs(a_fast - a_slow) < 1e-3
+    assert abs(rankme_from_s(s ** a_fast) - target) / target < 0.02
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

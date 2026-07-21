@@ -66,7 +66,8 @@ def _demote_order(s, block, depth):
     return order
 
 
-def fit_surgery(bank_X, kind, alpha=None, seed=None, block=16, depth=None):
+def fit_surgery(bank_X, kind, alpha=None, seed=None, block=16, depth=None,
+                s_target=None):
     """Return the fixed feature-space map M (d x d) for one pre-registered surgery."""
     bank_X = np.asarray(bank_X, dtype=np.float64)
     d = bank_X.shape[1]
@@ -86,6 +87,17 @@ def fit_surgery(bank_X, kind, alpha=None, seed=None, block=16, depth=None):
     elif kind == "combo":
         s_dem = np.maximum(s[_demote_order(s, block, depth)], 1e-12)
         scale = (s_dem ** float(alpha)) / safe
+    elif kind == "transplant":
+        # INT2 A5: replace singular values IN RANK ORDER by the target spectrum
+        # (directions unchanged); ranks beyond the target length keep their own.
+        # Numerically-null directions are left untouched (round-6: a rank-
+        # deficient post bank must not have its null space amplified by t/eps)
+        t = np.asarray(s_target, dtype=np.float64)
+        tol = s.max() * max(bank_X.shape) * np.finfo(np.float64).eps
+        m = min(len(t), len(s))
+        s_new = s.copy()
+        s_new[:m] = np.maximum(t[:m], 1e-12)
+        scale = np.where(s > tol, s_new / safe, 1.0)
     else:
         raise ValueError(f"unknown surgery kind: {kind}")
     M = Vt.T @ np.diag(scale) @ Vt
@@ -95,6 +107,30 @@ def fit_surgery(bank_X, kind, alpha=None, seed=None, block=16, depth=None):
 
 def apply_surgery(X, M):
     return np.asarray(X, dtype=np.float64) @ M
+
+
+def rankme_from_s(s):
+    """RankMe directly from a singular-value vector (same formula as
+    spectral_metrics.rankme: entropy exponent of p = s / sum(s))."""
+    s = np.asarray(s, dtype=np.float64)
+    s = s[s > 0]
+    if len(s) == 0:
+        return 1.0
+    p = s / s.sum()
+    return float(np.exp(-(p * np.log(p)).sum()))
+
+
+def calibrate_alpha_from_s(s, target_rankme, lo=0.05, hi=4.0, iters=40):
+    """INT2 fast path: for a power surgery the surgered bank spectrum is exactly
+    s^alpha, so calibration needs no matrix SVD per bisection step."""
+    s = np.asarray(s, dtype=np.float64)
+    for _ in range(iters):
+        mid = 0.5 * (lo + hi)
+        if rankme_from_s(s ** mid) > target_rankme:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
 
 
 def calibrate_alpha(bank_X, target_rankme, lo=0.05, hi=4.0, iters=40):
