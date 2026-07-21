@@ -9,7 +9,7 @@
 #SBATCH --exclude=cn253,cn259
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --array=0-14%5
+#SBATCH --array=0-14
 #SBATCH --output=/scratch/gs4133/zhd/CP/outputs/slurm-log/int2-features-%A_%a.out
 #SBATCH --error=/scratch/gs4133/zhd/CP/outputs/slurm-log/int2-features-%A_%a.err
 
@@ -27,7 +27,7 @@
 # (the sidecar is frozen on the cluster by the full --verify-only; local side
 #  verifies READ-ONLY via int2_run.py or --verify-sidecar-only, never rewrites)
 # (484 files, ~8 GiB). Then everything runs locally (int2_run.py + int2_verdict.py).
-# Queue-friendly tip:  sbatch --array=0-14%5 run/slurm/new_direction/int2_features.sh
+# (optional: append %N to --array to cap concurrency if the queue is congested)
 # ============================================================
 
 echo "=========================================="
