@@ -1,0 +1,174 @@
+G0 census: PASS
+cells: 484 total, primary seed-42 panel: 165
+G-NC rotation seed 0: joint < 0.005 on 165/165 (need 162)
+G-NC rotation seed 1: joint < 0.005 on 164/165 (need 162)
+  -> PASS
+G-POST [all-484] knn_f1: rho +1.0000, med 0.0000, worst 0.0013 (tol 0.01), n 484
+G-POST [all-484] vote_margin: rho +1.0000, med 0.0000, worst 0.0001 (tol 0.01), n 484
+G-POST [all-484] vote_pos_frac: rho +1.0000, med 0.0000, worst 0.0006 (tol 0.01), n 484
+G-POST [all-484] n_test equality: 484/484
+G-POST [all-484] -> PASS
+G-POST [seed-42] knn_f1: rho +1.0000, med 0.0000, worst 0.0004 (tol 0.01), n 165
+G-POST [seed-42] vote_margin: rho +1.0000, med 0.0000, worst 0.0000 (tol 0.01), n 165
+G-POST [seed-42] vote_pos_frac: rho +1.0000, med 0.0000, worst 0.0006 (tol 0.01), n 165
+G-POST [seed-42] n_test equality: 165/165
+G-POST [seed-42] -> PASS
+
+Calibration acceptance (2% RankMe tolerance; clamped alpha rejected; wrong/over feasibility from the run):
+        half: 0/484 rejected
+        full: 0/484 rejected
+       wrong: 25/484 rejected (25 cells dose-infeasible)
+        over: 0/484 rejected
+  transplant: 0/484 rejected
+
+G-P (R = median|d cC_K| / 0.3393; capture stop 0.05; per-row capture + placement screens active in all estimates):
+        half: R = 0.00 (capture drift 0.0002) -> ok
+        full: R = 0.00 (capture drift 0.0005) -> ok
+       wrong: R = 0.01 (capture drift 0.0006) -> ok
+        over: R = 0.01 (capture drift 0.0012) -> ok
+  transplant: R = 0.02 (capture drift 0.0016) -> ok
+
+direction: S=+1 204, S=-1 277, undefined (excluded) 0 on the primary panel
+    row screen: 3 rows left wrong
+    row screen: 1 rows left wrong
+    row screen: 6 rows left wrong
+  note: DIET fails its method-level eligible floor (31/45) — out of pooled primary; stratum NO VERDICT
+
+PRIMARY seed-42 kNN INT2-1 (scope = LeJEPA+SimCLR):
+    row screen: 4 rows left wrong
+    A_full +0.0052 CI[+0.0020,+0.0081]  A_half +0.0019  A_wrong -0.0047 CI[-0.0076,-0.0017]  (n=86)
+    -> INT2-1: YES
+PRIMARY seed-42 kNN INT2-2 (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0063 CI[-0.0091,-0.0034] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0045 CI98.33[+0.0006,+0.0080] *
+      LeJEPA G[full] -0.0029 CI[-0.0057,+0.0005] -> no restoration claim
+   SimCLR: A +0.0061 CI98.33[+0.0020,+0.0109] *
+      SimCLR G[full] -0.0050 CI[-0.0105,-0.0003] -> RESTORATION (CI < 0)
+     DIET: A +0.0132 CI98.33[+0.0069,+0.0213] *
+      DIET G[full] -0.0110 CI[-0.0196,-0.0041] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[+0.0019,+0.0145]
+  direction symmetry (S+1 - S-1): -0.0032 CI[-0.0103,+0.0038]
+  MAE-backbone stratum: A +0.0138 (n=45)
+
+INT2-3 overshoot discriminator (secondary, kNN):
+    row screen: 2 rows left over
+  R_over +0.0099 CI[+0.0057,+0.0148] -> monotone continues past pre
+
+SigLIP panel (separate, kNN): A +0.0092 CI[+0.0055,+0.0135] (n=30)
+
+INT2-5 transplant diagnostic (secondary, kNN):
+    row screen: 2 rows left transplant
+  A_transplant +0.0248 CI[+0.0159,+0.0347]
+    row screen: 2 rows left transplant
+    G[transplant] -0.0219 CI[-0.0318,-0.0127] -> RESTORATION (CI < 0)
+
+Capture-screen sensitivity (thr 0.03, pre-registered):
+    row screen: 3 rows left wrong
+    row screen: 1 rows left wrong
+    row screen: 6 rows left wrong
+  scope@0.03 = LeJEPA+SimCLR
+    row screen: 4 rows left wrong
+    A_full +0.0052 CI[+0.0020,+0.0081]  A_half +0.0019  A_wrong -0.0047 CI[-0.0076,-0.0017]  (n=86)
+    -> INT2-1: YES
+    row screen: 3 rows left wrong
+    row screen: 1 rows left wrong
+    row screen: 6 rows left wrong
+  note: DIET fails its method-level eligible floor (31/45) — out of pooled primary; stratum NO VERDICT
+
+[proxy] LP seed-42 INT2-1 [proxy] (scope = LeJEPA+SimCLR):
+    row screen: 4 rows left wrong
+    A_full +0.0207 CI[+0.0148,+0.0265]  A_half +0.0104  A_wrong -0.0189 CI[-0.0234,-0.0140]  (n=86)
+    -> INT2-1: YES
+[proxy] LP seed-42 INT2-2 [proxy] (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0156 CI[-0.0203,-0.0108] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0208 CI98.33[+0.0126,+0.0314] * [proxy]
+      LeJEPA G[full] -0.0145 CI[-0.0219,-0.0068] -> RESTORATION (CI < 0)
+   SimCLR: A +0.0215 CI98.33[+0.0130,+0.0298] * [proxy]
+      SimCLR G[full] -0.0162 CI[-0.0266,-0.0060] -> RESTORATION (CI < 0)
+     DIET: A +0.0225 CI98.33[+0.0153,+0.0312] * [proxy]
+      DIET G[full] -0.0162 CI[-0.0267,-0.0066] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[-0.0074,+0.0095] [proxy]
+  direction symmetry (S+1 - S-1): -0.0037 CI[-0.0168,+0.0091] [proxy]
+  MAE-backbone stratum: A +0.0363 (n=45)
+
+Cross-seed robustness (pre-registered replication of INT2-1/2/4):
+    row screen: 3 rows left wrong
+    row screen: 1 rows left wrong
+    row screen: 5 rows left wrong
+  note: DIET fails its method-level eligible floor (32/45) — out of pooled primary; stratum NO VERDICT
+
+seed-43 kNN INT2-1 (scope = LeJEPA+SimCLR):
+    row screen: 4 rows left wrong
+    A_full +0.0060 CI[+0.0031,+0.0091]  A_half +0.0026  A_wrong -0.0046 CI[-0.0077,-0.0013]  (n=80)
+    -> INT2-1: YES
+seed-43 kNN INT2-2 (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0062 CI[-0.0089,-0.0035] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0053 CI98.33[+0.0020,+0.0086] *
+      LeJEPA G[full] -0.0040 CI[-0.0075,-0.0009] -> RESTORATION (CI < 0)
+   SimCLR: A +0.0065 CI98.33[+0.0027,+0.0112] *
+      SimCLR G[full] -0.0054 CI[-0.0103,-0.0015] -> RESTORATION (CI < 0)
+     DIET: A +0.0119 CI98.33[+0.0047,+0.0194] *
+      DIET G[full] -0.0089 CI[-0.0175,-0.0012] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[+0.0001,+0.0125]
+  direction symmetry (S+1 - S-1): -0.0031 CI[-0.0101,+0.0040]
+  MAE-backbone stratum: A +0.0140 (n=44)
+    row screen: 3 rows left wrong
+    row screen: 1 rows left wrong
+    row screen: 5 rows left wrong
+  note: DIET fails its method-level eligible floor (32/45) — out of pooled primary; stratum NO VERDICT
+
+seed-43 LP INT2-1 [proxy] (scope = LeJEPA+SimCLR):
+    row screen: 4 rows left wrong
+    A_full +0.0213 CI[+0.0143,+0.0281]  A_half +0.0110  A_wrong -0.0173 CI[-0.0220,-0.0122]  (n=80)
+    -> INT2-1: YES
+seed-43 LP INT2-2 [proxy] (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0163 CI[-0.0222,-0.0109] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0189 CI98.33[+0.0107,+0.0299] * [proxy]
+      LeJEPA G[full] -0.0166 CI[-0.0281,-0.0089] -> RESTORATION (CI < 0)
+   SimCLR: A +0.0246 CI98.33[+0.0147,+0.0345] * [proxy]
+      SimCLR G[full] -0.0163 CI[-0.0285,-0.0042] -> RESTORATION (CI < 0)
+     DIET: A +0.0234 CI98.33[+0.0161,+0.0319] * [proxy]
+      DIET G[full] -0.0160 CI[-0.0268,-0.0059] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[-0.0067,+0.0095] [proxy]
+  direction symmetry (S+1 - S-1): -0.0042 CI[-0.0190,+0.0096] [proxy]
+  MAE-backbone stratum: A +0.0387 (n=44)
+    row screen: 2 rows left wrong
+    row screen: 6 rows left wrong
+  note: DIET fails its method-level eligible floor (29/44) — out of pooled primary; stratum NO VERDICT
+
+seed-44 kNN INT2-1 (scope = LeJEPA+SimCLR):
+    row screen: 2 rows left wrong
+    A_full +0.0042 CI[+0.0014,+0.0075]  A_half +0.0013  A_wrong -0.0044 CI[-0.0075,-0.0007]  (n=82)
+    -> INT2-1: YES
+seed-44 kNN INT2-2 (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0062 CI[-0.0086,-0.0040] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0024 CI98.33[-0.0007,+0.0055]
+      LeJEPA G[full] -0.0034 CI[-0.0067,+0.0000] -> no restoration claim
+   SimCLR: A +0.0056 CI98.33[+0.0016,+0.0110] *
+      SimCLR G[full] -0.0036 CI[-0.0097,+0.0010] -> no restoration claim
+     DIET: A +0.0138 CI98.33[+0.0076,+0.0210] *
+      DIET G[full] -0.0113 CI[-0.0193,-0.0043] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[+0.0034,+0.0163]
+  direction symmetry (S+1 - S-1): -0.0035 CI[-0.0099,+0.0028]
+  MAE-backbone stratum: A +0.0121 (n=44)
+    row screen: 2 rows left wrong
+    row screen: 6 rows left wrong
+  note: DIET fails its method-level eligible floor (29/44) — out of pooled primary; stratum NO VERDICT
+
+seed-44 LP INT2-1 [proxy] (scope = LeJEPA+SimCLR):
+    row screen: 2 rows left wrong
+    A_full +0.0198 CI[+0.0133,+0.0262]  A_half +0.0092  A_wrong -0.0162 CI[-0.0225,-0.0097]  (n=82)
+    -> INT2-1: YES
+seed-44 LP INT2-2 [proxy] (G-scope = LeJEPA+SimCLR+DIET):
+    G[full] -0.0162 CI[-0.0210,-0.0119] -> RESTORATION (CI < 0)
+   LeJEPA: A +0.0176 CI98.33[+0.0103,+0.0261] * [proxy]
+      LeJEPA G[full] -0.0146 CI[-0.0234,-0.0079] -> RESTORATION (CI < 0)
+   SimCLR: A +0.0227 CI98.33[+0.0134,+0.0321] * [proxy]
+      SimCLR G[full] -0.0168 CI[-0.0281,-0.0061] -> RESTORATION (CI < 0)
+     DIET: A +0.0246 CI98.33[+0.0175,+0.0333] * [proxy]
+      DIET G[full] -0.0170 CI[-0.0283,-0.0067] -> RESTORATION (CI < 0)
+  DIET vs mean(SSL): CI[-0.0045,+0.0129] [proxy]
+  direction symmetry (S+1 - S-1): -0.0054 CI[-0.0190,+0.0076] [proxy]
+  MAE-backbone stratum: A +0.0366 (n=44)
+
+Decision map: read against INT2_PREREG.md §6.
