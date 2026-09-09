@@ -9,8 +9,11 @@ Usage from continued_pretraining.py:
     results = sft_evaluate(backbone, sft_data, test_loader, device, ...)
 """
 import copy
+import tempfile
+import warnings
 
 import lightning as pl
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 import torch
 import torch.nn as nn
 
@@ -28,6 +31,14 @@ SFT_BATCH_SIZE = 32
 SFT_WEIGHT_DECAY = 0.05
 SFT_WARMUP_EPOCHS = 0.1 * SFT_EPOCHS
 SFT_LABEL_SMOOTHING = 0.0
+SFT_PROTOCOL = "full_ft_v1"
+
+
+class _NoCheckpointTrainer(pl.Trainer):
+    """Also block signal/plugin-triggered saves, not just ModelCheckpoint."""
+
+    def save_checkpoint(self, *args, **kwargs):
+        raise RuntimeError("FT checkpoint writes are disabled by the evaluation protocol")
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +58,7 @@ def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
         backbone: the timm backbone, only needed for pool_strategy='map'.
     """
     if backbone_output.ndim == 3:
-        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout)
+        if pool_strategy == "map":  # SigLIP's native attention-pool readout
             return backbone.fc_norm(backbone.attn_pool(backbone_output))
         if pool_strategy == "mean":
             return backbone_output[:, 1:, :].mean(dim=1)
@@ -154,8 +165,8 @@ def sft_evaluate(
         n_samples:      Number of training samples (used for LR schedule).
         pool_strategy:  ``'cls'`` or ``'mean'`` for ViT embedding extraction.
         seed:           Random seed.
-        ckpt_path:      Optional checkpoint path for spt.Manager
-                        (enables resume on crash).
+        ckpt_path:      Deprecated compatibility argument. Ignored: this
+                        evaluation never reads or writes FT checkpoints.
         logger:         Optional ``WandbLogger`` for metric logging.
         prefix:         Metric prefix for wandb logging. Use ``'pre_sft'`` for
                         pre-CP and ``'post_sft'`` for post-CP to produce
@@ -163,7 +174,7 @@ def sft_evaluate(
         verbose:        Print progress to stdout.
 
     Returns:
-        dict with keys ``{prefix}_acc``, ``{prefix}_f1``, ``{prefix}_auroc``.
+        Metrics plus protocol and trainable-parameter audit fields.
     """
     if verbose:
         print("=" * 50)
@@ -171,8 +182,12 @@ def sft_evaluate(
               f"{SFT_EPOCHS} ep | lr={SFT_LR} | bs={SFT_BATCH_SIZE}")
         print("=" * 50)
 
-    # Deep-copy backbone so the original is never modified
-    backbone_copy = copy.deepcopy(backbone)
+    if ckpt_path is not None:
+        warnings.warn("FT checkpointing is disabled; ckpt_path is ignored.",
+                      UserWarning, stacklevel=2)
+    pl.seed_everything(seed, workers=True)
+    # CP's requires_grad mask survives deepcopy. Reset it before optimizers exist.
+    backbone_copy = copy.deepcopy(backbone).requires_grad_(True)
 
     # ---- optimiser / scheduler config (fixed) ----
     steps_per_epoch = max(n_samples // SFT_BATCH_SIZE, 1)
@@ -203,21 +218,30 @@ def sft_evaluate(
         pool_strategy=pool_strategy,
         metric_prefix=prefix,
     )
+    total_params = sum(p.numel() for p in module.parameters())
+    trainable_params = sum(p.numel() for p in module.parameters() if p.requires_grad)
+    if trainable_params != total_params or total_params == 0:
+        raise RuntimeError("Full FT requires every backbone and head parameter to be trainable")
+    device = torch.device(device)
 
-    trainer = pl.Trainer(
-        max_epochs=SFT_EPOCHS,
-        max_steps=total_steps,
-        num_sanity_val_steps=0,
-        precision="16-mixed",
-        logger=False,
-    )
-    spt.Manager(
-        trainer=trainer,
-        module=module,
-        data=sft_data,
-        ckpt_path=ckpt_path,
-        seed=seed,
-    )()
+    # A private empty root prevents Lightning from discovering unrelated HPC
+    # checkpoints. ckpt_path=None alone does not disable that SLURM behavior.
+    with tempfile.TemporaryDirectory(prefix="full-ft-") as trainer_root:
+        trainer = _NoCheckpointTrainer(
+            max_epochs=SFT_EPOCHS,
+            max_steps=total_steps,
+            num_sanity_val_steps=0,
+            precision="16-mixed" if device.type == "cuda" else "32-true",
+            accelerator="gpu" if device.type == "cuda" else "cpu",
+            devices=[device.index or 0] if device.type == "cuda" else 1,
+            logger=False,
+            default_root_dir=trainer_root,
+            enable_checkpointing=False,
+            plugins=[SLURMEnvironment(auto_requeue=False)] if SLURMEnvironment.detect() else None,
+        )
+        trainer.ckpt_path = None
+        # Manager can install checkpoint callbacks even with ckpt_path=None.
+        trainer.fit(module, datamodule=sft_data)
 
     # ---- final evaluation on test set ----
     if verbose:
@@ -236,6 +260,9 @@ def sft_evaluate(
         f"{prefix}_acc": raw["finetune_acc"],
         f"{prefix}_f1": raw["finetune_f1"],
         f"{prefix}_auroc": raw.get("finetune_auroc", 0.0),
+        "sft_protocol": SFT_PROTOCOL,
+        "sft_trainable_params": trainable_params,
+        "sft_total_params": total_params,
     }
 
     if verbose:

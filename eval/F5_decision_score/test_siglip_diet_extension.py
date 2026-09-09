@@ -167,20 +167,21 @@ def _dry_run(task_id, extra_env=None):
     return r.returncode, kv, r.stdout + r.stderr
 
 
-def test_driver_header_runs_all_45_cells_twelve_at_a_time():
+def test_driver_header_groups_fifteen_datasets_twelve_at_a_time():
     head = DRIVER.read_text().splitlines()[:40]
-    assert any(l.strip() == "#SBATCH --array=0-44%12" for l in head)
+    assert any(l.strip() == "#SBATCH --array=0-14%12" for l in head)
+    for directive in ["#SBATCH --partition=nvidia", "#SBATCH --account=civil",
+                      "#SBATCH --nodes=1", "#SBATCH --ntasks-per-node=1",
+                      "#SBATCH --exclude=cn253,cn259"]:
+        assert directive in head
 
 
 def test_driver_dry_run_resolves_cell_paths_and_frozen_recipe():
     rc, kv, out = _dry_run(0)
     assert rc == 0, out
-    assert kv["dataset"] == "breastmnist" and kv["seed"] == "42" and kv["n_samples"] == "546"
+    assert kv["dataset"] == "breastmnist" and kv["seeds"] == "42 43 44" and kv["n_samples"] == "546"
     assert kv["processed_subpath"] == "med_mnist/breastmnist-size=224"
-    assert kv["results_json"].endswith("outputs/logs/cp-siglip/cp/DIET/BreastMNIST/SigLIP/"
-                                       "SigLIP_breastmnist_n546_seed42.json")
-    assert kv["ckpt_path"].endswith("outputs/ckpts/cp-siglip/cp/DIET/BreastMNIST/SigLIP/cp/"
-                                    "breastmnist_vit_base_patch16_siglip_224.v2_webli_n546_s42.ckpt")
+    assert "full_ft_v1" in kv["ft_outdir"]
     cmd = kv["command"]
     for frag in ["--cp-method diet", "--backbone vit_base_patch16_siglip_224.v2_webli",
                  "--n-samples 546", "--epochs 150", "--batch-size 32", "--lr 1e-4",
@@ -192,17 +193,30 @@ def test_driver_dry_run_resolves_cell_paths_and_frozen_recipe():
         assert frag in cmd, frag
     assert "--post-cp-sft" not in cmd and "--pre-cp-sft" not in cmd
     assert kv["skip"] == "no"
+    assert "command_seed43" in kv and "command_seed44" in kv
+
+
+def test_driver_uses_private_workdirs_and_accumulates_seed_failures():
+    text = DRIVER.read_text()
+    assert text.count("mktemp -d") >= 2
+    assert "FINAL_STATUS=0" in text
+    assert "FINAL_STATUS=1" in text
+    assert "module load miniconda/3-4.11.0" in text
+    assert "conda activate env" in text
+    assert "nvidia-smi" in text
+    assert 'LOCAL_CACHE=""' in text and 'WORK_DIR=""' in text
+    assert "--resume" in text
 
 
 def test_driver_dry_run_maps_last_cell_and_corrected_fgvc_count():
-    rc, kv, out = _dry_run(44)
-    assert rc == 0 and kv["dataset"] == "oxford_pet" and kv["seed"] == "44" and kv["n_samples"] == "3680"
-    rc, kv, out = _dry_run(30)
+    rc, kv, out = _dry_run(14)
+    assert rc == 0 and kv["dataset"] == "oxford_pet" and kv["n_samples"] == "3680"
+    rc, kv, out = _dry_run(10)
     assert rc == 0 and kv["dataset"] == "fgvc_aircraft" and kv["n_samples"] == "3334"
 
 
 def test_driver_refuses_task_id_outside_grid():
-    rc, kv, out = _dry_run(45)
+    rc, kv, out = _dry_run(15)
     assert rc != 0
 
 

@@ -10,13 +10,16 @@ evaluation (KNN + Linear Probe + SFT) on a pretrained or random backbone.
 """
 
 import argparse
+import inspect
 import json
 from pathlib import Path
+import tempfile
 
 import lightning as pl
 import torch
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.callbacks import LearningRateMonitor
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 
 import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_timm
@@ -87,8 +90,8 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Resume training from existing checkpoint. Default behaviour "
-        "starts fresh and overwrites any previous checkpoint.",
+        help="Resume CP from its existing checkpoint, or start if none exists. "
+        "Without this flag an existing CP checkpoint is an error. FT never resumes weights.",
     )
     parser.add_argument(
         "--aggregation",
@@ -276,17 +279,7 @@ def _run_sft_phase(
     prefix,
     subdir,
 ):
-    """Run one SFT evaluation phase and mirror results into wandb summary."""
-    sft_dir = checkpoint_dir / subdir
-    sft_dir.mkdir(parents=True, exist_ok=True)
-    sft_ckpt = str(
-        sft_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-        f"_n{args.n_samples}_s{args.seed}.ckpt"
-    )
-
-    if not getattr(args, "resume", False) and Path(sft_ckpt).exists():
-        print(f"[resume=False] Removing old SFT checkpoint: {sft_ckpt}")
-        Path(sft_ckpt).unlink()
+    """Run full FT without creating, resuming, or deleting FT checkpoints."""
 
     results = sft_evaluate(
         backbone,
@@ -298,7 +291,7 @@ def _run_sft_phase(
         n_samples=len(indices),
         pool_strategy=args.pool_strategy,
         seed=args.seed,
-        ckpt_path=sft_ckpt,
+        ckpt_path=None,
         logger=logger,
         prefix=prefix,
     )
@@ -408,6 +401,16 @@ def run_training(
 ):
     if num_trained_blocks is None:
         num_trained_blocks = args.num_trained_blocks
+    checkpoint = Path(ckpt_path).expanduser().resolve()
+    if checkpoint.exists() and not checkpoint.is_file():
+        raise ValueError(f"CP checkpoint path exists but is not a regular file: {checkpoint}")
+    if checkpoint.exists() and not getattr(args, "resume", False):
+        raise FileExistsError(
+            f"CP checkpoint already exists: {checkpoint}. Use --resume or a new "
+            "checkpoint directory; existing weights will not be deleted."
+        )
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    resume_path = str(checkpoint) if checkpoint.is_file() else None
 
     callbacks = [
         FreezeBackboneCallback(
@@ -423,25 +426,39 @@ def run_training(
             knn_k=min(args.knn_k, args.n_samples),
         ),
         LearningRateMonitor(logging_interval="step"),
+        ModelCheckpoint(dirpath=str(checkpoint.parent), filename=checkpoint.stem,
+                        save_top_k=1, save_last=False, enable_version_counter=False,
+                        every_n_epochs=1, save_on_train_epoch_end=True),
     ]
     if method == "lejepa" or getattr(args, "cp_method", None) == "lejepa":
         callbacks.append(LeJEPAMetricsCallback(log_every_n_steps=50))
-    if not getattr(args, "resume", False) and Path(ckpt_path).exists():
-        print(f"[resume=False] Removing old checkpoint: {ckpt_path}")
-        Path(ckpt_path).unlink()
-
-    trainer = pl.Trainer(
-        max_epochs=args.epochs,
-        accumulate_grad_batches=getattr(args, "accumulate_grad_batches", 1),
-        num_sanity_val_steps=0,
-        log_every_n_steps=10,
-        callbacks=callbacks,
-        precision="16-mixed",
-        logger=logger,
-    )
-    spt.Manager(
-        trainer=trainer, module=module, data=data, ckpt_path=ckpt_path, seed=args.seed
-    )()
+    # Save destinations are not restore inputs. Newer Manager versions reject
+    # nonexistent ckpt_path and can otherwise share a job-level cache across seeds.
+    config = spt.get_config() if hasattr(spt, "get_config") else None
+    has_cache = config is not None and hasattr(config, "cache_dir")
+    previous_cache = config.cache_dir if has_cache else None
+    manager_options = {"weights_only": False} if "weights_only" in inspect.signature(spt.Manager).parameters else {}
+    try:
+        if has_cache:
+            config.cache_dir = None
+        with tempfile.TemporaryDirectory(prefix="cp-trainer-") as trainer_root:
+            trainer = pl.Trainer(
+                max_epochs=args.epochs,
+                accumulate_grad_batches=getattr(args, "accumulate_grad_batches", 1),
+                num_sanity_val_steps=0,
+                log_every_n_steps=10,
+                callbacks=callbacks,
+                precision="16-mixed",
+                logger=logger,
+                default_root_dir=trainer_root,
+                plugins=[SLURMEnvironment(auto_requeue=False)] if SLURMEnvironment.detect() else None,
+            )
+            spt.Manager(trainer=trainer, module=module, data=data,
+                        ckpt_path=resume_path, seed=args.seed, **manager_options)()
+            trainer.save_checkpoint(str(checkpoint))
+    finally:
+        if has_cache:
+            config.cache_dir = previous_cache
 
 
 # ============================================================
@@ -790,6 +807,9 @@ def main():
         if sft_pre_results:
             results_json["pre_sft_f1"] = sft_pre_results.get("pre_sft_f1", None)
             results_json["pre_sft_acc"] = sft_pre_results.get("pre_sft_acc", None)
+            results_json["pre_sft_protocol"] = sft_pre_results["sft_protocol"]
+            results_json["pre_sft_trainable_params"] = sft_pre_results["sft_trainable_params"]
+            results_json["pre_sft_total_params"] = sft_pre_results["sft_total_params"]
 
         # Post-CP KNN / Linear Probe
         if final_eval_results:
@@ -809,6 +829,9 @@ def main():
         if sft_post_results:
             results_json["post_sft_f1"] = sft_post_results.get("post_sft_f1", None)
             results_json["post_sft_acc"] = sft_post_results.get("post_sft_acc", None)
+            results_json["post_sft_protocol"] = sft_post_results["sft_protocol"]
+            results_json["post_sft_trainable_params"] = sft_post_results["sft_trainable_params"]
+            results_json["post_sft_total_params"] = sft_post_results["sft_total_params"]
 
         results_path = Path(args.results_json)
         results_path.parent.mkdir(parents=True, exist_ok=True)
