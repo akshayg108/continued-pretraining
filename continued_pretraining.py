@@ -54,6 +54,11 @@ def create_base_parser(description="Continued Pretraining"):
         "--dataset", type=str, required=True, choices=list(DATASETS.keys())
     )
     parser.add_argument("--backbone", type=str, required=True)
+    parser.add_argument(
+        "--normalization-mode", choices=["dataset", "pretrained"], default="dataset",
+        help="Use the dataset preset (legacy default) or the backbone's pretrained "
+        "mean/std for both training and evaluation. Other transforms are unchanged.",
+    )
     parser.add_argument("--n-samples", type=int, default=1000)
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -147,6 +152,26 @@ def load_backbone(args, img_size=224, pretrained=True):
         p.requires_grad = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return backbone, device
+
+
+def configure_normalization(ds_cfg, backbone, mode):
+    """Override only mean/std before constructing any training or evaluation loader."""
+    import math
+
+    if mode == "dataset":
+        return ds_cfg
+    if mode != "pretrained":
+        raise ValueError(f"Unknown normalization mode: {mode}")
+    native = getattr(backbone, "pretrained_cfg", None)
+    normalization = {}
+    for key in ("mean", "std"):
+        values = native.get(key) if isinstance(native, dict) else None
+        if (not isinstance(values, (list, tuple)) or len(values) != 3
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in values)
+                or (key == "std" and any(v <= 0 for v in values))):
+            raise ValueError(f"Invalid pretrained normalization {key}: {values}")
+        normalization[key] = [float(v) for v in values]
+    return dict(ds_cfg, normalization=normalization)
 
 
 def get_steps_per_epoch(n_samples, batch_size):
@@ -604,6 +629,8 @@ def main():
     backbone, device = load_backbone(
         args, img_size=ds_cfg["input_size"], pretrained=pretrained
     )
+    ds_cfg = configure_normalization(ds_cfg, backbone, args.normalization_mode)
+    print(f"Normalization ({args.normalization_mode}): {ds_cfg['normalization']}")
     init_tag = "rand" if not pretrained else "pre"
 
     # ---- Wandb logger ----
@@ -790,6 +817,10 @@ def main():
             "epochs": args.epochs,
             "random_init": getattr(args, "random_init", False),
             "no_cp": args.no_cp,
+            "normalization_mode": args.normalization_mode,
+            "normalization": ds_cfg["normalization"],
+            "cp_config": dict(vars(args), freeze_epochs=freeze_epochs,
+                              warmup_epochs=warmup_epochs),
         }
 
         # Pre-CP KNN / Linear Probe
