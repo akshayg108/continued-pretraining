@@ -14,6 +14,20 @@
 
 set -eo pipefail
 
+NORMALIZATION_MODE=dataset
+DRY_RUN=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --official-normalization) NORMALIZATION_MODE=official ;;
+        --dry-run) DRY_RUN=1 ;;
+        *)
+            echo "Usage: sbatch food101_v100.sh [--official-normalization], or bash food101_v100.sh [--official-normalization] --dry-run" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 case "${SLURM_ARRAY_TASK_ID:-0}" in
     0) SEED=42 ;;
     1) SEED=43 ;;
@@ -25,16 +39,17 @@ REPO_ROOT="${SIGLIP_PRE_REPO_ROOT:-/scratch/gs4133/zhd/CP/continued-pretraining}
 DATA_DIR="${SIGLIP_PRE_CACHE_DIR:-/scratch/gs4133/zhd/CP/data}"
 OUTPUT_BASE="${SIGLIP_PRE_OUTPUT_BASE:-/scratch/gs4133/zhd/CP/outputs}"
 RUN_ID="${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID:-dry-run}}"
-OUT="${OUTPUT_BASE}/siglip_food101_precheck_v1/${RUN_ID}/food101"
+PROTOCOL=siglip_food101_precheck_v1
+if [ "$NORMALIZATION_MODE" = official ]; then
+    PROTOCOL=siglip_food101_precheck_official_norm_v1
+fi
+OUT="${OUTPUT_BASE}/${PROTOCOL}/${RUN_ID}/food101"
 
-printf 'PRE_CP_ONLY dataset=food101 seed=%s initialization=public_pretrained evaluators=knn,pytorch_lp gpu=v100 output=%s/seed%s.json\n' \
-    "$SEED" "$OUT" "$SEED"
+printf 'PRE_CP_ONLY dataset=food101 seed=%s initialization=public_pretrained evaluators=knn,pytorch_lp gpu=v100 normalization=%s output=%s/seed%s.json\n' \
+    "$SEED" "$NORMALIZATION_MODE" "$OUT" "$SEED"
 
-if [ "$#" -eq 1 ] && [ "$1" = --dry-run ]; then
+if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
-elif [ "$#" -ne 0 ]; then
-    echo "Usage: sbatch food101_v100.sh, or bash food101_v100.sh --dry-run" >&2
-    exit 2
 fi
 [ -n "${SLURM_JOB_ID:-}" ] || { echo "Submit this script with sbatch" >&2; exit 2; }
 
@@ -73,7 +88,7 @@ DEST="$LOCAL_CACHE/stable_datasets/processed/food101"
 mkdir -p "$DEST" "$OUT"
 rsync -a "$SOURCE/" "$DEST/"
 
-"$PYTHON" - "$LOCAL_CACHE" "$OUT" "$SEED" <<'PY'
+"$PYTHON" - "$LOCAL_CACHE" "$OUT" "$SEED" "$NORMALIZATION_MODE" "$PROTOCOL" <<'PY'
 import hashlib
 import importlib.metadata
 import json
@@ -94,7 +109,7 @@ from stable_cp.evaluation.zero_shot_eval import (
     linear_probe_pytorch_evaluate,
 )
 
-cache_dir, output_dir, seed = sys.argv[1:]
+cache_dir, output_dir, seed, normalization_mode, protocol = sys.argv[1:]
 args = SimpleNamespace(
     dataset="food101", backbone="vit_base_patch16_siglip_224.v2_webli",
     n_samples=75750, batch_size=64, num_workers=8, seed=int(seed),
@@ -105,11 +120,22 @@ ds_cfg = get_dataset_config(args.dataset)
 backbone, device = load_backbone(args, img_size=ds_cfg["input_size"], pretrained=True)
 if device.type != "cuda":
     raise RuntimeError("This baseline audit requires the allocated GPU.")
+dataset_normalization = ds_cfg["normalization"]
+if normalization_mode == "official":
+    pretrained_cfg = getattr(backbone, "pretrained_cfg", {})
+    normalization = {key: list(pretrained_cfg.get(key, ())) for key in ("mean", "std")}
+    if normalization != {"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}:
+        raise ValueError(f"Unexpected SigLIP-2 pretrained normalization: {normalization}")
+    ds_cfg = {**ds_cfg, "normalization": normalization}
+elif normalization_mode != "dataset":
+    raise ValueError(f"Unknown normalization mode: {normalization_mode}")
+print(json.dumps(dict(normalization_mode=normalization_mode,
+                      normalization=ds_cfg["normalization"])), flush=True)
 backbone.requires_grad_(False)
 backbone.eval()
 backbone.to(device)
 
-# Reuse the exact post-CP loaders: augmented LP train, clean kNN train and test.
+# Keep the shared loaders unchanged apart from the optional normalization override.
 eval_tf, test_loader, lp_loader, knn_loader, indices = _create_shared_eval_data(
     args, ds_cfg, Path(cache_dir)
 )
@@ -159,11 +185,12 @@ for package in ("torch", "timm", "lightning", "stable-pretraining", "stable-data
     except importlib.metadata.PackageNotFoundError:
         versions[package] = "unknown"
 sources = [Path("continued_pretraining.py"), Path(__import__("stable_cp").__file__).parent]
-source_files = [sources[0], *sorted(sources[1].rglob("*.py"))]
+source_files = [sources[0], Path("run/slurm/cp-siglip/pre-cp/food101_v100.sh"),
+                *sorted(sources[1].rglob("*.py"))]
 code_hashes = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files}
 commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
 result = dict(
-    protocol="siglip_food101_precheck_v1", status="complete",
+    protocol=protocol, status="complete",
     dataset=args.dataset, n_samples=len(indices), n_test=len(test_labels),
     backbone=args.backbone, initialization="public_pretrained", seed=args.seed,
     no_cp=True, no_ft=True, pool_strategy=args.pool_strategy,
@@ -171,6 +198,7 @@ result = dict(
     knn_k=20, lp_method="pytorch", lp_lr=1e-3, lp_min_epochs=150,
     lp_min_steps=10000, lp_batch_size=512,
     normalization=ds_cfg["normalization"], splits=ds_cfg["splits"],
+    normalization_mode=normalization_mode, dataset_normalization=dataset_normalization,
     lp_train_transform=repr(lp_loader.dataset.dataset.transform),
     eval_transform=repr(eval_tf),
     train_indices_sha256=hashlib.sha256(np.asarray(indices, dtype="<i8").tobytes()).hexdigest(),

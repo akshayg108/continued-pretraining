@@ -30,18 +30,27 @@ def test_script_syntax_and_resources():
     assert "--constraint=80g" not in text
 
 
+@pytest.mark.parametrize("official", [False, True])
 @pytest.mark.parametrize("task_id,seed", [(0, 42), (1, 43), (2, 44)])
-def test_dry_run_selects_one_seed_without_loading_gpu_environment(tmp_path, task_id, seed):
+def test_dry_run_selects_one_seed_without_loading_gpu_environment(tmp_path, task_id, seed,
+                                                                official):
     script_text()
     env = dict(os.environ, SLURM_ARRAY_TASK_ID=str(task_id),
                SIGLIP_PRE_OUTPUT_BASE=str(tmp_path / "outputs"))
-    result = subprocess.run(["bash", str(SCRIPT), "--dry-run"], env=env,
+    command = ["bash", str(SCRIPT), "--dry-run"]
+    if official:
+        command.append("--official-normalization")
+    result = subprocess.run(command, env=env,
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert f"dataset=food101 seed={seed}" in result.stdout
     assert "initialization=public_pretrained" in result.stdout
     assert "evaluators=knn,pytorch_lp" in result.stdout
     assert "gpu=v100" in result.stdout
+    mode = "official" if official else "dataset"
+    protocol = "siglip_food101_precheck_official_norm_v1" if official else "siglip_food101_precheck_v1"
+    assert f"normalization={mode}" in result.stdout
+    assert f"/{protocol}/" in result.stdout
     assert not (tmp_path / "outputs").exists()
 
 
@@ -50,6 +59,12 @@ def test_invalid_task_id_is_rejected(task_id):
     script_text()
     result = subprocess.run(["bash", str(SCRIPT), "--dry-run"],
                             env=dict(os.environ, SLURM_ARRAY_TASK_ID=task_id),
+                            capture_output=True, text=True)
+    assert result.returncode == 2
+
+
+def test_unknown_option_is_rejected_even_with_dry_run():
+    result = subprocess.run(["bash", str(SCRIPT), "--official-normalization", "--typo", "--dry-run"],
                             capture_output=True, text=True)
     assert result.returncode == 2
 
@@ -90,10 +105,23 @@ def test_dataset_staging_uses_arithmetic_and_private_cache():
     assert 'Insufficient node-local storage' in text
 
 
-def test_inline_evaluation_dispatch_and_json_schema(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode,pretrained_norm,invalid", [
+    ("dataset", {}, False),
+    ("official", {"mean": (0.5, 0.5, 0.5), "std": (0.5, 0.5, 0.5)}, False),
+    ("official", {}, True),
+    ("official", {"mean": (0.5, 0.5, 0.5), "std": (0.229, 0.224, 0.225)}, True),
+])
+def test_inline_evaluation_dispatch_and_json_schema(tmp_path, monkeypatch, mode,
+                                                   pretrained_norm, invalid):
     source = script_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
     events = []
-    model = SimpleNamespace(pretrained_cfg={"test": "public-weights"})
+    model = SimpleNamespace(pretrained_cfg={"test": "public-weights", **pretrained_norm})
+    dataset_norm = {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]}
+    ds_cfg = dict(input_size=224, normalization=dataset_norm, splits=["train", "test", "test"])
+    expected_norm = ({"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}
+                     if mode == "official" else dataset_norm)
+    protocol = ("siglip_food101_precheck_official_norm_v1" if mode == "official"
+                else "siglip_food101_precheck_v1")
     model.requires_grad_ = lambda value: events.append(("requires_grad", value))
     model.eval = lambda: events.append("eval")
     model.to = lambda device: events.append(("device", device.type))
@@ -115,6 +143,12 @@ def test_inline_evaluation_dispatch_and_json_schema(tmp_path, monkeypatch):
         assert pretrained and img_size == 224
         events.append("load_public")
         return model, SimpleNamespace(type="cuda")
+
+    def create_loaders(args, config, cache_dir):
+        assert config["normalization"] == expected_norm
+        assert config["input_size"] == ds_cfg["input_size"]
+        assert config["splits"] == ds_cfg["splits"]
+        return "eval_tf", loaders["test"], loaders["lp"], loaders["knn"], range(75750)
 
     def extract(backbone, loader, device, *, pool_strategy, verbose):
         assert backbone is model and pool_strategy == "map"
@@ -139,22 +173,32 @@ def test_inline_evaluation_dispatch_and_json_schema(tmp_path, monkeypatch):
         cuda=SimpleNamespace(get_device_name=lambda index: "Tesla V100")))
     monkeypatch.setitem(sys.modules, "continued_pretraining", SimpleNamespace(
         load_backbone=load,
-        get_dataset_config=lambda name: dict(input_size=224, normalization={"mean": [0.5]},
-                                             splits=["train", "test", "test"]),
-        _create_shared_eval_data=lambda *args: ("eval_tf", loaders["test"], loaders["lp"],
-                                               loaders["knn"], range(75750))))
+        get_dataset_config=lambda name: ds_cfg,
+        _create_shared_eval_data=create_loaders))
     monkeypatch.setitem(sys.modules, "stable_cp", SimpleNamespace(
         __file__=str(ROOT / "stable_cp/__init__.py")))
     monkeypatch.setitem(sys.modules, "stable_cp.evaluation.zero_shot_eval", SimpleNamespace(
         extract_features=extract, knn_evaluate=knn, linear_probe_pytorch_evaluate=lp))
-    monkeypatch.setattr(sys, "argv", ["-", str(tmp_path / "cache"), str(tmp_path), "43"])
+    monkeypatch.setattr(sys, "argv", ["-", str(tmp_path / "cache"), str(tmp_path), "43",
+                                     mode, protocol])
     monkeypatch.chdir(ROOT)
+    if invalid:
+        with pytest.raises(ValueError, match="normalization"):
+            exec(compile(source, str(SCRIPT), "exec"), {"__name__": "__main__"})
+        assert not (tmp_path / "seed43.json").exists()
+        assert "extract_lp" not in events
+        return
     exec(compile(source, str(SCRIPT), "exec"), {"__name__": "__main__"})
     row = json.loads((tmp_path / "seed43.json").read_text())
     assert row["no_cp"] and row["no_ft"] and row["status"] == "complete"
     assert row["pre_knn_f1"] == .34 and row["pre_linear_f1"] == .48
     assert row["n_samples"] == 75750 and row["n_test"] == 25250
     assert row["code_sha256"] and row["train_indices_sha256"]
+    assert row["protocol"] == protocol
+    assert row["normalization_mode"] == mode
+    assert row["normalization"] == expected_norm
+    assert row["dataset_normalization"] == dataset_norm
+    assert ds_cfg["normalization"] == dataset_norm
     assert events == [("seed", 43, True), "load_public", ("requires_grad", False),
                       "eval", ("device", "cuda"), "extract_lp", "extract_test",
                       "extract_knn", "knn", "lp"]
