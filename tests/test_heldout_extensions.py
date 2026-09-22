@@ -56,7 +56,10 @@ def test_grid_gpu_readout_and_native_normalization(tmp_path, source_manifest):
         assert task["recipe"]["epochs"] == 150
         assert task["recipe"]["freeze_epochs"] == 15
         assert task["recipe"]["num_trained_blocks"] == 2
-        assert task["recipe"] == original.cp_recipe(task["method"], 1000)
+        expected_recipe = original.cp_recipe(task["method"], 1000)
+        if task["encoder"] == "DINOv3L" and task["method"] in {"LeJEPA", "SimCLR"}:
+            expected_recipe.update(batch_size=128, accumulate_grad_batches=2)
+        assert task["recipe"] == expected_recipe
         prep = doc["preparations"][task["preparation_id"]]
         assert (prep["encoder"], prep["dataset"]) == (task["encoder"], task["dataset"])
         if task["encoder"] == "SigLIP":
@@ -70,8 +73,8 @@ def test_grid_gpu_readout_and_native_normalization(tmp_path, source_manifest):
             assert task["normalization"] == original.EXPECTED_NORMALIZATIONS["DINOv3"]
             assert task["gpu"] == prep["gpu"] == "a100"
             recipe = task["recipe"]
-            assert recipe["batch_size"] == (32 if task["method"] == "DIET" else 256)
-            assert recipe["accumulate_grad_batches"] == 1
+            assert recipe["batch_size"] == (32 if task["method"] == "DIET" else 128)
+            assert recipe["accumulate_grad_batches"] == (1 if task["method"] == "DIET" else 2)
     assert original.implementation_sha256() == "3d181c4845e2d0e0278cc508e312ff12ce5f402ada8e27edb569fadcc95e3ade"
 
 

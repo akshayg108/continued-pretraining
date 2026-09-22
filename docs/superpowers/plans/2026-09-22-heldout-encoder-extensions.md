@@ -10,7 +10,7 @@
 
 - Eight existing targets; three objectives; seeds 42, 43, 44 run serially in each CP job; exactly 1,000 distinct training images; no FT.
 - SigLIP-2: `vit_base_patch16_siglip_224.v2_webli`, 768-dimensional MAP readout, mean/std 0.5, existing base-model recipes. Preparation/DIET/SimCLR use V100; LeJEPA uses A100.
-- DINOv3-L: `vit_large_patch16_dinov3.lvd1689m`, 1,024-dimensional CLS readout, ImageNet mean/std. Per the approved update, match the base-model held-out recipes: LeJEPA/SimCLR batch 256 and accumulation 1; DIET batch 32. Older ViT-L scripts remain unchanged. All jobs use ordinary A100, without an 80GB constraint.
+- DINOv3-L: `vit_large_patch16_dinov3.lvd1689m`, 1,024-dimensional CLS readout, ImageNet mean/std. Preserve the existing ViT-L recipes: LeJEPA/SimCLR batch 128 and accumulation 2; DIET batch 32 and accumulation 1. Older ViT-L scripts remain unchanged. All jobs use ordinary A100, without an 80GB constraint.
 - Preserve existing 224-pixel transforms, 150 epochs, 15 frozen epochs, two trainable blocks, and kNN/LP protocols.
 - Each encoder-target preparation freezes its three baselines and geometry before its three CP jobs can start. No global preparation barrier.
 - Do not modify files hashed by `eval.heldout_cp.protocol.implementation_sha256` or the roundoff recovery wrapper.

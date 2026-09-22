@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 from eval.heldout_cp import protocol as base
+from eval.vitl_completion.protocol import cp_recipe as large_recipe
 
 ROOT = base.ROOT
 PROTOCOL = "heldout_extensions_1000_v1"
@@ -28,7 +29,7 @@ seed_lock, shared_lock, summarize = base.seed_lock, base.shared_lock, base.summa
 
 def implementation_sha256():
     files = [*sorted(Path(__file__).parent.glob("*.py")),
-             ROOT / "eval/heldout_metric_roundoff.py"]
+             ROOT / "eval/vitl_completion/protocol.py", ROOT / "eval/heldout_metric_roundoff.py"]
     return digest_json(dict(base=base.implementation_sha256(), files={
         str(path.relative_to(ROOT)): file_sha256(path) for path in files
     }))
@@ -71,11 +72,12 @@ def build_manifest(output_base, source_manifest):
             preparations.append(dict(preparation_id=prep_id, encoder=encoder, dataset=dataset,
                                      gpu="a100" if encoder == "DINOv3L" else "v100"))
             for method in METHODS:
+                recipe = large_recipe if encoder == "DINOv3L" else base.cp_recipe
                 tasks.append(dict(task_id=len(tasks), preparation_id=prep_id,
                                   encoder=encoder, dataset=dataset, method=method,
                                   **ENCODERS[encoder], seeds=list(SEEDS), n_samples=1000,
                                   gpu="a100" if encoder == "DINOv3L" or method == "LeJEPA" else "v100",
-                                  recipe=base.cp_recipe(method, 1000)))
+                                  recipe=recipe(method, 1000)))
     return dict(protocol=PROTOCOL, schema_version=1, datasets=list(DATASETS),
                 preparations=preparations, tasks=tasks,
                 output_root=str(Path(output_base).expanduser().resolve() / PROTOCOL),

@@ -15,7 +15,7 @@ or its frozen implementation hash.
 | Preparation GPU | V100 | A100 |
 | LeJEPA GPU | A100 | A100 |
 | DIET / SimCLR GPU | V100 | A100 |
-| LeJEPA / SimCLR batch, accumulation | 256, 1 | 256, 1 |
+| LeJEPA / SimCLR batch, accumulation | 256, 1 | 128, 2 |
 | DIET batch, accumulation | 32, 1 | 32, 1 |
 
 Mean/std are read from the loaded checkpoint configuration and checked against
@@ -27,10 +27,11 @@ continues to use the paper's CLS readout and 224-pixel inputs.
 
 All recipes use 150 CP epochs, 15 frozen epochs, then the last two blocks;
 learning rate `1e-4`, weight decay `0.05`, and seeds `42,43,44`.
-LeJEPA has eight views, SimCLR two, and DIET one. Both extension encoders use
-the original held-out base-model recipes, including batch 256 without
-gradient accumulation for LeJEPA/SimCLR. This changes only the new ViT-L
-held-out suite; the older ViT-L batch-128, accumulation-2 scripts are unchanged.
+LeJEPA has eight views, SimCLR two, and DIET one. SigLIP-2 retains the original
+held-out base-model recipes. DINOv3-L retains the existing ViT-L recipes from
+`eval/vitl_completion/protocol.py`, including batch 128 and accumulation 2 for
+LeJEPA/SimCLR. Two accumulated microbatches of 128 do not provide the same
+loss/negative pool as a single batch of 256. Older experiment scripts are unchanged.
 No FT is run. Each seed starts from public pretrained weights, never from a
 previous seed or an incomplete checkpoint.
 
