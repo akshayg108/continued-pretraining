@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """
-final_integration.py — fold test4 (fresh behavior for the 59 rerun cells) into the analysis
-and re-run every DIET-affected result. Prints old -> new for each headline number.
+Refresh frozen-evaluation results using complete three-seed records.
 
-Blend rule (disclosed): cp_long stores seed-averaged cell values; test4 gives per-seed deltas
-for the RERUN seeds only. For a cell with k rerun seeds (of 3):
-    new_mean = (sum(test4 seed deltas) + (3-k) * old_mean) / 3
-Exact replacement when k=3; approximation (non-rerun seeds proxied by the old mean) otherwise.
+The 59 archived rerun records and 34 author-recovered records cover all 31
+rerun configurations. Post-CP means and sample SDs use the actual scores;
+effects subtract the archived three-seed baseline means without rounding.
+Missing or duplicate seeds are errors. FT fields are outside this repair and
+are preserved from the existing archive; the legacy reports below do not
+constitute a new FT audit.
 
-Outputs: eval/outputs/cp_long_refreshed.csv + console report.
+Outputs: cp_long_refreshed.csv, cp_seed_records.csv, cp_seed_summary.csv.
 Blocks:
   0  replication check (SimCLR/LeJEPA rerun deltas should match old cell means; DIET may shift)
   1  F1 with 3-method Δ@MAX (LeJEPA+SimCLR+DIET, refreshed) vs the 2-method originals
@@ -19,7 +20,7 @@ Blocks:
   6  margin predictor under the 3-method refreshed target
   7  P-D recheck (d_within -> dft refreshed; DIET Δwithin largest is geometry-only, unchanged)
 
-Run: python eval/adjudicate/final_integration.py
+Frozen-only refresh: python -m eval.utils.final_integration --frozen-only
 """
 import sys
 from pathlib import Path as _P
@@ -30,6 +31,7 @@ import pandas as pd
 from scipy.stats import spearmanr, rankdata
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import balanced_accuracy_score, roc_auc_score
+from utils.seed_aggregation import RECOVERED_NAME, rebuild
 
 ROOT = _P(__file__).resolve().parent.parent.parent
 OUT = ROOT / "eval/outputs"
@@ -48,47 +50,21 @@ def partial_spearman(x, y, controls):
 
 # ---------------------------------------------------------------- refresh
 def refresh_cp_long():
-    cp = pd.read_csv(OUT / "cp_long.csv")
-    rb = pd.read_csv(OUT / "rest_behavior.csv")
-    rb["Method"] = rb["method"].map(MMAP)
-    rb["dk"] = rb["dataset"].str.lower()
-    agg = (rb.groupby(["Method", "encoder", "dk", "n"])
-           .agg(k=("seed", "size"), t4_dknn=("d_knn", "mean"),
-                t4_dlp=("d_lp", "mean"), t4_dft=("d_ft", "mean")).reset_index())
-    cp["dk"] = cp["dataset_key"].str.lower()
-    idx = {(r.Method, r.encoder, r.dk, int(r.n)): r for r in agg.itertuples()}
-    print("=" * 100)
-    print("BLOCK 0 — replication check: test4 per-cell mean delta vs old cp_long cell mean")
-    print("=" * 100)
-    print(f"{'Method':10}{'enc':7}{'dataset':14}{'size':>7}{'k':>3}"
-          f"{'old dknn':>10}{'t4 dknn':>9}{'new dknn':>10}{'|shift|':>9}")
-    n_upd = 0
-    shifts = {"DIET-CP": [], "SimCLR-CP": [], "LeJEPA-CP": []}
-    for i, row in cp.iterrows():
-        key = (row["Method"], row["Backbone"], row["dk"], int(row["size"]))
-        if key not in idx:
-            continue
-        r = idx[key]
-        k = int(r.k)
-        for col, t4 in [("dknn", r.t4_dknn), ("dlp", r.t4_dlp), ("dft", r.t4_dft)]:
-            old = row[col]
-            new = (k * t4 + (3 - k) * old) / 3 if pd.notna(old) else t4
-            cp.at[i, col] = round(new, 5)
-        old_dknn = row["dknn"]
-        new_dknn = cp.at[i, "dknn"]
-        shifts[row["Method"]].append(abs(r.t4_dknn - old_dknn))
-        print(f"{row['Method']:10}{row['Backbone']:7}{row['dk']:14}{int(row['size']):>7}{k:>3}"
-              f"{old_dknn:>10.4f}{r.t4_dknn:>9.4f}{new_dknn:>10.4f}"
-              f"{abs(r.t4_dknn - old_dknn):>9.4f}")
-        n_upd += 1
-    print(f"\ncells updated: {n_upd} (from {len(agg)} test4 cells)")
-    for m, s in shifts.items():
-        if s:
-            print(f"  mean |t4 - old| dknn shift  {m}: {np.mean(s):.4f}  (n={len(s)})"
-                  f"  -> {'replication (expected small)' if m != 'DIET-CP' else 'epoch74->150 shift (expected larger)'}")
     dst = OUT / "cp_long_refreshed.csv"
-    cp.to_csv(dst, index=False)
-    print(f"saved {dst}")
+    cp = pd.read_csv(dst if dst.exists() else OUT / "cp_long.csv")
+    rb = pd.read_csv(OUT / "rest_behavior.csv")
+    recovered = pd.read_csv(OUT / RECOVERED_NAME)
+    cp, runs, summary = rebuild(cp, rb, recovered)
+    if "dk" not in cp:
+        cp["dk"] = cp.dataset_key.str.lower()
+    temporary = dst.with_suffix(".tmp")
+    cp.to_csv(temporary, index=False)
+    temporary.replace(dst)
+    runs.to_csv(OUT / "cp_seed_records.csv", index=False)
+    summary.to_csv(OUT / "cp_seed_summary.csv", index=False)
+    print(f"Verified {len(runs)} actual seed records across {len(summary)} complete configurations.")
+    print("Updated frozen post-CP means, sample SDs, and effects; FT fields unchanged.")
+    print(f"Saved {dst}")
     return cp
 
 
@@ -302,4 +278,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Refresh complete frozen-evaluation seed summaries.")
+    parser.add_argument("--frozen-only", action="store_true",
+                        help="Refresh kNN/LP data without running the historical exploratory reports.")
+    args = parser.parse_args()
+    if args.frozen_only:
+        refresh_cp_long()
+    else:
+        main()

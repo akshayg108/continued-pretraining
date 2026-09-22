@@ -147,6 +147,9 @@ def _sample_shared_train_indices_by_class(args, dataset):
     # HFDatasetWrapper path used in this repository.
     labels_source = dataset.hf_dataset if hasattr(dataset, "hf_dataset") else dataset
     all_labels = np.array(labels_source["label"]).ravel()
+    if getattr(labels_source, "heldout", False):
+        from .heldout import exact_train_indices
+        return exact_train_indices(all_labels, args.n_samples, args.seed)
 
     unique_labels = np.unique(all_labels)
     n_classes = len(unique_labels)

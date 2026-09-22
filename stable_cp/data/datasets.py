@@ -3,6 +3,7 @@ from pathlib import Path
 
 import stable_pretraining as spt
 from stable_datasets import images as stable_ds
+from .heldout import HELDOUT_DATASETS, load_heldout_split
 
 # Dataset configuration registry
 DATASETS = {
@@ -211,6 +212,10 @@ DATASETS = {
     },
 }
 
+# Preserve legacy entries; new readers are resolved lazily by the held-out adapter.
+for _name, _config in HELDOUT_DATASETS.items():
+    DATASETS.setdefault(_name, _config.copy())
+
 # Normalization presets
 # Using custom statistics from temp.py for better performance on each dataset
 NORMALIZATIONS = {
@@ -298,6 +303,9 @@ def get_dataset(name, split, transform, cache_dir="/.cache", seed=42):
     Returns:
         HFDatasetWrapper: Wrapped dataset compatible with stable-pretraining
     """
+    if name in HELDOUT_DATASETS:
+        raw = load_heldout_split(name, split, str(Path(cache_dir).expanduser().resolve()))
+        return HFDatasetWrapper(raw, transform=transform)
     cfg = DATASETS[name]
     cache_dir = Path(cache_dir)
 
