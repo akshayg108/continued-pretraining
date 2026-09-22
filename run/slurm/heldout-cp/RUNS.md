@@ -89,3 +89,40 @@ Source: the user's later `sacct`, expanded `squeue`, and preparation logs.
   strict validator and manifest, clips only the out-of-range values, and stores
   raw scores plus the wrapper hash in `evaluation_numerics`. Other invalid
   scores still fail. No Jena retry job has been submitted by this assistant.
+
+### Jena Roundoff Results and LeJEPA A100 Recovery
+
+Subsequent user-provided outputs supersede the unresolved Jena diagnostic
+above. Preparation retry `18073749_5` published all six Jena baselines. Some
+actual DINOv3 kNN/LP scores were `1.0000001192092896`, saved as `1.0` with the
+raw values retained. All six records report 1,000 training images, 148 test
+images, and 30 classes. Jena CP was resubmitted as array `18078120` with task
+indices `15,16,17,39,40,41`.
+
+The user's later complete LeJEPA audit reported:
+
+- Original array `18066507`: all 14 non-Jena LeJEPA tasks failed with exit
+  code `1:0`; each had missing results for seeds 42, 43, and 44.
+- Original Jena LeJEPA tasks `18066507_15` and `_39`: cancelled before
+  execution, also with all results missing.
+- Total verified LeJEPA results at that snapshot: 0 of 48 expected fits.
+- The IP102 LeJEPA logs explicitly show CUDA OOM at seed 42 on approximately
+  32 GB V100s, during DINOv3 forward and CLIP backward. Other failure causes
+  remain unverified until their individual logs are inspected.
+- The newest supplied queue snapshot still showed all six Jena replacement
+  tasks running, along with original TissueMNIST DIET task `18066507_4` and
+  IP102 DIET/SimCLR tasks `18066507_22`, `_23`, `_46`, and `_47`.
+
+The user approved retrying all 16 LeJEPA combinations on ordinary A100 GPUs,
+without an 80 GB constraint, while preserving the training recipe and all
+prepared baselines. The cancellation command provided targets only
+`18078120_15` and `18078120_39`, the two new Jena LeJEPA jobs. It does not
+target the four Jena DIET/SimCLR jobs or any parent array. Execution of that
+command and submission of the A100 array have not been confirmed here.
+
+Recovery entrypoints: `eval.heldout_a100_retry` and
+`run/slurm/heldout-cp/lejepa_a100.sh`. The original manifest and base
+implementation hash are retained; the hardware exception is explicit in
+new `resource_override` metadata. The same metric-roundoff implementation
+continues to handle evaluation. The new A100 job ID must be recorded when
+the user supplies the submission output.

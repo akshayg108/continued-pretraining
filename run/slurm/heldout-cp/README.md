@@ -39,6 +39,9 @@ eight CPUs, 96 GB RAM, and a 96-hour limit. `--concurrency` caps each array;
 all CP tasks share one throttle rather than splitting capacity between datasets.
 Preparation and CP may overlap. Their combined running count is also subject
 to the cluster's per-user nvidia QoS limit, previously confirmed as 12.
+The initial launcher keeps its original V100 contract. For the failed LeJEPA
+jobs, use the separate A100 recovery procedure below instead of resubmitting
+the full experiment or modifying its frozen manifest.
 
 The hypothesis, dataset list, and recipe are fixed in the submission manifest.
 Each preparation job freezes both encoders' initial scores and baseline hashes
@@ -87,7 +90,7 @@ Run offline checks without downloading datasets or allocating a GPU:
 ```bash
 python3 -m pytest tests/test_heldout_data.py tests/test_heldout_cp.py \
   tests/test_heldout_runtime.py tests/test_heldout_cp_slurm.py \
-  tests/test_heldout_metric_roundoff.py -q
+  tests/test_heldout_metric_roundoff.py tests/test_heldout_a100_retry.py -q
 ```
 
 ## Metric-Roundoff Recovery for Existing Jobs
@@ -171,3 +174,68 @@ IP102 retry `18073093_7`, or any running experiment. Retain the preparation ID
 rather than creating duplicate preparations. Submit the dependent CP array
 while the completed preparation job is still available to Slurm for resolving
 its `afterok` dependency.
+
+## LeJEPA Recovery on A100
+
+The reported V100 runs produced no verified LeJEPA outcomes: 14 original
+tasks failed, while the two original Jena LeJEPA tasks were cancelled before
+starting. The supplied IP102 logs explicitly show CUDA OOM during seed 42;
+the other failures must not be labelled OOM without their logs. The recovery
+uses one ordinary A100, without an 80 GB constraint, for all 16 LeJEPA tasks.
+Each task still runs seeds 42, 43, and 44 serially, for 48 CP fits and no FT.
+
+The additional `eval.heldout_a100_retry` entrypoint leaves the original
+manifest and hashed training code unchanged. It retains the native
+normalization, 1,000-image indices, batch size 256, eight views, two trainable
+blocks, mixed precision, disabled TF32, and all optimization settings. The
+manifest still records the original V100 plan. New attempt and result JSONs
+explicitly record `resource_override`, including the policy, original GPU
+request, actual GPU name and memory, and the recovery implementation hash.
+The existing roundoff recovery is retained for Jena and any other boundary
+scores. Changing GPU does not imply bitwise-identical numerical results.
+
+Do not cancel the whole Jena array `18078120`: its tasks 16, 17, 40, and 41
+are DIET/SimCLR. Cancel only its two V100 LeJEPA tasks if they are still active:
+
+```bash
+scancel 18078120_15 18078120_39
+```
+
+Wait for those two tasks to stop before starting their replacements. After
+syncing this recovery code, validate the already completed preparations and
+submit only LeJEPA:
+
+```bash
+(
+    set -e
+    cd /scratch/gs4133/zhd/CP/continued-pretraining
+    export HELDOUT_PYTHON=/home/gs4133/.conda/envs/env/bin/python3
+    export HELDOUT_REPO_ROOT="$PWD"
+    export HELDOUT_MANIFEST=/scratch/gs4133/zhd/CP/outputs/heldout_cp_manifests/heldout-cp-20260922T045909Z-2968777.json
+    LOG=/scratch/gs4133/zhd/CP/outputs/slurm-log/heldout-cp
+    mkdir -p "$LOG"
+
+    "$HELDOUT_PYTHON" -m eval.heldout_a100_retry preflight \
+        --manifest "$HELDOUT_MANIFEST"
+
+    sbatch --job-name=heldout-lejepa-a100 \
+        --array=0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45%12 \
+        --gres=gpu:a100:1 --chdir="$PWD" --export=ALL \
+        --output="$LOG/heldout-cp-%A_%a.out" \
+        --error="$LOG/heldout-cp-%A_%a.err" \
+        run/slurm/heldout-cp/lejepa_a100.sh
+)
+```
+
+Preflight requires all eight existing prediction records and validates their
+baseline/geometry hashes; it never creates replacement preparations. It also
+checks any existing completed LeJEPA results. No scheduler dependency on an
+old preparation ID is needed after this check. The original result collector
+continues to work, and verified completed seeds are skipped without replacing
+their artifacts. Incomplete seeds restart from public pretrained weights in
+new attempt directories; failed checkpoints and logs are retained.
+
+The entrypoint rejects non-LeJEPA task IDs and non-A100 allocations. No DIET
+or SimCLR tasks, preparation jobs, libraries, or original implementation files
+are changed. The A100 recovery is covered by CPU tests but still requires a
+real cluster run to establish that the allocated card has sufficient memory.
