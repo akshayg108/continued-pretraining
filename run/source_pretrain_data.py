@@ -53,6 +53,8 @@ def download_imagenet(imagenet_dir, validation_dir, cache_dir):
             features=features,
             token=True,
             cache_dir=str(cache_dir),
+            # The repo metadata lists all splits; validate this split below instead.
+            verification_mode="no_checks",
         )
         if len(source) != IMAGENET_SPLIT_SIZES[split] or not np.array_equal(
             np.unique(source["label"]), np.arange(1000)

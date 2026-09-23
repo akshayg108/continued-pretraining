@@ -85,6 +85,8 @@ image/class counts. This directory does not need to exist before submission.
 Training reads the saved local dataset, not an online stream. An existing
 `IMAGENET_VAL_DIR` cache is reused; otherwise the preparation job downloads the
 validation split too. It does not download the unlabeled ImageNet test split.
+Split-only downloads disable Hugging Face's whole-repository metadata checks;
+each downloaded split is checked against its exact row count and all 1,000 labels.
 
 Plan for approximately **500 GiB of free shared disk** for downloaded parquet
 files, the Arrow build cache, the saved training dataset, target caches and
