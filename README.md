@@ -10,7 +10,7 @@ Optional supervised fine-tuning (FT) is retained.
 Use Python 3.10 or newer and a CUDA-compatible PyTorch installation for GPU jobs.
 
 ```bash
-python -m pip install -e '.[dev]'
+python -m pip install -e .
 ```
 
 This installs the lab's `galilai-group/stable-pretraining`, pinned to tested
@@ -134,7 +134,7 @@ DINOv3-L jobs. `CP_REPO_ROOT` overrides the default repository location
 (`SLURM_SUBMIT_DIR`). The launcher uses the supplied interpreter directly,
 without changing Conda environments or creating experiment manifests.
 
-## Layout And Tests
+## Layout
 
 ```text
 continued_pretraining.py   CLI and pre/CP/post orchestration
@@ -143,11 +143,6 @@ stable_cp/methods/        LeJEPA, SimCLR, DIET, MAE
 stable_cp/evaluation/     Frozen kNN/LP and optional FT
 stable_cp/callbacks/      Unfreezing and online validation
 run/slurm/run.sh          Generic single-job launcher
-tests/                   Core regression and CPU smoke tests
-```
-
-```bash
-python -m pytest -q tests
 ```
 
 Historical experiment grids, geometry/causal analyses, rerun tools, and their
