@@ -147,7 +147,9 @@ split; custom splits are unchanged. Galaxy10's split varies with the seed.
 
 The 17 Slurm tasks contain one dataset each, except task 0, which serializes all
 seven MedMNIST datasets. Every task runs all five encoders and three seeds in
-separate processes. In total there are 345 evaluations. The default resources
+separate processes. In total there are 345 evaluations. One additional reference
+job runs first; the 17 evaluation tasks depend on its successful completion.
+The default resources
 are one V100, eight CPUs, 96 GB RAM, and 96 hours, with at most 12 tasks running.
 The extraction batch is 32 with two loader workers; these are frozen evaluations,
 not the memory-intensive CP configurations above.
@@ -172,11 +174,21 @@ and torchvision 0.25.0, and the pinned lab `stable-pretraining` and user
 is pinned to retain V100 support; do not upgrade it independently. A dependency
 snapshot is saved in `outputs/environment/pip-freeze.txt`.
 
+Copy the existing Hugging Face ImageNet validation cache before submission;
+the preparation job reads local images and does not download ImageNet:
+
+```bash
+mkdir -p "$CP_ROOT/data/imagenet_val"
+rsync -ah --info=progress2 \
+    /scratch/gs4133/zhd/CP/data/imagenet_val/ "$CP_ROOT/data/imagenet_val/"
+```
+
 For gated DINOv3 weights, authorize your Hugging Face account for the checkpoints
 and log in to the new cache, or supply `HF_TOKEN` through your environment:
 
 ```bash
 "$CP_ROOT/env/bin/hf" auth login
+"$CP_PYTHON" run/precp_reference.py --dry-run
 "$CP_PYTHON" run/precp.py list
 "$CP_PYTHON" run/precp.py run --task-id 1 --dry-run
 bash run/slurm/submit_precp.sh
@@ -188,6 +200,34 @@ go to `data/huggingface` and `data/torch`. Download, package, and temporary cach
 also live under `data`. Results and per-evaluation logs are stored in
 `outputs/precp_full/{results,logs}/ENCODER/DATASET/seedSEED.{json,log}`; Slurm logs
 are in `outputs/slurm-log/precp-JOB_TASK.{out,err}`.
+
+Geometry reuses clean training features already extracted for kNN. Every metric
+uses the same label-independent, sorted seed-42 sample of `min(n_train, 5000)`
+images; there is no further target subsampling. The reference job selects 5000
+ImageNet validation images once using the same sampling seed and extracts each
+encoder's reference with its own mean/std and pooling.
+
+| Descriptor | Definition on L2-normalized feature rows |
+| --- | --- |
+| Uniformity | Log mean `exp(-2 * squared_distance)` over distinct target pairs |
+| Mean cosine | Mean cosine similarity over distinct target pairs |
+| RankMe | Exponential singular-value entropy of the uncentered target matrix |
+| MMD | Biased squared RBF-MMD, including diagonal pairs |
+| Overlap | Mean ImageNet fraction among 50 cosine neighbors, excluding self |
+
+MMD bandwidth uses the reciprocal median squared distance over all pooled target
+and reference rows. Overlap queries every selected target against the same target
+bank plus the reference bank. Thus neither bandwidth nor overlap uses an extra
+smaller subset. These statistics use float64 arithmetic. The protocol is
+`precp_geometry_5000_v1`; it differs from historical 3000-target angular metrics
+and 2000-query overlap, so those old values must not be mixed into this grid.
+
+Reference features are saved to `outputs/precp_full/reference/ENCODER.npz`.
+Selected raw target features and training-row indices are saved to
+`outputs/precp_full/features/ENCODER/DATASET/seedSEED.npz`. No full-training-set
+feature archive is written. JSON records include sample counts, MMD bandwidth,
+and reference paths. For unchanged train splits, deterministic geometry can be
+identical across evaluation seeds; LP still follows its original seeded protocol.
 
 Completed JSON results are skipped on resubmission. A failed evaluation is logged
 and the job continues through the other combinations, then exits nonzero. Retry
@@ -201,7 +241,8 @@ bash run/slurm/submit_precp.sh --array=0,16%2 --gres=gpu:a100:1
 ```
 
 The report writes `outputs/precp_full/results.csv` and `summary.csv`, including
-actual training/test sizes, per-seed scores, means and sample standard deviations.
+actual training/test/geometry sizes, per-seed scores and all five geometry
+descriptors, means and sample standard deviations.
 Missing seeds stay missing rather than contributing zero to a mean. Re-running
 a failed combination restarts that evaluation; already completed combinations
 are not repeated.
@@ -217,7 +258,8 @@ stable_cp/callbacks/      Unfreezing and online validation
 run/slurm/run.sh          Generic single-job launcher
 run/setup_env.sh          Independent cluster environment installation
 run/precp.py              Full pre-CP grid and CSV report
-run/slurm/submit_precp.sh  Submit the 17-task pre-CP array
+run/precp_reference.py    ImageNet reference feature extraction
+run/slurm/submit_precp.sh  Submit reference preparation and the 17-task array
 ```
 
 Historical experiment grids, geometry/causal analyses, rerun tools, and their

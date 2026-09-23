@@ -196,6 +196,7 @@ def zero_shot_eval(
     pool_strategy: str = "cls",
     knn_train_loader: torch.utils.data.DataLoader = None,
     verbose: bool = True,
+    geometry: dict = None,
 ) -> dict:
     """Evaluate kNN and LP, optionally using clean training views for kNN."""
     model = model.to(device)
@@ -227,6 +228,12 @@ def zero_shot_eval(
     )
     if verbose:
         print(f"  kNN F1: {results['knn_f1']:.4f}, LP F1: {results['linear_pytorch_f1']:.4f}")
+    if geometry is not None:
+        from .geometry import evaluate_geometry
+
+        results["geometry"] = evaluate_geometry(knn_features, **geometry)
+        if verbose:
+            print(f"  Geometry: {results['geometry']}")
     return results
 
 

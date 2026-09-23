@@ -293,6 +293,7 @@ def run_baseline(
     args,
     logger,
     knn_train_loader=None,
+    geometry=None,
 ):
     """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
@@ -307,9 +308,18 @@ def run_baseline(
         pool_strategy=args.pool_strategy,
         knn_train_loader=knn_train_loader,
         verbose=True,
+        geometry=geometry,
     )
-    logger.experiment.log({f"baseline/{k}": v for k, v in results.items()}, step=0)
-    for k, v in results.items():
+    logged = {k: v for k, v in results.items() if k != "geometry"}
+    logged.update(
+        {
+            f"geometry/{k}": v
+            for k, v in results.get("geometry", {}).items()
+            if isinstance(v, (int, float))
+        }
+    )
+    logger.experiment.log({f"baseline/{k}": v for k, v in logged.items()}, step=0)
+    for k, v in logged.items():
         logger.experiment.summary[f"baseline/{k}"] = v
     print(f"Baseline: knn_f1={results['knn_f1']:.4f} linear_f1={results['linear_pytorch_f1']:.4f}")
     return results
@@ -540,6 +550,13 @@ def main():
         action="store_true",
         help="Skip CP training entirely (baseline-only mode)",
     )
+    parser.add_argument(
+        "--geometry-reference",
+        help="ImageNet reference NPZ for pre-CP geometry on up to 5000 clean train features.",
+    )
+    parser.add_argument(
+        "--geometry-features", help="Optional NPZ output for the selected raw geometry features."
+    )
 
     # ---- Results output ----
     parser.add_argument(
@@ -556,6 +573,10 @@ def main():
         parser.error("--cp-method is required unless --no-cp is set")
     if args.no_cp and args.post_cp_sft:
         parser.error("--post-cp-sft requires CP training (remove --no-cp)")
+    if args.geometry_features and not args.geometry_reference:
+        parser.error("--geometry-features requires --geometry-reference")
+    if args.geometry_reference and args.skip_baseline:
+        parser.error("--geometry-reference requires pre-CP evaluation")
 
     # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
@@ -579,6 +600,19 @@ def main():
     args.pool_strategy = args.pool_strategy or default_pool_strategy(args.backbone)
     ds_cfg = configure_normalization(ds_cfg, backbone)
     print(f"Pretrained normalization: {ds_cfg['normalization']}; pooling: {args.pool_strategy}")
+    geometry = None
+    if args.geometry_reference:
+        geometry = dict(
+            reference_path=args.geometry_reference,
+            output_path=args.geometry_features,
+            metadata=dict(
+                dataset=args.dataset,
+                seed=args.seed,
+                backbone=args.backbone,
+                pool_strategy=args.pool_strategy,
+                normalization=ds_cfg["normalization"],
+            ),
+        )
 
     # ---- Wandb logger ----
     if args.no_cp:
@@ -633,6 +667,7 @@ def main():
             args,
             logger,
             knn_train_loader=knn_train_loader,
+            geometry=geometry,
         )
 
     if args.pre_cp_sft:
@@ -759,6 +794,8 @@ def main():
                     ("linear_acc", "linear_pytorch_acc"),
                 ):
                     results_json[f"{stage}_{output}"] = metrics[source]
+        if baseline_results and "geometry" in baseline_results:
+            results_json["geometry"] = baseline_results["geometry"]
         for stage, metrics in (("pre", sft_pre_results), ("post", sft_post_results)):
             if metrics:
                 for key in ("f1", "acc", "auroc"):

@@ -54,6 +54,13 @@ GROUPS = (
     ),
 )
 METRICS = ("pre_knn_f1", "pre_linear_f1", "pre_knn_acc", "pre_linear_acc")
+GEOMETRY_METRICS = (
+    "uniformity_t2",
+    "mean_pairwise_cos",
+    "rankme_l2_uncentered",
+    "mmd_rbf",
+    "neighbor_overlap_k50",
+)
 
 
 def result_path(root, encoder, dataset, seed):
@@ -80,6 +87,14 @@ def completed_result(path, encoder, dataset, seed):
         and math.isfinite(row[key])
         and -1e-6 <= row[key] <= 1 + 1e-6
         for key in METRICS
+    )
+    geometry = row.get("geometry", {})
+    valid = valid and geometry.get("protocol") == "precp_geometry_5000_v1"
+    valid = valid and geometry.get("n_geometry") == min(row.get("n_train_actual", 0), 5000)
+    valid = valid and geometry.get("n_reference") == 5000
+    valid = valid and all(
+        isinstance(geometry.get(key), (int, float)) and math.isfinite(geometry[key])
+        for key in GEOMETRY_METRICS
     )
     if not valid:
         raise ValueError(f"Result does not match the full pre-CP grid: {path}")
@@ -125,6 +140,16 @@ def run_group(args):
                     str(args.root / "data"),
                     "--results-json",
                     str(output),
+                    "--geometry-reference",
+                    str(args.root / "outputs/precp_full/reference" / f"{encoder}.npz"),
+                    "--geometry-features",
+                    str(
+                        args.root
+                        / "outputs/precp_full/features"
+                        / encoder
+                        / dataset
+                        / f"seed{seed}.npz"
+                    ),
                 ]
                 if args.dry_run:
                     print(shlex.join(command))
@@ -166,11 +191,17 @@ def report(root):
                     if row:
                         record.update({key: row[key] for key in METRICS})
                         record.update({key: row[key] for key in ("n_train_actual", "n_test")})
+                        record.update(
+                            {
+                                key: row["geometry"][key]
+                                for key in (*GEOMETRY_METRICS, "n_geometry", "n_reference")
+                            }
+                        )
                         found.append(row)
                     rows.append(record)
                 cell = {"encoder": encoder, "dataset": dataset, "n_seeds": len(found)}
-                for key in METRICS:
-                    scores = [row[key] for row in found]
+                for key in (*METRICS, *GEOMETRY_METRICS):
+                    scores = [row[key] if key in METRICS else row["geometry"][key] for row in found]
                     cell[f"{key}_mean"] = statistics.mean(scores) if scores else ""
                     cell[f"{key}_sd"] = statistics.stdev(scores) if len(scores) > 1 else ""
                 summary.append(cell)
@@ -184,7 +215,10 @@ def report(root):
         "status",
         "n_train_actual",
         "n_test",
+        "n_geometry",
+        "n_reference",
         *METRICS,
+        *GEOMETRY_METRICS,
         "source",
     ]
     for name, records, columns in (
@@ -223,6 +257,9 @@ def main():
                 f"{task_id:2d}  {','.join(group)}  evaluations={len(group) * len(ENCODERS) * len(SEEDS)}"
             )
         print("17 jobs; 23 datasets x 5 encoders x 3 seeds = 345 pre-CP evaluations; 0 CP; 0 FT.")
+        print(
+            "One additional reference job; all five geometry metrics use min(train size, 5000) target images."
+        )
     elif args.command == "run":
         args.root = args.root.expanduser().resolve()
         run_group(args)
