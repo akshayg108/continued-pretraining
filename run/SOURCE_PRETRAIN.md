@@ -165,10 +165,12 @@ SOURCE_OUTPUT_DIR="$CP_ROOT/outputs/source_coverage_v1" \
     bash run/slurm/submit_source_pretrain.sh
 ```
 
-Submission creates one preparation GPU job and an `afterok` training array
+Submission creates one V100 preparation job and an `afterok` training array
 `0-1%2`. Tasks 0/1 run A/B at the same seed 42, for two training runs total.
-Every task requests one H200, 16 CPUs, 128 GB RAM, and 96 hours. Defaults are
-partition `nvidia`, account `civil`, and QoS `nvidia`; standard `SBATCH_*`
+Each training task requests one H200. Both stages request 16 CPUs, 128 GB RAM,
+and 96 hours. Preparation uses an explicit `--gres=gpu:v100:1` submission override;
+when submitting `source_pretrain.sh prepare` directly, include that flag too.
+Defaults are partition `nvidia`, account `civil`, and QoS `nvidia`; standard `SBATCH_*`
 environment variables such as `SBATCH_PARTITION`, `SBATCH_ACCOUNT`, and
 `SBATCH_QOS` can override them. Logs are `outputs/slurm-log/source-*`.
 Use `SOURCE_TASKS='0-1%1'` to allow only one H200 training task at a time.

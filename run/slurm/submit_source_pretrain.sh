@@ -20,7 +20,7 @@ if [[ "$IMAGENET_SOURCE" == local && ! -d "$IMAGENET_TRAIN_DIR" && ! -f "${IMAGE
     exit 1
 fi
 
-PREPARE=$(sbatch --parsable --chdir="$REPO" --export=ALL \
+PREPARE=$(sbatch --parsable --chdir="$REPO" --export=ALL --gres=gpu:v100:1 \
     --output="$CP_ROOT/outputs/slurm-log/source-prepare-%j.out" \
     --error="$CP_ROOT/outputs/slurm-log/source-prepare-%j.err" \
     "$REPO/run/slurm/source_pretrain.sh" prepare)
