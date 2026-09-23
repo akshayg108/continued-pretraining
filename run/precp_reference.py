@@ -2,6 +2,7 @@
 """Extract fixed ImageNet reference features from a local validation cache."""
 
 import argparse
+from contextlib import ExitStack
 import gc
 import json
 import os
@@ -69,20 +70,10 @@ def save_reference(path, features, indices, metadata):
             temporary.unlink(missing_ok=True)
 
 
-def extract_references(args, encoders):
+def reference_selection(args):
     import numpy as np
-    import torch
     from datasets import DatasetDict, load_from_disk
-    from torch.utils.data import DataLoader
 
-    sys.path.insert(0, str(REPO))
-    from continued_pretraining import configure_normalization, load_backbone
-    from stable_cp.data import create_transforms
-    from stable_cp.evaluation.zero_shot_eval import extract_features
-    from stable_cp.utils.backbone import default_pool_strategy
-
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required; submit reference extraction through Slurm.")
     if not args.imagenet_dir.is_dir():
         raise FileNotFoundError(f"Missing local ImageNet validation cache: {args.imagenet_dir}")
     source = load_from_disk(str(args.imagenet_dir))
@@ -98,7 +89,7 @@ def extract_references(args, encoders):
     indices = np.sort(
         np.random.RandomState(SAMPLING_SEED).choice(len(source), N_REFERENCE, replace=False)
     ).astype(np.int64)
-    selected = source.select(indices.tolist())
+    selected = source.select(indices.tolist()).select_columns(["image"])
     source_metadata = {
         "source": str(args.imagenet_dir),
         "n_source_images": len(source),
@@ -106,8 +97,76 @@ def extract_references(args, encoders):
     fingerprint = getattr(source, "_fingerprint", None)
     if fingerprint is not None:
         source_metadata["source_fingerprint"] = fingerprint
+    return selected, indices, source_metadata
+
+
+def reference_manifest(indices, source_metadata):
+    return {
+        "protocol": PROTOCOL,
+        "n_reference": N_REFERENCE,
+        "sampling_seed": SAMPLING_SEED,
+        "indices": indices.tolist(),
+        "source_metadata": source_metadata,
+    }
+
+
+def validate_prepared(path, metadata):
+    from datasets import load_from_disk
+
+    if not (path / "metadata.json").is_file():
+        raise FileNotFoundError(f"Missing prepared ImageNet reference metadata: {path}")
+    if json.loads((path / "metadata.json").read_text()) != metadata:
+        raise ValueError(f"Incompatible prepared ImageNet reference: {path}")
+    source = load_from_disk(str(path / "dataset"))
+    if len(source) != N_REFERENCE or source.column_names != ["image"]:
+        raise ValueError(f"Invalid prepared ImageNet reference: {path}")
+    return source
+
+
+def prepare_reference(args, selected, indices, source_metadata):
+    from datasets import Image
+
+    metadata = reference_manifest(indices, source_metadata)
+    path = args.root / "data/imagenet_reference_5000"
+    if path.exists():
+        validate_prepared(path, metadata)
+        print(f"READY ImageNet reference: {path}", flush=True)
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix=".imagenet-reference-") as temporary:
+        prepared = Path(temporary) / "prepared"
+        # save_to_disk embeds image bytes, including images backed by external paths.
+        selected.cast_column("image", Image(decode=False)).save_to_disk(str(prepared / "dataset"))
+        (prepared / "metadata.json").write_text(json.dumps(metadata, sort_keys=True) + "\n")
+        validate_prepared(prepared, metadata)
+        prepared.rename(path)
+    print(f"READY ImageNet reference: {path}", flush=True)
+    return path
+
+
+def extract_references(args, encoders):
+    import torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required; submit reference extraction through Slurm.")
+    selected, indices, source_metadata = reference_selection(args)
+    with ExitStack() as staging:
+        _extract_references(args, encoders, selected, indices, source_metadata, staging)
+
+
+def _extract_references(args, encoders, selected, indices, source_metadata, staging):
+    import numpy as np
+    import torch
+    from torch.utils.data import DataLoader
+
+    sys.path.insert(0, str(REPO))
+    from continued_pretraining import configure_normalization, load_backbone
+    from stable_cp.data import create_transforms
+    from stable_cp.evaluation.zero_shot_eval import extract_features
+    from stable_cp.utils.backbone import default_pool_strategy
 
     print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
+    staged = False
     for encoder in encoders:
         backbone_name = ENCODERS[encoder]
         pool = default_pool_strategy(backbone_name)
@@ -129,6 +188,14 @@ def extract_references(args, encoders):
             print(f"SKIP {encoder}: {path}", flush=True)
             del backbone
             continue
+        if args.stage_data and not staged:
+            from data_cache import staged_directory
+            from datasets import Image, load_from_disk
+
+            prepared = prepare_reference(args, selected, indices, source_metadata)
+            local = staging.enter_context(staged_directory(prepared))
+            selected = load_from_disk(str(local / "dataset")).cast_column("image", Image())
+            staged = True
         _, transform = create_transforms(config)
         loader = DataLoader(
             ReferenceImages(selected, transform),
@@ -159,6 +226,7 @@ def main():
     parser.add_argument("--imagenet-dir", type=Path)
     parser.add_argument("--encoder", choices=tuple(ENCODERS))
     parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--stage-data", action="store_true", help="Prepare and copy the reference subset to node-local storage")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if args.num_workers < 0:
@@ -170,6 +238,8 @@ def main():
     encoders = [args.encoder] if args.encoder else list(ENCODERS)
     if args.dry_run:
         print(f"ImageNet validation cache: {args.imagenet_dir}")
+        if args.stage_data:
+            print(f"Prepared ImageNet reference: {args.root / 'data/imagenet_reference_5000'}")
         for encoder in encoders:
             path = args.root / "outputs/precp_full/reference" / f"{encoder}.npz"
             print(f"{encoder}: {ENCODERS[encoder]} -> {path}")

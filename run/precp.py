@@ -2,6 +2,7 @@
 """Full-training-set frozen evaluation: 23 datasets, five encoders, three seeds."""
 
 import argparse
+from contextlib import nullcontext
 import csv
 import json
 import math
@@ -111,65 +112,78 @@ def run_group(args):
 
     failures = []
     for dataset in GROUPS[args.task_id]:
-        for encoder, backbone in ENCODERS.items():
+        pending = []
+        for encoder in ENCODERS:
             for seed in SEEDS:
-                label = f"{encoder}/{dataset}/seed{seed}"
-                output = result_path(args.root, encoder, dataset, seed)
-                if completed_result(output, encoder, dataset, seed) is not None:
-                    print(f"SKIP {label}", flush=True)
-                    continue
-                command = [
-                    sys.executable,
-                    "-u",
-                    str(REPO / "continued_pretraining.py"),
-                    "--no-cp",
-                    "--full-train",
-                    "--dataset",
-                    dataset,
-                    "--backbone",
-                    backbone,
-                    "--seed",
-                    str(seed),
-                    "--batch-size",
-                    "32",
-                    "--num-workers",
-                    str(args.num_workers),
-                    "--knn-k",
-                    "20",
-                    "--cache-dir",
-                    str(args.root / "data"),
-                    "--results-json",
-                    str(output),
-                    "--geometry-reference",
-                    str(args.root / "outputs/precp_full/reference" / f"{encoder}.npz"),
-                    "--geometry-features",
-                    str(
-                        args.root
-                        / "outputs/precp_full/features"
-                        / encoder
-                        / dataset
-                        / f"seed{seed}.npz"
-                    ),
-                ]
-                if args.dry_run:
-                    print(shlex.join(command))
-                    continue
-                log = args.root / "outputs/precp_full/logs" / encoder / dataset / f"seed{seed}.log"
-                log.parent.mkdir(parents=True, exist_ok=True)
-                print(f"RUN {label} log={log}", flush=True)
-                with log.open("a") as stream:
-                    stream.write(f"\nCOMMAND {shlex.join(command)}\n")
-                    stream.flush()
-                    result = subprocess.run(
-                        command, cwd=REPO, stdout=stream, stderr=subprocess.STDOUT
-                    )
-                if result.returncode == 0 and completed_result(output, encoder, dataset, seed):
-                    print(f"DONE {label}", flush=True)
+                if completed_result(result_path(args.root, encoder, dataset, seed), encoder, dataset, seed):
+                    print(f"SKIP {encoder}/{dataset}/seed{seed}", flush=True)
                 else:
-                    failures.append(label)
-                    print(f"FAILED {label} exit={result.returncode} log={log}", flush=True)
+                    pending.append((encoder, seed))
+        if not pending:
+            continue
+        cache_dir = args.root / "data"
+        staging = nullcontext(cache_dir)
+        if args.stage_data:
+            if args.dry_run:
+                print(f"STAGE {dataset}: shared cache -> node-local storage (dry run)")
+            else:
+                from data_cache import staged_dataset
+
+                staging = staged_dataset(cache_dir, dataset)
+        with staging as local:
+            failures.extend(run_dataset(args, dataset, pending, local))
     if failures:
         raise SystemExit("Failed evaluations: " + ", ".join(failures))
+
+
+def run_dataset(args, dataset, pending, cache_dir):
+    failures = []
+    for encoder, seed in pending:
+        label = f"{encoder}/{dataset}/seed{seed}"
+        output = result_path(args.root, encoder, dataset, seed)
+        command = [
+            sys.executable,
+            "-u",
+            str(REPO / "continued_pretraining.py"),
+            "--no-cp",
+            "--full-train",
+            "--dataset",
+            dataset,
+            "--backbone",
+            ENCODERS[encoder],
+            "--seed",
+            str(seed),
+            "--batch-size",
+            "32",
+            "--num-workers",
+            str(args.num_workers),
+            "--knn-k",
+            "20",
+            "--cache-dir",
+            str(cache_dir),
+            "--results-json",
+            str(output),
+            "--geometry-reference",
+            str(args.root / "outputs/precp_full/reference" / f"{encoder}.npz"),
+            "--geometry-features",
+            str(args.root / "outputs/precp_full/features" / encoder / dataset / f"seed{seed}.npz"),
+        ]
+        if args.dry_run:
+            print(shlex.join(command))
+            continue
+        log = args.root / "outputs/precp_full/logs" / encoder / dataset / f"seed{seed}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        print(f"RUN {label} log={log}", flush=True)
+        with log.open("a") as stream:
+            stream.write(f"\nCOMMAND {shlex.join(command)}\n")
+            stream.flush()
+            result = subprocess.run(command, cwd=REPO, stdout=stream, stderr=subprocess.STDOUT)
+        if result.returncode == 0 and completed_result(output, encoder, dataset, seed):
+            print(f"DONE {label}", flush=True)
+        else:
+            failures.append(label)
+            print(f"FAILED {label} exit={result.returncode} log={log}", flush=True)
+    return failures
 
 
 def report(root):
@@ -242,6 +256,7 @@ def main():
     run = commands.add_parser("run", help="Run one dataset group, skipping completed results.")
     run.add_argument("--task-id", type=int, choices=range(len(GROUPS)), required=True)
     run.add_argument("--num-workers", type=int, default=2)
+    run.add_argument("--stage-data", action="store_true", help="Prepare shared caches and copy data to node-local storage.")
     run.add_argument("--dry-run", action="store_true")
     reports = commands.add_parser(
         "report", help="Export per-seed results and means with sample SD."

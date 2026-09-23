@@ -20,4 +20,4 @@ export MKL_NUM_THREADS="$OMP_NUM_THREADS"
 export SKLEARN_WORKING_MEMORY=256
 
 exec "$CP_PYTHON" -u run/precp.py run --root "$CP_ROOT" \
-    --task-id "$SLURM_ARRAY_TASK_ID" "$@"
+    --task-id "$SLURM_ARRAY_TASK_ID" --stage-data "$@"

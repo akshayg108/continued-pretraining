@@ -135,6 +135,15 @@ DINOv3-L jobs. `CP_REPO_ROOT` overrides the default repository location
 (`SLURM_SUBMIT_DIR`). The launcher uses the supplied interpreter directly,
 without changing Conda environments or creating experiment manifests.
 
+All GPU launchers stage image data on node-local storage before computation.
+Missing downloads and Arrow caches are first built under the shared `--cache-dir`
+inside the same job. Only the current dataset's processed splits are copied;
+archives remain shared. `CP_NODE_TMPDIR` can select the local disk; otherwise the
+launcher uses `SLURM_TMPDIR`, writable `/tmpdata`, or `/tmp`, in that order.
+Insufficient local space stops the job rather than falling back to shared reads.
+Results, checkpoints, and logs keep their original shared paths. The private
+local copy is removed on normal exit and catchable termination.
+
 ## Full Pre-CP Grid
 
 The grid evaluates five encoders on the original 15 datasets and eight held-out
@@ -149,6 +158,9 @@ The 17 Slurm tasks contain one dataset each, except task 0, which serializes all
 seven MedMNIST datasets. Every task runs all five encoders and three seeds in
 separate processes. In total there are 345 evaluations. One additional reference
 job runs first; the 17 evaluation tasks depend on its successful completion.
+Each dataset is staged once for all encoders and seeds. Task 0 stages and releases
+one MedMNIST dataset at a time. The reference job stages only its selected 5000
+ImageNet images. There are no separate CPU preparation jobs.
 The default resources
 are one V100, eight CPUs, 96 GB RAM, and 96 hours, with at most 12 tasks running.
 The extraction batch is 32 with two loader workers; these are frozen evaluations,
@@ -195,11 +207,14 @@ bash run/slurm/submit_precp.sh
 squeue -u "$USER"
 ```
 
-Dataset archives and processed data go to `data/stable_datasets`; model caches
+Persistent dataset archives and processed data go to `data/stable_datasets`; model caches
 go to `data/huggingface` and `data/torch`. Download, package, and temporary caches
 also live under `data`. Results and per-evaluation logs are stored in
 `outputs/precp_full/{results,logs}/ENCODER/DATASET/seedSEED.{json,log}`; Slurm logs
 are in `outputs/slurm-log/precp-JOB_TASK.{out,err}`.
+Image reads during evaluation use the node-local processed cache. First-time
+download/cache construction can still leave the GPU idle; if the cluster cancels
+the job, resubmit it to reuse completed shared caches and results.
 
 Geometry reuses clean training features already extracted for kNN. Every metric
 uses the same label-independent, sorted seed-42 sample of `min(n_train, 5000)`
@@ -258,6 +273,7 @@ stable_cp/callbacks/      Unfreezing and online validation
 run/slurm/run.sh          Generic single-job launcher
 run/setup_env.sh          Independent cluster environment installation
 run/precp.py              Full pre-CP grid and CSV report
+run/data_cache.py         Shared cache preparation and node-local staging
 run/precp_reference.py    ImageNet reference feature extraction
 run/slurm/submit_precp.sh  Submit reference preparation and the 17-task array
 ```

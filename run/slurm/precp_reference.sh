@@ -17,4 +17,4 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export OPENBLAS_NUM_THREADS="$OMP_NUM_THREADS"
 export MKL_NUM_THREADS="$OMP_NUM_THREADS"
 
-exec "$CP_PYTHON" -u run/precp_reference.py --root "$CP_ROOT" "$@"
+exec "$CP_PYTHON" -u run/precp_reference.py --root "$CP_ROOT" --stage-data "$@"

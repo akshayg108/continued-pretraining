@@ -1,6 +1,7 @@
 # Dataset registry for continued pretraining (using stable-datasets)
 from pathlib import Path
 
+import numpy as np
 import stable_pretraining as spt
 from stable_datasets import images as stable_ds
 from .heldout import HELDOUT_DATASETS, IndexedSplit, load_heldout_split, numeric_column
@@ -283,10 +284,16 @@ def _split_single_dataset(hf_dataset, split, seed=42, val_ratio=0.1, test_ratio=
     """Preserve the original seeded 80/10/10 partition for train-only datasets."""
     if split not in {"train", "validation", "val", "test"}:
         raise ValueError(f"Unknown split: {split}")
-    initial = hf_dataset.train_test_split(test_size=val_ratio + test_ratio, seed=seed)
+    # Match stable-datasets' two seeded permutations without gathering image bytes.
+    indices = np.random.RandomState(seed).permutation(len(hf_dataset))
+    train_size = int(len(indices) * (1 - (val_ratio + test_ratio)))
     if split == "train":
-        return initial["train"]
-    remaining = initial["test"].train_test_split(
-        test_size=test_ratio / (val_ratio + test_ratio), seed=seed
+        indices = indices[:train_size]
+    else:
+        remaining = indices[train_size:]
+        remaining = remaining[np.random.RandomState(seed).permutation(len(remaining))]
+        val_size = int(len(remaining) * (1 - test_ratio / (val_ratio + test_ratio)))
+        indices = remaining[val_size:] if split == "test" else remaining[:val_size]
+    return IndexedSplit(
+        hf_dataset, indices, partition=f"random_split_seed{seed}", source_split="train"
     )
-    return remaining["test" if split == "test" else "train"]
