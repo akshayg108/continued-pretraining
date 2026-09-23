@@ -59,59 +59,44 @@ if [[ ! -x "$CP_ROOT/env/bin/python3" ]]; then
     bash run/setup_env.sh "$CP_ROOT"
 fi
 source run/precp_env.sh
+export IMAGENET_SOURCE=hf
 export IMAGENET_TRAIN_DIR="$CP_ROOT/data/imagenet/train"
 export IMAGENET_VAL_DIR="$CP_ROOT/data/imagenet_val"
-export IMAGENET_TRAIN_ARCHIVE="$CP_ROOT/data/ILSVRC2012_img_train.tar"
-"$CP_PYTHON" -c 'import tarfile; assert hasattr(tarfile, "data_filter"); import stable_pretraining; print(stable_pretraining.__file__)'
+unset IMAGENET_TRAIN_ARCHIVE
+"$CP_PYTHON" -c 'import stable_pretraining; print(stable_pretraining.__file__)'
 "$CP_PYTHON" run/source_pretrain.py --help
 ```
 
-Use an authorized download of the ImageNet-1K **classification training** archive,
-`ILSVRC2012_img_train.tar`, not ImageNet-21K, the task-3 archive, or validation data.
-Visit the [official download page](https://www.image-net.org/download.php),
-complete the access steps yourself, and copy the actual training archive URL.
-The URL may change; the [Google Cloud instructions](https://docs.cloud.google.com/tpu/docs/imagenet-setup)
-also recommend using the link provided after access is approved.
-
-Run the download in a persistent terminal, such as `tmux`, on a cluster node
-permitted for large downloads. The archive is about 138 GiB. Budget at least
-350 GiB of free shared space for the archive, extracted training images, target
-caches, and checkpoints; actual requirements depend on existing caches and runs.
-Each training task also needs a complete node-local copy of its input data.
-The checksum below is the value used by
-[torchvision](https://docs.pytorch.org/vision/stable/_modules/torchvision/datasets/imagenet.html).
+The default source is the gated Hugging Face dataset
+[`ILSVRC/imagenet-1k`](https://huggingface.co/datasets/ILSVRC/imagenet-1k), pinned at
+revision `49e2ee26f3810fb5a7536bbf732a7b07389a47b5`. Use an account that has
+accepted the dataset terms and has access. Authenticate **after** sourcing
+`run/precp_env.sh`, which places the Hugging Face cache and saved login under
+`CP_ROOT/data/huggingface`. Enter the token interactively; do not put it in scripts.
 
 ```bash
-(
-    set -e
-    mkdir -p "$CP_ROOT/data"
-    df -h "$CP_ROOT/data"
-    read -r -p 'Authorized ImageNet training archive URL: ' IMAGENET_URL
-    curl --fail --location --retry 8 --retry-delay 10 --continue-at - \
-        --output "$IMAGENET_TRAIN_ARCHIVE" "$IMAGENET_URL"
-    printf '1d675b47d978889d74fa0da5fadfb00e  %s\n' "$IMAGENET_TRAIN_ARCHIVE" | md5sum -c -
-)
+"$CP_PYTHON" -c 'from huggingface_hub import login; login()'
+df -h "$CP_ROOT/data"
 ```
 
-Proceed only after the checksum reports `OK`. Do not manually extract the nested
-class archives: the preparation job handles extraction and reuses completed class
-directories after an interruption. An already-extracted complete training
-ImageFolder is also accepted; set `IMAGENET_TRAIN_DIR` to its location and
-`unset IMAGENET_TRAIN_ARCHIVE` in that case.
+The preparation job downloads the training split, saves a memory-mapped Hugging
+Face Arrow dataset at `IMAGENET_TRAIN_DIR`, and checks the exact training
+image/class counts. This directory does not need to exist before submission.
+Training reads the saved local dataset, not an online stream. An existing
+`IMAGENET_VAL_DIR` cache is reused; otherwise the preparation job downloads the
+validation split too. It does not download the unlabeled ImageNet test split.
 
-If your authorized access provides the Kaggle localization archive instead,
-extract its `ILSVRC/Data/CLS-LOC/train/` subtree and point `IMAGENET_TRAIN_DIR`
-at that directory. Do not rename a Kaggle ZIP or a parquet download to
-`ILSVRC2012_img_train.tar`; the nested-tar extraction path expects the original
-classification training archive.
+Plan for approximately **500 GiB of free shared disk** for downloaded parquet
+files, the Arrow build cache, the saved training dataset, target caches and
+checkpoints. This is a planning estimate, not an exact size requirement. Each
+concurrent training task also needs room for a complete node-local input copy.
 
-The preparation job does not acquire ImageNet or accept access terms.
-The existing `data/imagenet_val` cache is used only for probe validation,
-never as pretraining data. It must be a HuggingFace `save_to_disk` dataset
-with `image` and `label` columns, or a DatasetDict with a `validation` split.
-WNID label names are remapped to training folder indices; otherwise labels
-must be the official ImageNet-1K IDs in lexicographic WNID order.
-If the existing validation cache has not yet been copied to `CP_new`, reuse it:
+The validation cache is used only for probe validation, never as pretraining
+data. It must be a Hugging Face `save_to_disk` dataset with `image` and `label`
+columns, or a DatasetDict with a `validation` split. WNID label names are remapped
+to training class indices; otherwise labels must be the official ImageNet-1K IDs
+in lexicographic WNID order. Optionally reuse the previous validation cache before
+submission, but do not create an empty destination unless copying into it:
 
 ```bash
 mkdir -p "$IMAGENET_VAL_DIR"
@@ -119,19 +104,34 @@ rsync -a --info=progress2 \
     /scratch/gs4133/zhd/CP/data/imagenet_val/ "$IMAGENET_VAL_DIR/"
 ```
 
-Preparation validates the exact training image/class counts and downloads or
-reuses the three target caches under `CP_ROOT/data/stable_datasets`.
-It also prepares five validation images per class using seed 42 under
+Preparation also downloads or reuses the three target caches under
+`CP_ROOT/data/stable_datasets`, and prepares five validation images per class
+using seed 42 under
 `data/source_imagenet_validation_5000`, preserving images, labels and indices.
 
-Every training job stages the full ImageNet training folder and all three target
+Every training job stages the full ImageNet training dataset and all three target
 caches on node-local storage, including condition A for held-out evaluation.
 The prepared 5,000-image validation subset is staged locally as well.
-Provision enough shared disk for the archive, extracted images, and target
-caches, and enough local disk for a complete staged copy per concurrent job.
 Staging uses `CP_NODE_TMPDIR`, then `SLURM_TMPDIR`, then writable `/tmpdata` or `/tmp`.
 Do not point scratch at the shared source directory. Local copies are temporary;
 checkpoints and outputs remain under `CP_ROOT/outputs`.
+
+### Optional Local ImageNet Source
+
+To use an existing complete ImageFolder instead, set `IMAGENET_SOURCE=local`,
+point `IMAGENET_TRAIN_DIR` at its 1,000 WNID class directories, and unset
+`IMAGENET_TRAIN_ARCHIVE`. The original nested training archive is also accepted:
+
+```bash
+export IMAGENET_SOURCE=local
+export IMAGENET_TRAIN_DIR="$CP_ROOT/data/imagenet/train"
+export IMAGENET_TRAIN_ARCHIVE="$CP_ROOT/data/ILSVRC2012_img_train.tar"
+```
+
+In archive mode the preparation job extracts the archive and reuses completed
+class directories after interruption. Local mode requires an existing validation
+cache at `IMAGENET_VAL_DIR`; it does not download ImageNet. Do not rename a
+parquet file or another archive format to `ILSVRC2012_img_train.tar`.
 
 ## Submit And Resume
 
@@ -174,7 +174,8 @@ environment variables such as `SBATCH_PARTITION`, `SBATCH_ACCOUNT`, and
 Use `SOURCE_TASKS='0-1%1'` to allow only one H200 training task at a time.
 If preparation fails, its dependent array cannot start. Fix the preparation
 error, cancel that still-pending array, and rerun the submission script; completed
-shared caches and extracted ImageNet class folders are reused.
+shared datasets and download caches are reused. A partial Arrow export may need
+to be rebuilt, but already downloaded Hugging Face files are cached.
 
 Short runs also evaluate initial/final geometry and stage the full datasets.
 Their warmup is shortened automatically; their outputs are not full-budget
@@ -184,6 +185,8 @@ Training always passes `--resume`. After preparation has succeeded, resubmit onl
 interrupted task IDs without rerunning preparation or cancelling other jobs:
 
 ```bash
+export SOURCE_STEPS=500400
+export SOURCE_OUTPUT_DIR="$CP_ROOT/outputs/source_coverage_v1"
 sbatch --chdir="$CP_REPO_ROOT" --export=ALL --array='0-1%2' \
     --output="$CP_ROOT/outputs/slurm-log/source-%A_%a.out" \
     --error="$CP_ROOT/outputs/slurm-log/source-%A_%a.err" \

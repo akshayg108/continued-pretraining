@@ -9,8 +9,13 @@ fi
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/run/precp_env.sh"
 export IMAGENET_TRAIN_DIR="${IMAGENET_TRAIN_DIR:-$CP_ROOT/data/imagenet/train}"
+export IMAGENET_SOURCE="${IMAGENET_SOURCE:-hf}"
 export SOURCE_OUTPUT_DIR="${SOURCE_OUTPUT_DIR:-$CP_ROOT/outputs/source_coverage_v1}"
-if [[ ! -d "$IMAGENET_TRAIN_DIR" && ! -f "${IMAGENET_TRAIN_ARCHIVE:-}" ]]; then
+if [[ "$IMAGENET_SOURCE" != hf && "$IMAGENET_SOURCE" != local ]]; then
+    printf 'IMAGENET_SOURCE must be hf or local\n' >&2
+    exit 2
+fi
+if [[ "$IMAGENET_SOURCE" == local && ! -d "$IMAGENET_TRAIN_DIR" && ! -f "${IMAGENET_TRAIN_ARCHIVE:-}" ]]; then
     printf 'Provide the full ImageNet training folder or IMAGENET_TRAIN_ARCHIVE: %s\n' "$IMAGENET_TRAIN_DIR" >&2
     exit 1
 fi

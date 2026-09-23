@@ -29,9 +29,15 @@ ARGS=("$STAGE" --root "$CP_ROOT"
     --imagenet-val-dir "${IMAGENET_VAL_DIR:-$CP_ROOT/data/imagenet_val}"
     --output-dir "${SOURCE_OUTPUT_DIR:-$CP_ROOT/outputs/source_coverage_v1}")
 if [[ "$STAGE" == prepare ]]; then
-    if [[ -n "${IMAGENET_TRAIN_ARCHIVE:-}" ]]; then
-        ARGS+=(--imagenet-archive "$IMAGENET_TRAIN_ARCHIVE")
-    fi
+    case "${IMAGENET_SOURCE:-hf}" in
+        hf) ARGS+=(--download-imagenet) ;;
+        local)
+            if [[ -n "${IMAGENET_TRAIN_ARCHIVE:-}" ]]; then
+                ARGS+=(--imagenet-archive "$IMAGENET_TRAIN_ARCHIVE")
+            fi
+            ;;
+        *) printf 'IMAGENET_SOURCE must be hf or local\n' >&2; exit 2 ;;
+    esac
 else
     TASK="${SLURM_ARRAY_TASK_ID:-}"
     if [[ ! "$TASK" =~ ^[0-1]$ ]]; then

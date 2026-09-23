@@ -27,6 +27,7 @@ from run.source_pretrain_data import (
     ShuffledStepSampler,
     build_train_dataset,
     build_validation_dataset,
+    download_imagenet,
     make_transforms,
     prepare_imagenet_validation,
     prepare_sources,
@@ -315,6 +316,9 @@ def run_training(args):
             pin_memory=True,
         )
         config = configuration(args, sizes)
+        source_metadata = imagenet / "source.json"
+        if source_metadata.is_file():
+            config["imagenet_source"] = json.loads(source_metadata.read_text())
         config["online_validation"] = val_dataset.metadata
         config_path = directory / "config.json"
         if config_path.exists() and json.loads(config_path.read_text()) != config:
@@ -394,6 +398,11 @@ def main():
     parser.add_argument("--imagenet-dir", type=Path)
     parser.add_argument("--imagenet-val-dir", type=Path)
     parser.add_argument("--imagenet-archive", type=Path)
+    parser.add_argument(
+        "--download-imagenet",
+        action="store_true",
+        help="Download missing train/validation splits from the pinned ILSVRC/imagenet-1k repository",
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--condition", choices=["imagenet", "mixed"])
     parser.add_argument("--seed", type=int, default=42)
@@ -415,8 +424,16 @@ def main():
     if args.steps < 2 or args.checkpoint_every < 1 or args.num_workers < 0:
         parser.error("Require steps >= 2, checkpoint-every >= 1, and num-workers >= 0")
     if args.command == "prepare":
+        if args.download_imagenet and args.imagenet_archive:
+            parser.error("Choose --download-imagenet or --imagenet-archive, not both")
         if args.imagenet_archive:
             unpack_imagenet(args.imagenet_archive.expanduser().resolve(), args.imagenet_dir)
+        if args.download_imagenet:
+            download_imagenet(
+                args.imagenet_dir,
+                args.imagenet_val_dir,
+                args.root / "data/huggingface/datasets",
+            )
         sizes = prepare_sources(args.root / "data", args.imagenet_dir)
         prepare_imagenet_validation(args.root / "data", args.imagenet_dir, args.imagenet_val_dir)
         write_json(

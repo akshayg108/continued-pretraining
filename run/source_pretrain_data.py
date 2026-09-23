@@ -4,12 +4,13 @@ from contextlib import ExitStack, contextmanager
 import json
 from pathlib import Path
 import re
+import signal
 import tempfile
 
 import torch
 from torch.utils.data import ConcatDataset, Dataset, Sampler
 
-from run.data_cache import prepare_dataset, staged_dataset, staged_directory
+from run.data_cache import _terminate, prepare_dataset, staged_dataset, staged_directory
 
 TARGETS = ("octmnist", "pathmnist", "galaxy10")
 DOMAIN_NAMES = ("imagenet", *TARGETS)
@@ -17,6 +18,66 @@ SPLIT_SEED = 42
 VALIDATION_CLASSES = 1000
 VALIDATION_PER_CLASS = 5
 VALIDATION_CACHE = "source_imagenet_validation_5000"
+IMAGENET_REPO = "ILSVRC/imagenet-1k"
+IMAGENET_REVISION = "49e2ee26f3810fb5a7536bbf732a7b07389a47b5"
+IMAGENET_SPLIT_SIZES = {"train": 1_281_167, "validation": 50_000}
+
+
+def download_imagenet(imagenet_dir, validation_dir, cache_dir):
+    """Download authorized HF splits once and save self-contained offline datasets."""
+    from datasets import ClassLabel, Features, Image, load_dataset
+    from timm.data import ImageNetInfo
+    import numpy as np
+
+    features = Features(
+        {
+            "image": Image(),
+            "label": ClassLabel(names=ImageNetInfo("imagenet-1k").label_names()),
+        }
+    )
+    for split, destination in (("train", imagenet_dir), ("validation", validation_dir)):
+        destination = Path(destination).expanduser().resolve()
+        if destination.is_dir() and any(destination.iterdir()):
+            print(f"REUSE ImageNet {split}: {destination}", flush=True)
+            continue
+        if destination.is_dir():
+            destination.rmdir()
+        print(
+            f"DOWNLOAD {IMAGENET_REPO} split={split} revision={IMAGENET_REVISION}", flush=True
+        )
+        source = load_dataset(
+            IMAGENET_REPO,
+            revision=IMAGENET_REVISION,
+            data_files={split: f"data/{split}-*.parquet"},
+            split=split,
+            features=features,
+            token=True,
+            cache_dir=str(cache_dir),
+        )
+        if len(source) != IMAGENET_SPLIT_SIZES[split] or not np.array_equal(
+            np.unique(source["label"]), np.arange(1000)
+        ):
+            raise ValueError(f"Incomplete ImageNet {split}: {len(source):,} rows")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        previous_handler = signal.signal(signal.SIGTERM, _terminate)
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix=".imagenet-", dir=destination.parent
+            ) as temporary:
+                prepared = Path(temporary) / "dataset"
+                source.cast_column("image", Image(decode=False)).save_to_disk(str(prepared))
+                metadata = {
+                    "repo_id": IMAGENET_REPO,
+                    "revision": IMAGENET_REVISION,
+                    "split": split,
+                    "num_images": len(source),
+                    "label_mapping": "official_numeric_ids_to_sorted_wnids",
+                }
+                (prepared / "source.json").write_text(json.dumps(metadata, indent=2) + "\n")
+                prepared.rename(destination)
+        finally:
+            signal.signal(signal.SIGTERM, previous_handler)
+        print(f"DOWNLOADED ImageNet {split}: {destination}", flush=True)
 
 
 def _imagenet_dataset(imagenet_dir):
@@ -25,10 +86,19 @@ def _imagenet_dataset(imagenet_dir):
     imagenet_dir = Path(imagenet_dir).expanduser().resolve()
     if not imagenet_dir.is_dir():
         raise FileNotFoundError(imagenet_dir)
-    dataset = ImageFolder(str(imagenet_dir))
-    if len(dataset) != 1_281_167 or len(dataset.classes) != 1000:
+    if (imagenet_dir / "state.json").is_file():
+        from datasets import Image, load_from_disk
+        from timm.data import ImageNetInfo
+
+        dataset = load_from_disk(str(imagenet_dir)).cast_column("image", Image())
+        dataset.classes = dataset.features["label"].names
+        if dataset.classes != ImageNetInfo("imagenet-1k").label_names():
+            raise ValueError("Prepared HF ImageNet labels must use canonical WNID order")
+    else:
+        dataset = ImageFolder(str(imagenet_dir))
+    if len(dataset) != IMAGENET_SPLIT_SIZES["train"] or len(dataset.classes) != 1000:
         raise ValueError(
-            "ImageNet must be the complete training ImageFolder with 1,281,167 "
+            "ImageNet must be the complete training dataset with 1,281,167 "
             f"images and 1,000 classes, not validation: {imagenet_dir} has "
             f"{len(dataset):,} images and {len(dataset.classes):,} classes"
         )

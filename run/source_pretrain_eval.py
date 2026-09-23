@@ -338,7 +338,10 @@ def report_results(output_root: Path):
             continue
         a_config, a_initial, a_final = runs[("imagenet", seed)]
         b_config, b_initial, b_final = runs[("mixed", seed)]
-        if not _matching(a_config, b_config, PAIR_CONFIG_KEYS):
+        if (
+            not _matching(a_config, b_config, PAIR_CONFIG_KEYS)
+            or a_config.get("imagenet_source") != b_config.get("imagenet_source")
+        ):
             print(f"UNPAIRED seed{seed}: source-pretraining configurations differ", flush=True)
             continue
         for name in TARGETS:
