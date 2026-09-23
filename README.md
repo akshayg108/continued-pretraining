@@ -5,6 +5,9 @@ and post-CP evaluation. CP methods are `lejepa`, `simclr`, `diet`, and `mae`.
 Frozen evaluation uses weighted cosine kNN and a PyTorch linear probe.
 Optional supervised fine-tuning (FT) is retained.
 
+The separate [source-coverage experiment](run/SOURCE_PRETRAIN.md) trains paired
+ViT-B models from scratch on ImageNet alone or ImageNet plus three target domains.
+
 ## Installation
 
 Use Python 3.10 or newer and a CUDA-compatible PyTorch installation for GPU jobs.
@@ -65,7 +68,7 @@ created with the pinned version, not for migration of old training state.
 
 All training and evaluation transforms read mean/std from the loaded encoder's
 `pretrained_cfg`. Dataset-specific normalization and random initialization are
-not options on this branch. The existing 224-pixel resize/crop and augmentation
+not options in the CP entry point. The existing 224-pixel resize/crop and augmentation
 recipes are unchanged; official normalization does not mean replacing the whole
 training transform with the model's inference transform.
 
