@@ -13,9 +13,16 @@ Use Python 3.10 or newer and a CUDA-compatible PyTorch installation for GPU jobs
 python -m pip install -e '.[dev]'
 ```
 
-This installs `stable-pretraining` and `stable-datasets` from the repositories
-listed in `pyproject.toml`. Model weights are downloaded by TIMM; some checkpoints
-require a Hugging Face account with access to the model.
+This installs the lab's `galilai-group/stable-pretraining`, pinned to tested
+commit `9aa93f8b`, and `stable-datasets` from `pyproject.toml`. The former personal
+SPT fork is no longer required. Model weights are downloaded by TIMM; some
+checkpoints require a Hugging Face account with access to the model.
+
+For local SPT development, the nested checkout can be installed explicitly:
+
+```bash
+python -m pip install -e ./stable-pretraining
+```
 
 ## Run
 
@@ -49,6 +56,10 @@ pre/post kNN and LP scores, normalization, and the training configuration.
 Checkpoints are stored under `CHECKPOINT_DIR/METHOD/`. Use separate directories
 when changing the training recipe.
 
+Start new runs in a new checkpoint directory after upgrading from the old SPT
+fork. Old MAE decoder checkpoint keys differ. `--resume` is tested for checkpoints
+created with the pinned version, not for migration of old training state.
+
 ## Preprocessing And Evaluation
 
 All training and evaluation transforms read mean/std from the loaded encoder's
@@ -70,6 +81,21 @@ the sampled training indices. kNN uses clean training features; LP uses the
 existing augmented training features. Frozen pre/post evaluation uses the same test
 split and L2-normalized features. Dataset readers and split rules live in
 `stable_cp/data/`.
+
+`--n-samples` specifies the exact number of distinct training images. Sampling
+follows class proportions while ensuring at least one image per class, so the
+budget must be at least the class count. For the nominal 100-image setting,
+pass the class count instead when it exceeds 100.
+
+SPT's `OnlineKNN` and `OnlineProbe` monitor training; they do not replace frozen
+pre/post evaluation. The reported kNN keeps sklearn inverse-cosine-distance
+weighting, and LP keeps the existing normalized-feature Adam protocol.
+
+SPT now handles gradient accumulation inside `Module` via `Manager`; CP forwards
+return unscaled losses. Logged losses are therefore unscaled, and `global_step`
+counts main optimizer updates rather than also counting online-probe updates.
+Upstream also fixes distributed SimCLR to use cross-rank negatives; multi-GPU
+results are not numerically equivalent to runs with the old fork.
 
 Physical batch size and gradient accumulation remain explicit; they are not
 automatically changed based on GPU type. Existing recipe examples:

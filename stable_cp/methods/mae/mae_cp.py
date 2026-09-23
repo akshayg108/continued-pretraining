@@ -3,7 +3,7 @@
 import stable_pretraining as spt
 from stable_pretraining.backbone import MaskedEncoder, PatchMasking
 from stable_pretraining.backbone.vit import MAEDecoder
-from stable_pretraining.utils import MAELoss
+from stable_pretraining.losses import MAELoss
 
 from .mae_cp_forward import mae_forward
 

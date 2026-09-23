@@ -1,4 +1,4 @@
-from .common_callback import FreezeBackboneCallback, GradientClipCallback
+from .common_callback import FreezeBackboneCallback
 from .continued_pretraining_metrics import (
     create_cp_linear_probe,
     create_cp_knn_probe,
@@ -7,7 +7,6 @@ from .continued_pretraining_metrics import (
 
 __all__ = [
     "FreezeBackboneCallback",
-    "GradientClipCallback",
     "create_cp_linear_probe",
     "create_cp_knn_probe",
     "create_cp_evaluation_callbacks",

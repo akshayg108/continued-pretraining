@@ -72,8 +72,9 @@ def test_wrapper_accepts_current_arrow_dataset_and_does_not_mutate_rows(data_api
     assert dataset.labels.tolist() == [0, 1, 0, 1]
 
 
-def test_legacy_sampling_reads_arrow_labels_and_preserves_selection(data_api):
-    labels = np.repeat(np.arange(4), 20)
+@pytest.mark.parametrize("counts", [[20, 20, 20, 20], [70, 20, 10]])
+def test_sampling_reads_arrow_labels_and_preserves_selection(data_api, counts):
+    labels = np.repeat(np.arange(len(counts)), counts)
     source = arrow_dataset(labels.tolist())
     dataset = data_api.HFDatasetWrapper(source)
     args = SimpleNamespace(n_samples=20, seed=43)
@@ -86,6 +87,29 @@ def test_legacy_sampling_reads_arrow_labels_and_preserves_selection(data_api):
     selected = data_api.loaders._sample_shared_train_indices_by_class(args, dataset)
     assert selected == expected.tolist()
     assert len(set(selected)) == 20
+
+
+@pytest.mark.parametrize(
+    "counts,budget,expected",
+    [
+        ([6000] + [2] * 29, 1000, [971] + [1] * 29),
+        ([100, 2, 2], 10, [8, 1, 1]),
+        ([100, 1, 1], 10, [8, 1, 1]),
+        ([8, 1, 1], 9, [7, 1, 1]),
+        ([100, 2, 2], 3, [1, 1, 1]),
+        ([8, 1, 1], 10, [8, 1, 1]),
+    ],
+)
+def test_sampling_preserves_budget_and_covers_every_class(data_api, counts, budget, expected):
+    labels = np.repeat(np.arange(len(counts)), counts)
+    dataset = data_api.HFDatasetWrapper(arrow_dataset(labels.tolist()))
+    args = SimpleNamespace(n_samples=budget, seed=42)
+
+    selected = data_api.loaders._sample_shared_train_indices_by_class(args, dataset)
+
+    assert len(selected) == len(set(selected)) == budget
+    assert np.bincount(labels[selected], minlength=len(counts)).tolist() == expected
+    assert selected == data_api.loaders._sample_shared_train_indices_by_class(args, dataset)
 
 
 def test_fixed_split_uses_exact_sampling_and_subset_local_ids(data_api):

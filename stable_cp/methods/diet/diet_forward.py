@@ -55,7 +55,7 @@ def diet_forward(self, batch, stage):
             diet_total_loss = self.diet_loss(
                 logits, sample_idx
             )  # hard targets with label_smoothing
-        out["loss"] = self.rescale_loss_for_grad_acc(diet_total_loss)
+        out["loss"] = diet_total_loss
         self.log(f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True)
 
     return out

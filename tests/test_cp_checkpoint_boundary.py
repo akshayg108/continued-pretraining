@@ -1,7 +1,6 @@
 """Test CP save/resume separation without importing the optional cluster stack."""
 
 import ast
-import inspect
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -16,6 +15,7 @@ def runner():
         n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_training"
     )
     calls = []
+    config = SimpleNamespace(cache_dir="/tmp/shared-spt-cache")
 
     class ModelCheckpoint:
         def __init__(self, **kwargs):
@@ -36,16 +36,16 @@ def runner():
             calls.append(("manager", dict(path=ckpt_path, weights_only=weights_only)))
 
         def __call__(self):
+            assert config.cache_dir is None
             calls.append(("fit", None))
 
     namespace = dict(
         Path=Path,
-        inspect=inspect,
         tempfile=tempfile,
         ModelCheckpoint=ModelCheckpoint,
         SLURMEnvironment=SimpleNamespace(detect=lambda: False),
         pl=SimpleNamespace(Trainer=Trainer),
-        spt=SimpleNamespace(Manager=Manager),
+        spt=SimpleNamespace(Manager=Manager, get_config=lambda: config),
         FreezeBackboneCallback=lambda **kw: object(),
         create_cp_evaluation_callbacks=lambda *a, **kw: [],
         LearningRateMonitor=lambda **kw: object(),
@@ -60,11 +60,11 @@ def runner():
         seed=42,
         resume=True,
     )
-    return namespace["run_training"], calls, args, ModelCheckpoint
+    return namespace["run_training"], calls, args, ModelCheckpoint, config
 
 
 def test_fresh_cp_has_a_save_destination_but_no_restore_path(tmp_path):
-    run, calls, args, saver_type = runner()
+    run, calls, args, saver_type, config = runner()
     path = tmp_path / "cp" / "fresh.ckpt"
     run(object(), object(), args, {"num_classes": 2}, 768, 15, None, str(path))
     assert next(value for kind, value in calls if kind == "manager")["path"] is None
@@ -74,10 +74,11 @@ def test_fresh_cp_has_a_save_destination_but_no_restore_path(tmp_path):
     assert saver.kwargs["save_last"] is False
     assert saver.kwargs["enable_version_counter"] is False
     assert path.read_bytes() == b"completed CP weights"
+    assert config.cache_dir == "/tmp/shared-spt-cache"
 
 
 def test_existing_cp_is_resumed_with_optimizer_state(tmp_path):
-    run, calls, args, _ = runner()
+    run, calls, args, _, _ = runner()
     path = tmp_path / "existing.ckpt"
     path.write_bytes(b"old progress")
     run(object(), object(), args, {"num_classes": 2}, 768, 15, None, str(path))
@@ -87,7 +88,7 @@ def test_existing_cp_is_resumed_with_optimizer_state(tmp_path):
 
 
 def test_existing_cp_is_never_deleted_for_a_non_resume_launch(tmp_path):
-    run, calls, args, _ = runner()
+    run, calls, args, _, _ = runner()
     args.resume = False
     path = tmp_path / "existing.ckpt"
     path.write_bytes(b"keep CP weights")
@@ -98,9 +99,22 @@ def test_existing_cp_is_never_deleted_for_a_non_resume_launch(tmp_path):
 
 
 def test_resume_rejects_a_directory_before_training(tmp_path):
-    run, calls, args, _ = runner()
+    run, calls, args, _, _ = runner()
     path = tmp_path / "directory.ckpt"
     path.mkdir()
     with pytest.raises(ValueError, match="file"):
         run(object(), object(), args, {"num_classes": 2}, 768, 15, None, str(path))
     assert not any(kind == "fit" for kind, value in calls)
+
+
+def test_training_failure_restores_spt_cache(tmp_path, monkeypatch):
+    run, _, args, _, config = runner()
+
+    def fail(self):
+        assert config.cache_dir is None
+        raise RuntimeError("Training failed")
+
+    monkeypatch.setattr(run.__globals__["spt"].Manager, "__call__", fail)
+    with pytest.raises(RuntimeError, match="Training failed"):
+        run(object(), object(), args, {"num_classes": 2}, 768, 15, None, tmp_path / "cp.ckpt")
+    assert config.cache_dir == "/tmp/shared-spt-cache"

@@ -108,17 +108,3 @@ class FreezeBackboneCallback(pl.Callback):
                 return layers
 
         return None
-
-
-class GradientClipCallback(pl.Callback):
-    def __init__(self, max_norm: float = 1.0, norm_type: float = 2.0):
-        super().__init__()
-        self.max_norm = max_norm
-        self.norm_type = norm_type
-
-    def on_before_optimizer_step(self, trainer, pl_module, optimizer):
-        torch.nn.utils.clip_grad_norm_(
-            pl_module.parameters(),
-            max_norm=self.max_norm,
-            norm_type=self.norm_type,
-        )

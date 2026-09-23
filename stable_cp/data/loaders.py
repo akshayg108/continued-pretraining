@@ -2,8 +2,6 @@
 import math
 
 import torch
-import numpy as np
-from sklearn.model_selection import train_test_split
 import stable_pretraining as spt
 from stable_pretraining.data import transforms
 from stable_pretraining.data.transforms import MultiViewTransform
@@ -99,49 +97,11 @@ class CPSubset(torch.utils.data.Dataset):
 
 
 def _sample_shared_train_indices_by_class(args, dataset):
-    """Share a stratified subset across training and frozen evaluation."""
+    """Share an exact-size stratified subset with at least one sample per class."""
     n_total = len(dataset)
     if args.n_samples > n_total:
         raise ValueError(f"--n-samples ({args.n_samples}) must be <= dataset size ({n_total})")
-    if args.n_samples >= n_total:
-        return list(range(n_total))
-
-    all_indices = np.arange(n_total)
-
-    all_labels = dataset.labels
-    if getattr(dataset.hf_dataset, "heldout", False):
-        return exact_train_indices(all_labels, args.n_samples, args.seed)
-
-    unique_labels = np.unique(all_labels)
-    n_classes = len(unique_labels)
-
-    def _one_per_class(reason):
-        print(
-            f"[warn] {reason}; falling back to 1-sample-per-class sampling "
-            f"(requested n={args.n_samples}, returning {n_classes} samples)"
-        )
-        rng = np.random.RandomState(args.seed)
-        selected = []
-        for lbl in unique_labels:
-            class_indices = all_indices[all_labels == lbl]
-            selected.append(int(rng.choice(class_indices)))
-        rng.shuffle(selected)
-        return selected
-
-    selected_indices, _ = train_test_split(
-        all_indices,
-        train_size=args.n_samples,
-        stratify=all_labels,
-        random_state=args.seed,
-    )
-
-    selected_labels = all_labels[selected_indices]
-    if len(np.unique(selected_labels)) < n_classes:
-        return _one_per_class(
-            f"stratified split covered only "
-            f"{len(np.unique(selected_labels))}/{n_classes} classes"
-        )
-    return selected_indices.tolist()
+    return exact_train_indices(dataset.labels, args.n_samples, args.seed)
 
 
 def create_eval_loaders(

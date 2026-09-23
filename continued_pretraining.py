@@ -2,7 +2,6 @@
 """Pretrained encoder evaluation, continued pretraining, and post-CP evaluation."""
 
 import argparse
-import inspect
 import json
 from pathlib import Path
 import tempfile
@@ -15,9 +14,6 @@ from lightning.pytorch.plugins.environments import SLURMEnvironment
 
 import stable_pretraining as spt
 from stable_pretraining.backbone.utils import from_timm
-from stable_pretraining.utils.lightning_patch import apply_manual_optimization_patch
-
-apply_manual_optimization_patch()
 
 from stable_cp.callbacks import (
     FreezeBackboneCallback,
@@ -402,19 +398,11 @@ def run_training(
             save_on_train_epoch_end=True,
         ),
     ]
-    # Save destinations are not restore inputs. Newer Manager versions reject
-    # nonexistent ckpt_path and can otherwise share a job-level cache across seeds.
-    config = spt.get_config() if hasattr(spt, "get_config") else None
-    has_cache = config is not None and hasattr(config, "cache_dir")
-    previous_cache = config.cache_dir if has_cache else None
-    manager_options = (
-        {"weights_only": False}
-        if "weights_only" in inspect.signature(spt.Manager).parameters
-        else {}
-    )
+    # Keep checkpoint paths explicit and independent of SPT's job-level cache.
+    config = spt.get_config()
+    previous_cache = config.cache_dir
     try:
-        if has_cache:
-            config.cache_dir = None
+        config.cache_dir = None
         with tempfile.TemporaryDirectory(prefix="cp-trainer-") as trainer_root:
             trainer = pl.Trainer(
                 max_epochs=args.epochs,
@@ -435,12 +423,11 @@ def run_training(
                 data=data,
                 ckpt_path=resume_path,
                 seed=args.seed,
-                **manager_options,
+                weights_only=False,
             )()
             trainer.save_checkpoint(str(checkpoint))
     finally:
-        if has_cache:
-            config.cache_dir = previous_cache
+        config.cache_dir = previous_cache
 
 
 def main():

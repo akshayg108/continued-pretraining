@@ -1,5 +1,6 @@
 import torch.nn as nn
 import stable_pretraining as spt
+from stable_pretraining.backbone import BatchNorm1dNoBias
 from stable_pretraining.losses import NTXEntLoss
 
 from .simclr_cp_forward import simclr_cp_forward
@@ -11,7 +12,7 @@ def build_simclr_projector(embed_dim, hidden_dim, proj_dim):
         nn.BatchNorm1d(hidden_dim),
         nn.ReLU(inplace=True),
         nn.Linear(hidden_dim, proj_dim, bias=False),
-        spt.utils.BatchNorm1dNoBias(proj_dim),
+        BatchNorm1dNoBias(proj_dim),
     )
 
 
