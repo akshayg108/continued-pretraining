@@ -1,4 +1,5 @@
 """Exercise the SFT boundary with real torch parameters and a tiny trainer."""
+
 import importlib.util
 import os
 from pathlib import Path
@@ -75,12 +76,17 @@ def sft(monkeypatch):
     package.__path__ = []
     evaluation = types.ModuleType("_sft_test_package.zero_shot_eval")
     evaluation.finetune_evaluate = lambda *a, **k: {
-        "finetune_acc": 0.5, "finetune_f1": 0.5, "finetune_auroc": 0.5
+        "finetune_acc": 0.5,
+        "finetune_f1": 0.5,
+        "finetune_auroc": 0.5,
     }
-    for name, value in {"lightning": lightning, "stable_pretraining": library,
-                        "lightning.pytorch.plugins.environments": environments,
-                        "_sft_test_package": package,
-                        "_sft_test_package.zero_shot_eval": evaluation}.items():
+    for name, value in {
+        "lightning": lightning,
+        "stable_pretraining": library,
+        "lightning.pytorch.plugins.environments": environments,
+        "_sft_test_package": package,
+        "_sft_test_package.zero_shot_eval": evaluation,
+    }.items():
         monkeypatch.setitem(sys.modules, name, value)
     path = Path(__file__).resolve().parents[1] / "stable_cp/evaluation/sft_eval.py"
     spec = importlib.util.spec_from_file_location("_sft_test_package.sft_eval", path)
@@ -101,9 +107,17 @@ class Backbone(nn.Module):
 
 
 def evaluate(module, backbone, **kwargs):
-    return module.sft_evaluate(backbone, object(), [], torch.device("cpu"),
-                               num_classes=2, embed_dim=4, n_samples=32,
-                               verbose=False, **kwargs)
+    return module.sft_evaluate(
+        backbone,
+        object(),
+        [],
+        torch.device("cpu"),
+        num_classes=2,
+        embed_dim=4,
+        n_samples=32,
+        verbose=False,
+        **kwargs,
+    )
 
 
 def test_partial_cp_mask_is_removed_before_optimizer_creation(sft):
@@ -215,5 +229,7 @@ def test_cp_callback_mainrule_mask_on_map_backbone(monkeypatch, depth):
     assert all(not p.requires_grad for p in backbone.parameters())
     callback.on_train_epoch_start(types.SimpleNamespace(current_epoch=15), wrapper)
     for name, param in backbone.named_parameters():
-        expected = depth == -1 or (name.startswith("blocks.") and int(name.split(".")[1]) >= 12 - depth)
+        expected = depth == -1 or (
+            name.startswith("blocks.") and int(name.split(".")[1]) >= 12 - depth
+        )
         assert param.requires_grad == expected, name

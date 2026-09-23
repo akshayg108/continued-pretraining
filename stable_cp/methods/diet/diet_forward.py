@@ -4,16 +4,13 @@ from torchvision.transforms import v2
 
 
 def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
-    # Extract embedding: CLS token for DINOv2/MAE, mean pooling for I-JEPA, MAP for SigLIP
     if backbone_output.ndim == 3:
-        # Token sequence from TIMM ViT
         tokens = backbone_output
         if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout)
             return backbone.fc_norm(backbone.attn_pool(tokens))
         if pool_strategy == "mean":
             return tokens[:, 1:, :].mean(dim=1)  # Mean over patch tokens (exclude CLS)
         return tokens[:, 0, :]  # CLS token (default)
-    # Already 2D (ResNet or pooled)
     return backbone_output
 
 
@@ -30,25 +27,20 @@ def diet_forward(self, batch, stage):
             if not hasattr(self, "_mixup_cutmix"):
                 t = []
                 if self.mixup_alpha > 0:
-                    t.append(
-                        v2.MixUp(alpha=self.mixup_alpha, num_classes=self.num_samples)
-                    )
+                    t.append(v2.MixUp(alpha=self.mixup_alpha, num_classes=self.num_samples))
                 if self.cutmix_alpha > 0:
-                    t.append(
-                        v2.CutMix(alpha=self.cutmix_alpha, num_classes=self.num_samples)
-                    )
+                    t.append(v2.CutMix(alpha=self.cutmix_alpha, num_classes=self.num_samples))
                 if len(t) > 1:
                     switch_prob = getattr(self, "mixup_cutmix_switch_prob", 0.5)
-                    self._mixup_cutmix = v2.RandomChoice(
-                        t, p=[1 - switch_prob, switch_prob]
-                    )
+                    self._mixup_cutmix = v2.RandomChoice(t, p=[1 - switch_prob, switch_prob])
                 else:
                     self._mixup_cutmix = t[0]
             images, sample_idx = self._mixup_cutmix(images, sample_idx)
 
-    # Extract embedding (pool_strategy: "cls" for DINOv2/MAE, "mean" for I-JEPA)
     pool_strategy = getattr(self, "pool_strategy", "cls")
-    embedding = _extract_embedding(self.backbone.forward_features(images), pool_strategy, backbone=self.backbone)
+    embedding = _extract_embedding(
+        self.backbone.forward_features(images), pool_strategy, backbone=self.backbone
+    )
     out["embedding"] = embedding
 
     if "label" in batch:
@@ -64,8 +56,6 @@ def diet_forward(self, batch, stage):
                 logits, sample_idx
             )  # hard targets with label_smoothing
         out["loss"] = self.rescale_loss_for_grad_acc(diet_total_loss)
-        self.log(
-            f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True
-        )
+        self.log(f"{stage}/loss", out["loss"], on_step=True, on_epoch=True, sync_dist=True)
 
     return out

@@ -1,11 +1,5 @@
-#!/usr/bin/env python
-"""MAE Continued Pretraining.
+"""MAE CP with image-level masking, a decoder, and masked-patch reconstruction."""
 
-Uses the full MAE pipeline from stable-pretraining: image-level patch masking
-via MaskedEncoder, reconstruction via MAEDecoder, and MSE loss on masked patches.
-The pretrained backbone is wrapped inside MaskedEncoder so that masking happens
-*before* encoding — matching the original MAE paper.
-"""
 import stable_pretraining as spt
 from stable_pretraining.backbone import MaskedEncoder, PatchMasking
 from stable_pretraining.backbone.vit import MAEDecoder

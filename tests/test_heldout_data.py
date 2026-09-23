@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -21,9 +20,7 @@ def module():
 
 def test_eight_datasets_and_class_counts():
     data = module()
-    assert {
-        name: cfg["num_classes"] for name, cfg in data.HELDOUT_DATASETS.items()
-    } == {
+    assert {name: cfg["num_classes"] for name, cfg in data.HELDOUT_DATASETS.items()} == {
         "bloodmnist": 8,
         "tissuemnist": 8,
         "aid": 30,
@@ -60,9 +57,7 @@ def test_exact_sampling_covers_rare_classes_without_shrinking_budget():
         assert len(indices) == len(set(indices)) == 1000
         assert len(np.unique(labels[indices])) == 102
         assert indices == data.exact_train_indices(labels, 1000, seed)
-    assert data.exact_train_indices(labels, 1000, 42) != data.exact_train_indices(
-        labels, 1000, 43
-    )
+    assert data.exact_train_indices(labels, 1000, 42) != data.exact_train_indices(labels, 1000, 43)
 
 
 def test_ordinary_sampling_preserves_legacy_stratified_selection():
@@ -111,9 +106,7 @@ def test_index_view_keeps_source_identity_without_copying_images():
     assert source.reads == 1
 
 
-def test_real_shard_backed_dataset_supports_labels_without_decoding_images(
-    tmp_path, monkeypatch
-):
+def test_real_shard_backed_dataset_supports_labels_without_decoding_images(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "stable-datasets"))
     from PIL import Image as PILImage
     from stable_datasets.arrow_dataset import StableDataset
@@ -121,9 +114,7 @@ def test_real_shard_backed_dataset_supports_labels_without_decoding_images(
     from stable_datasets.schema import ClassLabel, DatasetInfo, Features, Image
 
     features = Features({"image": Image(), "label": ClassLabel(num_classes=2)})
-    rows = (
-        (i, {"image": PILImage.new("RGB", (4, 4)), "label": i % 2}) for i in range(10)
-    )
+    rows = ((i, {"image": PILImage.new("RGB", (4, 4)), "label": i % 2}) for i in range(10))
     meta = write_sharded_arrow_cache(
         rows, features, tmp_path / "shards", batch_size=2, shard_size_bytes=100
     )
@@ -140,12 +131,3 @@ def test_real_shard_backed_dataset_supports_labels_without_decoding_images(
     assert len(source._shard_lru) == 0
     assert view[1]["image"].size == (4, 4)
     assert view[1]["label"] == 0 and view[1]["sample_idx"] == 1
-
-
-def test_data_signature_changes_when_indices_or_test_membership_change():
-    data = module()
-    signature = data.data_signature([0, 2], [10, 12], [1, 1], [20, 21], [0, 1])
-    assert signature["n_train_actual"] == 2
-    assert signature["n_test"] == 2
-    assert signature != data.data_signature([0, 1], [10, 11], [1, 1], [20, 21], [0, 1])
-    assert signature != data.data_signature([0, 2], [10, 12], [1, 1], [20, 22], [0, 1])

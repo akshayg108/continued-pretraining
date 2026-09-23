@@ -1,13 +1,5 @@
-"""SFT (Supervised Fine-Tuning) evaluation for continued pretraining.
+"""Full supervised fine-tuning on a copy of the pre- or post-CP backbone."""
 
-SFT is an evaluation protocol, not a pretraining method.  It trains a
-backbone + classifier end-to-end on the target dataset and reports
-classification metrics (accuracy, F1, AUROC).
-
-Usage from continued_pretraining.py:
-    from stable_cp.evaluation.sft_eval import sft_evaluate
-    results = sft_evaluate(backbone, sft_data, test_loader, device, ...)
-"""
 import copy
 import tempfile
 import warnings
@@ -21,10 +13,7 @@ import stable_pretraining as spt
 
 from .zero_shot_eval import finetune_evaluate
 
-
-# ---------------------------------------------------------------------------
-# Fixed SFT evaluation hyper-parameters (not user-configurable)
-# ---------------------------------------------------------------------------
+# Fixed full-FT protocol.
 SFT_EPOCHS = 150
 SFT_LR = 1e-4
 SFT_BATCH_SIZE = 32
@@ -41,22 +30,8 @@ class _NoCheckpointTrainer(pl.Trainer):
         raise RuntimeError("FT checkpoint writes are disabled by the evaluation protocol")
 
 
-# ---------------------------------------------------------------------------
-# Forward & Module helpers (moved from stable_cp/methods/supervised/)
-# ---------------------------------------------------------------------------
-
 def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
-    """Extract embedding from backbone output (handles ViT and CNN).
-
-    Args:
-        backbone_output: Raw output from backbone.forward_features().
-            - 3-D [B, T, D] for ViT token sequences
-            - 2-D [B, D]    for CNNs / already-pooled features
-        pool_strategy: 'cls' (default) uses the CLS token; 'mean' averages
-            over patch tokens (excluding CLS); 'map' uses the SigLIP MAP
-            attention-pool head (requires `backbone` for attn_pool/fc_norm).
-        backbone: the timm backbone, only needed for pool_strategy='map'.
-    """
+    """Read CLS, patch-mean, or SigLIP attention-pooled features."""
     if backbone_output.ndim == 3:
         if pool_strategy == "map":  # SigLIP's native attention-pool readout
             return backbone.fc_norm(backbone.attn_pool(backbone_output))
@@ -67,14 +42,7 @@ def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
 
 
 def _sft_forward(self, batch, stage):
-    """Forward function compatible with ``spt.Module``.
-
-    Required module attributes set via ``spt.Module(**kwargs)``:
-        backbone, classifier, supervised_loss, pool_strategy, metric_prefix
-
-    Returns a dict with ``embedding``, ``logits``, and (if labels present)
-    ``label`` and ``loss``.
-    """
+    """Compute supervised logits and loss for ``spt.Module``."""
     out = {}
     pool_strategy = getattr(self, "pool_strategy", "cls")
     prefix = getattr(self, "metric_prefix", "sft")
@@ -106,9 +74,15 @@ def _sft_forward(self, batch, stage):
     return out
 
 
-def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
-                      label_smoothing=SFT_LABEL_SMOOTHING, pool_strategy="cls",
-                      metric_prefix="sft"):
+def _setup_sft_module(
+    backbone,
+    embed_dim,
+    optim_config,
+    num_classes,
+    label_smoothing=SFT_LABEL_SMOOTHING,
+    pool_strategy="cls",
+    metric_prefix="sft",
+):
     """Create an ``spt.Module`` configured for supervised fine-tuning."""
     classifier = nn.Linear(embed_dim, num_classes)
     return spt.Module(
@@ -121,10 +95,6 @@ def _setup_sft_module(backbone, embed_dim, optim_config, num_classes,
         optim=optim_config,
     )
 
-
-# ---------------------------------------------------------------------------
-# Main evaluation entry-point
-# ---------------------------------------------------------------------------
 
 def sft_evaluate(
     backbone: nn.Module,
@@ -142,54 +112,26 @@ def sft_evaluate(
     prefix: str = "sft",
     verbose: bool = True,
 ) -> dict:
-    """Run SFT evaluation: fine-tune a *copy* of the backbone, then evaluate.
+    """Fine-tune a copy without modifying the original model or writing FT weights.
 
-    The backbone is deep-copied so the caller's original model is never
-    modified.  This is critical for the pre-CP phase where the original
-    backbone must remain intact for subsequent continued pretraining.
-
-    All training hyper-parameters (epochs, lr, weight_decay, etc.) are
-    **fixed** module-level constants -- see ``SFT_*`` at the top of this file.
-    The caller must ensure that ``sft_data`` was built with
-    ``batch_size == SFT_BATCH_SIZE`` so the DataLoader step count matches
-    the scheduler configuration here.
-
-    Args:
-        backbone:       Backbone model to evaluate (will be deep-copied).
-        sft_data:       ``spt.data.DataModule`` with augmented training data
-                        (single-view, ``n_views=1``, ``batch_size=SFT_BATCH_SIZE``).
-        test_loader:    DataLoader for the test split (val transform).
-        device:         Target device (e.g. ``torch.device("cuda")``).
-        num_classes:    Number of target classes.
-        embed_dim:      Embedding dimension of the backbone.
-        n_samples:      Number of training samples (used for LR schedule).
-        pool_strategy:  ``'cls'`` or ``'mean'`` for ViT embedding extraction.
-        seed:           Random seed.
-        ckpt_path:      Deprecated compatibility argument. Ignored: this
-                        evaluation never reads or writes FT checkpoints.
-        logger:         Optional ``WandbLogger`` for metric logging.
-        prefix:         Metric prefix for wandb logging. Use ``'pre_sft'`` for
-                        pre-CP and ``'post_sft'`` for post-CP to produce
-                        distinct charts (e.g. ``fit/pre_sft_loss``).
-        verbose:        Print progress to stdout.
-
-    Returns:
-        Metrics plus protocol and trainable-parameter audit fields.
+    Training uses the fixed SFT_* configuration and a single-view, batch-32 loader.
     """
     if verbose:
         print("=" * 50)
-        print(f"SFT Evaluation [{prefix}]: {num_classes} classes | "
-              f"{SFT_EPOCHS} ep | lr={SFT_LR} | bs={SFT_BATCH_SIZE}")
+        print(
+            f"SFT Evaluation [{prefix}]: {num_classes} classes | "
+            f"{SFT_EPOCHS} ep | lr={SFT_LR} | bs={SFT_BATCH_SIZE}"
+        )
         print("=" * 50)
 
     if ckpt_path is not None:
-        warnings.warn("FT checkpointing is disabled; ckpt_path is ignored.",
-                      UserWarning, stacklevel=2)
+        warnings.warn(
+            "FT checkpointing is disabled; ckpt_path is ignored.", UserWarning, stacklevel=2
+        )
     pl.seed_everything(seed, workers=True)
     # CP's requires_grad mask survives deepcopy. Reset it before optimizers exist.
     backbone_copy = copy.deepcopy(backbone).requires_grad_(True)
 
-    # ---- optimiser / scheduler config (fixed) ----
     steps_per_epoch = max(n_samples // SFT_BATCH_SIZE, 1)
     total_steps = SFT_EPOCHS * steps_per_epoch
     warmup_steps = SFT_WARMUP_EPOCHS * steps_per_epoch
@@ -208,7 +150,6 @@ def sft_evaluate(
         "interval": "step",
     }
 
-    # ---- build spt.Module ----
     module = _setup_sft_module(
         backbone_copy,
         embed_dim,
@@ -243,9 +184,8 @@ def sft_evaluate(
         # Manager can install checkpoint callbacks even with ckpt_path=None.
         trainer.fit(module, datamodule=sft_data)
 
-    # ---- final evaluation on test set ----
     if verbose:
-        print(f"SFT [{prefix}] → evaluating on test set …")
+        print(f"SFT [{prefix}]: evaluating on test set...")
     raw = finetune_evaluate(
         backbone_copy,
         module.classifier,
@@ -255,7 +195,6 @@ def sft_evaluate(
         verbose=verbose,
     )
 
-    # Rename keys: finetune_* → {prefix}_*
     results = {
         f"{prefix}_acc": raw["finetune_acc"],
         f"{prefix}_f1": raw["finetune_f1"],
@@ -266,7 +205,9 @@ def sft_evaluate(
     }
 
     if verbose:
-        print(f"SFT [{prefix}] Results: acc={results[f'{prefix}_acc']:.4f}  "
-              f"f1={results[f'{prefix}_f1']:.4f}")
+        print(
+            f"SFT [{prefix}] Results: acc={results[f'{prefix}_acc']:.4f}  "
+            f"f1={results[f'{prefix}_f1']:.4f}"
+        )
 
     return results

@@ -1,12 +1,10 @@
 """Fixed, disjoint partitions for the eight new target datasets."""
 
 from functools import lru_cache
-import hashlib
 from pathlib import Path
 
 import numpy as np
 from sklearn.model_selection import train_test_split
-
 
 SPLIT_SEED = 42
 HELDOUT_DATASETS = {
@@ -70,9 +68,7 @@ HELDOUT_DATASETS = {
     ),
 }
 for _cfg in HELDOUT_DATASETS.values():
-    _cfg.update(
-        input_size=224, normalization="imagenet", splits=["train", "validation", "test"]
-    )
+    _cfg.update(input_size=224, splits=["train", "validation", "test"])
 
 
 def split_indices(labels):
@@ -92,9 +88,7 @@ def exact_train_indices(labels, n_samples, seed):
     labels = np.asarray(labels).ravel()
     classes, counts = np.unique(labels, return_counts=True)
     if type(n_samples) is not int or not len(classes) <= n_samples <= len(labels):
-        raise ValueError(
-            "Budget must cover all classes and not exceed the training pool"
-        )
+        raise ValueError("Budget must cover all classes and not exceed the training pool")
     if n_samples == len(labels):
         return list(range(len(labels)))
     try:
@@ -153,6 +147,7 @@ class IndexedSplit:
 
     def __init__(self, source, indices, partition, source_split, labels=None):
         self.source = source
+        self.features = source.features
         self.source_indices = np.asarray(indices, dtype=np.int64)
         self.partition = partition
         self.source_split = source_split
@@ -171,9 +166,7 @@ class IndexedSplit:
                 return np.arange(len(self))
             if index == "label":
                 return self.labels
-            raise KeyError(
-                f"Only numeric label and sample_idx columns are exposed: {index}"
-            )
+            raise KeyError(f"Only numeric label and sample_idx columns are exposed: {index}")
         sample = dict(self.source[int(self.source_indices[index])])
         sample["sample_idx"] = int(index)
         return sample
@@ -223,21 +216,3 @@ def load_heldout_split(name, split, cache_dir):
         )
         indices = np.sort(train if split == "train" else val)
     return IndexedSplit(source, indices, partition, source_split, labels=labels)
-
-
-def array_hash(values):
-    return hashlib.sha256(np.asarray(values, dtype="<i8").tobytes()).hexdigest()
-
-
-def data_signature(
-    train_indices, train_source_indices, train_labels, test_source_indices, test_labels
-):
-    return dict(
-        n_train_actual=len(train_indices),
-        n_test=len(test_labels),
-        train_indices_sha256=array_hash(train_indices),
-        train_source_indices_sha256=array_hash(train_source_indices),
-        train_labels_sha256=array_hash(train_labels),
-        test_source_indices_sha256=array_hash(test_source_indices),
-        test_labels_sha256=array_hash(test_labels),
-    )

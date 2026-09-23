@@ -1,97 +1,16 @@
-# Zero-shot evaluation utilities for continued pretraining
+"""Frozen-feature kNN and linear-probe evaluation."""
+
 import numpy as np
 import torch
 import torch.nn as nn
-from tqdm import tqdm
-
-# sklearn for evaluation (standard practice for post-training eval)
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.cluster import KMeans
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import normalize
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
-
-# torchmetrics for classification metrics (spt convention)
-import torchmetrics
 from torchmetrics.classification import (
     MulticlassAccuracy,
-    MulticlassF1Score,
     MulticlassAUROC,
+    MulticlassF1Score,
 )
-
-# stable-pretraining imports
-import stable_pretraining as spt
-
-
-def load_backbone_from_checkpoint(
-    backbone: nn.Module,
-    checkpoint_path: str,
-    strict: bool = False,
-) -> dict:
-    # Load backbone weights from a stable-pretraining checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-
-    # Handle different checkpoint formats
-    if "state_dict" in checkpoint:
-        # Lightning format: state_dict has "backbone.layer.weight" keys
-        full_state_dict = checkpoint["state_dict"]
-        # Extract only backbone keys and remove prefix
-        state_dict = {
-            k.replace("backbone.", ""): v
-            for k, v in full_state_dict.items()
-            if k.startswith("backbone.")
-        }
-        if not state_dict:
-            # Maybe no prefix, try loading full state_dict
-            state_dict = full_state_dict
-    elif "model_state_dict" in checkpoint:
-        # DIET reference format
-        state_dict = checkpoint["model_state_dict"]
-    elif "backbone_state_dict" in checkpoint:
-        # Our custom format (if used)
-        state_dict = checkpoint["backbone_state_dict"]
-    else:
-        # Assume it's a raw state dict
-        state_dict = checkpoint
-
-    backbone.load_state_dict(state_dict, strict=strict)
-    print(f"Loaded backbone from {checkpoint_path}")
-
-    return checkpoint
-
-
-def load_backbone(
-    model_name: str,
-    source: str = "timm",
-    checkpoint: str = None,
-    low_resolution: bool = False,
-    **kwargs,
-) -> nn.Module:
-    # Load a backbone model using stable-pretraining conventions
-    if source == "torchvision":
-        model = spt.backbone.from_torchvision(
-            model_name, low_resolution=low_resolution, **kwargs
-        )
-    elif source == "timm":
-        model = spt.backbone.from_timm(
-            model_name, low_resolution=low_resolution, **kwargs
-        )
-    else:
-        raise ValueError(f"Unknown source: {source}. Use 'torchvision' or 'timm'")
-
-    # Load checkpoint if provided
-    if checkpoint is not None:
-        state_dict = torch.load(checkpoint, map_location="cpu")
-        # Handle common checkpoint formats
-        if "state_dict" in state_dict:
-            state_dict = state_dict["state_dict"]
-        elif "model" in state_dict:
-            state_dict = state_dict["model"]
-        # Remove "backbone." prefix if present (common in spt checkpoints)
-        state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-        model.load_state_dict(state_dict, strict=False)
-
-    return model
+from tqdm import tqdm
 
 
 def extract_features(
@@ -101,7 +20,7 @@ def extract_features(
     pool_strategy: str = "cls",
     verbose: bool = True,
 ) -> tuple:
-    # Extract features from a data loader using forward_features
+    """Read features without gradients or changes to the trainable-parameter mask."""
     features, labels = [], []
     model.eval()
 
@@ -138,146 +57,6 @@ def extract_features(
     return features, labels
 
 
-def extract_all_tokens(
-    model: nn.Module,
-    loader: torch.utils.data.DataLoader,
-    device: torch.device,
-    verbose: bool = True,
-) -> tuple:
-    """Extract the full token sequence (including [cls]) from forward_features.
-
-    Returns (tokens, labels) where tokens has shape (N, 1+L, D). Used by
-    Selective Aggregation LP (Beyond [cls], Przewiezlikowski et al., 2024).
-    """
-    tokens, labels = [], []
-    model.eval()
-    iterator = tqdm(loader, desc="Extracting tokens") if verbose else loader
-
-    with torch.no_grad():
-        for batch in iterator:
-            if isinstance(batch, dict):
-                x, y = batch["image"], batch["label"]
-            else:
-                x, y = batch[0], batch[1]
-
-            x = x.to(device)
-            feat = model.forward_features(x)
-            assert feat.dim() == 3, (
-                f"extract_all_tokens expects 3D output (B, 1+L, D); got {feat.shape}."
-            )
-            tokens.append(feat.cpu().numpy())
-            labels.append(y.numpy() if isinstance(y, torch.Tensor) else np.array(y))
-
-    tokens = np.concatenate(tokens, axis=0)
-    labels = np.concatenate(labels, axis=0).ravel()
-    return tokens, labels
-
-
-def selective_aggregation_lp_evaluate(
-    train_tokens: np.ndarray,
-    train_labels: np.ndarray,
-    test_tokens: np.ndarray,
-    test_labels: np.ndarray,
-    device: torch.device = "cuda",
-    lr: float = 1e-3,
-    min_epochs: int = 150,
-    min_steps: int = 10000,
-    batch_size: int = 512,
-    verbose: bool = True,
-) -> dict:
-    """Selective Aggregation LP per Beyond[cls] (Przewiezlikowski et al., 2024).
-
-    Uses ABMILPHead in its minimal config (depth=1, self_attention="none",
-    content="patch") to learn a soft attention pooling over patch tokens, then
-    trains a Linear classifier on L2-normalized aggregated features.
-
-    Args:
-        train_tokens, test_tokens: shape (N, 1+L, D) — full token sequence,
-            [cls] included at index 0. ABMILPHead strips [cls] internally.
-    """
-    from .abmilp import ABMILPHead
-
-    num_patches = train_tokens.shape[1] - 1  # exclude [cls]
-    dim = train_tokens.shape[-1]
-    num_classes = len(np.unique(train_labels))
-
-    sa_head = ABMILPHead(
-        dim=dim,
-        self_attention_apply_to="none",
-        depth=1,
-        cond="none",
-        content="patch",
-        num_patches=num_patches,
-    ).to(device)
-    clf = nn.Linear(dim, num_classes).to(device)
-
-    # Convert to tensors — keep train_tokens on CPU to avoid GPU OOM for large N
-    train_tokens_t = torch.from_numpy(train_tokens).float()
-    train_labels_t = torch.from_numpy(train_labels).long()
-    test_tokens_t = torch.from_numpy(test_tokens).float()
-    test_labels_t = torch.from_numpy(test_labels).long()
-
-    params = list(sa_head.parameters()) + list(clf.parameters())
-    optimizer = torch.optim.Adam(params, lr=lr)
-    criterion = nn.CrossEntropyLoss()
-
-    n = len(train_tokens_t)
-    steps_per_epoch = max(n // batch_size, 1)
-    num_epochs = max(min_epochs, (min_steps + steps_per_epoch - 1) // steps_per_epoch)
-    num_steps = num_epochs * steps_per_epoch
-
-    sa_head.train()
-    clf.train()
-    step = 0
-    for epoch in range(num_epochs):
-        perm = torch.randperm(n)
-        for i in range(steps_per_epoch):
-            idx = perm[i * batch_size : (i + 1) * batch_size]
-            x = train_tokens_t[idx].to(device, non_blocking=True)
-            y = train_labels_t[idx].to(device, non_blocking=True)
-
-            agg = sa_head(x)                        # (B, D)
-            agg = torch.nn.functional.normalize(agg, dim=-1)
-            logits = clf(agg)
-            loss = criterion(logits, y)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            step += 1
-
-        if verbose and (epoch + 1) % max(num_epochs // 10, 1) == 0:
-            print(f"    SA-LP epoch {epoch + 1}/{num_epochs}, loss={loss.item():.4f}")
-
-    # Evaluation (batched to avoid OOM)
-    sa_head.eval()
-    clf.eval()
-    all_logits = []
-    with torch.no_grad():
-        for i in range(0, len(test_tokens_t), batch_size):
-            x = test_tokens_t[i : i + batch_size].to(device, non_blocking=True)
-            agg = sa_head(x)
-            agg = torch.nn.functional.normalize(agg, dim=-1)
-            all_logits.append(clf(agg).cpu())
-    logits = torch.cat(all_logits, dim=0)
-    proba = torch.softmax(logits, dim=1)
-    pred = logits.argmax(dim=1)
-
-    results = {
-        "sa_lp_acc": MulticlassAccuracy(num_classes=num_classes)(pred, test_labels_t).item(),
-        "sa_lp_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
-            pred, test_labels_t
-        ).item(),
-    }
-    try:
-        results["sa_lp_auroc"] = MulticlassAUROC(
-            num_classes=num_classes, average="macro"
-        )(proba, test_labels_t).item()
-    except ValueError:
-        results["sa_lp_auroc"] = 0.0
-    return results
-
-
 def knn_evaluate(
     train_features: np.ndarray,
     train_labels: np.ndarray,
@@ -285,23 +64,18 @@ def knn_evaluate(
     test_labels: np.ndarray,
     k: int = 20,
 ) -> dict:
-    # Evaluate using k-NN classifier
-    # Adjust k if training set is small
+    """Evaluate normalized features with inverse-cosine-distance weighted kNN."""
     k = min(k, len(train_labels))
 
-    # L2 normalize (standard practice)
     train_features = normalize(train_features)
     test_features = normalize(test_features)
 
-    # Fit k-NN
     knn = KNeighborsClassifier(n_neighbors=k, metric="cosine", weights="distance")
     knn.fit(train_features, train_labels)
 
-    # Predictions
     pred = knn.predict(test_features)
     proba = knn.predict_proba(test_features)
 
-    # Compute metrics using torchmetrics
     num_classes = len(np.unique(train_labels))
     pred_t = torch.from_numpy(pred)
     target_t = torch.from_numpy(test_labels)
@@ -314,65 +88,12 @@ def knn_evaluate(
         ).item(),
     }
 
-    # AUROC (may fail if not all classes present in test set)
     try:
-        results["knn_auroc"] = MulticlassAUROC(
-            num_classes=num_classes, average="macro"
-        )(proba_t, target_t).item()
+        results["knn_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(
+            proba_t, target_t
+        ).item()
     except ValueError:
         results["knn_auroc"] = 0.0
-
-    return results
-
-
-def linear_probe_evaluate(
-    train_features: np.ndarray,
-    train_labels: np.ndarray,
-    test_features: np.ndarray,
-    test_labels: np.ndarray,
-    max_iter: int = 1000,
-    C: float = 1.0,
-) -> dict:
-    # Evaluate using linear probe classifier (sklearn LogisticRegression)
-    # L2 normalize
-    train_features = normalize(train_features)
-    test_features = normalize(test_features)
-
-    num_classes = len(np.unique(train_labels))
-
-    # sklearn LogisticRegression (standard for post-training eval)
-    clf = LogisticRegression(
-        max_iter=max_iter,
-        C=C,
-        solver="lbfgs",
-        n_jobs=-1,
-    )
-    clf.fit(train_features, train_labels)
-
-    # Predictions
-    pred = clf.predict(test_features)
-    proba = clf.predict_proba(test_features)
-
-    # Compute metrics using torchmetrics
-    pred_t = torch.from_numpy(pred)
-    target_t = torch.from_numpy(test_labels)
-    proba_t = torch.from_numpy(proba).float()
-
-    results = {
-        "linear_acc": MulticlassAccuracy(num_classes=num_classes)(
-            pred_t, target_t
-        ).item(),
-        "linear_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
-            pred_t, target_t
-        ).item(),
-    }
-
-    try:
-        results["linear_auroc"] = MulticlassAUROC(
-            num_classes=num_classes, average="macro"
-        )(proba_t, target_t).item()
-    except ValueError:
-        results["linear_auroc"] = 0.0
 
     return results
 
@@ -389,12 +110,10 @@ def linear_probe_pytorch_evaluate(
     batch_size: int = 512,
     verbose: bool = True,
 ) -> dict:
-    # Evaluate using PyTorch linear probe (DIET-CP reference protocol)
-    # L2 normalize
+    """Train an Adam linear classifier on normalized, precomputed features."""
     train_features = normalize(train_features)
     test_features = normalize(test_features)
 
-    # Convert to tensors
     train_features_t = torch.from_numpy(train_features).float().to(device)
     train_labels_t = torch.from_numpy(train_labels).long().to(device)
     test_features_t = torch.from_numpy(test_features).float().to(device)
@@ -403,12 +122,10 @@ def linear_probe_pytorch_evaluate(
     num_classes = len(np.unique(train_labels))
     in_dim = train_features.shape[1]
 
-    # Create linear classifier
     clf = nn.Linear(in_dim, num_classes).to(device)
     optimizer = torch.optim.Adam(clf.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
-    # Epoch-based mini-batch training (matching DIET_Tuning protocol)
     clf.train()
     n_samples = len(train_features_t)
     n_batches = (n_samples + batch_size - 1) // batch_size
@@ -417,7 +134,9 @@ def linear_probe_pytorch_evaluate(
 
     if verbose:
         effective_epochs = num_steps / n_batches
-        print(f"    LP training: {num_steps} steps ({effective_epochs:.0f} epochs, {n_samples} samples)")
+        print(
+            f"    LP training: {num_steps} steps ({effective_epochs:.0f} epochs, {n_samples} samples)"
+        )
 
     log_interval = max(num_steps // 5, 1)
     for step in range(num_steps):
@@ -441,53 +160,29 @@ def linear_probe_pytorch_evaluate(
         if verbose and (step + 1) % log_interval == 0:
             print(f"    Step {step + 1}/{num_steps}, Loss: {loss.item():.4f}")
 
-    # Evaluation
     clf.eval()
     with torch.no_grad():
         logits = clf(test_features_t)
         proba = torch.softmax(logits, dim=1).cpu()
         pred = logits.argmax(dim=1).cpu()
 
-    # Compute metrics
     results = {
         "linear_pytorch_acc": MulticlassAccuracy(num_classes=num_classes)(
             pred, test_labels_t
         ).item(),
-        "linear_pytorch_f1": MulticlassF1Score(
-            num_classes=num_classes, average="macro"
-        )(pred, test_labels_t).item(),
+        "linear_pytorch_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
+            pred, test_labels_t
+        ).item(),
     }
 
     try:
-        results["linear_pytorch_auroc"] = MulticlassAUROC(
-            num_classes=num_classes, average="macro"
-        )(proba, test_labels_t).item()
+        results["linear_pytorch_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(
+            proba, test_labels_t
+        ).item()
     except ValueError:
         results["linear_pytorch_auroc"] = 0.0
 
     return results
-
-
-def kmeans_evaluate(
-    features: np.ndarray,
-    labels: np.ndarray,
-    n_clusters: int = None,
-) -> dict:
-    # Evaluate using K-Means clustering
-    if n_clusters is None:
-        n_clusters = len(np.unique(labels))
-
-    # L2 normalize
-    features = normalize(features)
-
-    # Fit k-means
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    pred = kmeans.fit_predict(features)
-
-    return {
-        "kmeans_ari": adjusted_rand_score(labels, pred),
-        "kmeans_nmi": normalized_mutual_info_score(labels, pred),
-    }
 
 
 def zero_shot_eval(
@@ -496,126 +191,42 @@ def zero_shot_eval(
     test_loader: torch.utils.data.DataLoader,
     device: torch.device,
     k_neighbors: int = 20,
-    linear_max_iter: int = 1000,
-    linear_probe_method: str = "both",
     linear_pytorch_min_steps: int = 10000,
     linear_pytorch_lr: float = 1e-3,
     pool_strategy: str = "cls",
     knn_train_loader: torch.utils.data.DataLoader = None,
-    selective_agg: bool = False,
     verbose: bool = True,
 ) -> dict:
-    # Full zero-shot evaluation pipeline
+    """Evaluate kNN and LP, optionally using clean training views for kNN."""
     model = model.to(device)
-
-    # Extract features
-    if verbose:
-        print("Extracting features...")
     train_features, train_labels = extract_features(
         model, train_loader, device, pool_strategy=pool_strategy, verbose=verbose
     )
     test_features, test_labels = extract_features(
         model, test_loader, device, pool_strategy=pool_strategy, verbose=verbose
     )
-
-    # Extract clean train features for KNN if a separate loader is provided
     if knn_train_loader is not None:
-        if verbose:
-            print("Extracting clean train features for k-NN...")
-        knn_train_features, knn_train_labels = extract_features(
+        knn_features, knn_labels = extract_features(
             model, knn_train_loader, device, pool_strategy=pool_strategy, verbose=verbose
         )
     else:
-        knn_train_features, knn_train_labels = train_features, train_labels
+        knn_features, knn_labels = train_features, train_labels
 
-    if verbose:
-        print(f"Train: {train_features.shape}, Test: {test_features.shape}")
-
-    results = {}
-
-    # k-NN evaluation
-    if verbose:
-        print("Running k-NN evaluation...")
+    results = knn_evaluate(knn_features, knn_labels, test_features, test_labels, k=k_neighbors)
     results.update(
-        knn_evaluate(
-            knn_train_features, knn_train_labels, test_features, test_labels, k=k_neighbors
+        linear_probe_pytorch_evaluate(
+            train_features,
+            train_labels,
+            test_features,
+            test_labels,
+            device=device,
+            lr=linear_pytorch_lr,
+            min_steps=linear_pytorch_min_steps,
+            verbose=verbose,
         )
     )
     if verbose:
-        print(f"  Accuracy: {results['knn_acc']:.4f}, F1: {results['knn_f1']:.4f}")
-
-    # Linear probe evaluation - sklearn (CLIP/DINOv2 standard)
-    if linear_probe_method in ["sklearn", "both"]:
-        if verbose:
-            print("Running linear probe evaluation (sklearn LogisticRegression)...")
-        results.update(
-            linear_probe_evaluate(
-                train_features,
-                train_labels,
-                test_features,
-                test_labels,
-                max_iter=linear_max_iter,
-            )
-        )
-        if verbose:
-            print(
-                f"  Accuracy: {results['linear_acc']:.4f}, F1: {results['linear_f1']:.4f}"
-            )
-
-    # Linear probe evaluation - PyTorch (DIET-CP reference protocol)
-    if linear_probe_method in ["pytorch", "both"]:
-        if verbose:
-            print("Running linear probe evaluation (PyTorch)...")
-        results.update(
-            linear_probe_pytorch_evaluate(
-                train_features,
-                train_labels,
-                test_features,
-                test_labels,
-                device=device,
-                lr=linear_pytorch_lr,
-                min_steps=linear_pytorch_min_steps,
-                verbose=verbose,
-            )
-        )
-        if verbose:
-            print(
-                f"  Accuracy: {results['linear_pytorch_acc']:.4f}, F1: {results['linear_pytorch_f1']:.4f}"
-            )
-
-    # K-means evaluation
-    if verbose:
-        print("Running k-means evaluation...")
-    results.update(kmeans_evaluate(test_features, test_labels))
-    if verbose:
-        print(f"  ARI: {results['kmeans_ari']:.4f}, NMI: {results['kmeans_nmi']:.4f}")
-
-    # Selective Aggregation LP (Beyond [cls], Przewiezlikowski et al., 2024)
-    if selective_agg:
-        if verbose:
-            print("Running Selective Aggregation LP (extracting patch tokens)...")
-        train_tokens, train_tok_labels = extract_all_tokens(
-            model, train_loader, device, verbose=verbose
-        )
-        test_tokens, test_tok_labels = extract_all_tokens(
-            model, test_loader, device, verbose=verbose
-        )
-        results.update(
-            selective_aggregation_lp_evaluate(
-                train_tokens, train_tok_labels,
-                test_tokens, test_tok_labels,
-                device=device,
-                lr=linear_pytorch_lr,
-                min_steps=linear_pytorch_min_steps,
-                verbose=verbose,
-            )
-        )
-        if verbose:
-            print(
-                f"  SA-LP acc: {results['sa_lp_acc']:.4f}, "
-                f"F1: {results['sa_lp_f1']:.4f}"
-            )
-
+        print(f"  kNN F1: {results['knn_f1']:.4f}, LP F1: {results['linear_pytorch_f1']:.4f}")
     return results
 
 
@@ -627,22 +238,7 @@ def finetune_evaluate(
     pool_strategy: str = "cls",
     verbose: bool = True,
 ) -> dict:
-    """Evaluate a fine-tuned model (backbone + classifier) on test data.
-
-    Unlike knn/linear probe which only use frozen backbone features,
-    this evaluates the actual trained classification head.
-
-    Args:
-        backbone: Trained backbone network
-        classifier: Trained classification head (nn.Linear)
-        test_loader: Test data loader
-        device: Device to use
-        pool_strategy: 'cls' or 'mean' for ViT embedding extraction
-        verbose: Whether to print progress
-
-    Returns:
-        dict: Results with finetune_acc, finetune_f1, finetune_auroc
-    """
+    """Evaluate a fine-tuned backbone and its supervised classifier."""
     backbone = backbone.to(device)
     classifier = classifier.to(device)
     backbone.eval()
@@ -666,7 +262,7 @@ def finetune_evaluate(
                 raise ValueError(f"Unexpected batch type: {type(batch)}")
 
             features = backbone.forward_features(images)
-            if pool_strategy == "map":  # SigLIP MAP attention-pool head (native readout) — MUST match training pooling
+            if pool_strategy == "map":
                 features = backbone.fc_norm(backbone.attn_pool(features))
             elif features.dim() == 3:
                 if pool_strategy == "mean":
@@ -680,9 +276,7 @@ def finetune_evaluate(
 
             all_preds.append(preds.cpu())
             all_proba.append(proba.cpu())
-            all_labels.append(
-                labels if isinstance(labels, torch.Tensor) else torch.tensor(labels)
-            )
+            all_labels.append(labels if isinstance(labels, torch.Tensor) else torch.tensor(labels))
 
     pred_t = torch.cat(all_preds)
     proba_t = torch.cat(all_proba)
@@ -691,18 +285,16 @@ def finetune_evaluate(
     num_classes = proba_t.shape[1]
 
     results = {
-        "finetune_acc": MulticlassAccuracy(num_classes=num_classes)(
-            pred_t, target_t
-        ).item(),
+        "finetune_acc": MulticlassAccuracy(num_classes=num_classes)(pred_t, target_t).item(),
         "finetune_f1": MulticlassF1Score(num_classes=num_classes, average="macro")(
             pred_t, target_t
         ).item(),
     }
 
     try:
-        results["finetune_auroc"] = MulticlassAUROC(
-            num_classes=num_classes, average="macro"
-        )(proba_t, target_t).item()
+        results["finetune_auroc"] = MulticlassAUROC(num_classes=num_classes, average="macro")(
+            proba_t, target_t
+        ).item()
     except ValueError:
         results["finetune_auroc"] = 0.0
 
@@ -712,13 +304,3 @@ def finetune_evaluate(
         )
 
     return results
-
-
-def evaluate_model(
-    model: nn.Module,
-    train_loader: torch.utils.data.DataLoader,
-    test_loader: torch.utils.data.DataLoader,
-    device: torch.device,
-    **kwargs,
-) -> dict:
-    return zero_shot_eval(model, train_loader, test_loader, device, **kwargs)

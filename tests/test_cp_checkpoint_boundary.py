@@ -1,4 +1,5 @@
 """Test CP save/resume separation without importing the optional cluster stack."""
+
 import ast
 import inspect
 from pathlib import Path
@@ -11,7 +12,9 @@ import pytest
 def runner():
     source = Path(__file__).resolve().parents[1] / "continued_pretraining.py"
     tree = ast.parse(source.read_text())
-    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_training")
+    function = next(
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run_training"
+    )
     calls = []
 
     class ModelCheckpoint:
@@ -35,15 +38,28 @@ def runner():
         def __call__(self):
             calls.append(("fit", None))
 
-    namespace = dict(Path=Path, inspect=inspect, tempfile=tempfile, ModelCheckpoint=ModelCheckpoint,
-                     SLURMEnvironment=SimpleNamespace(detect=lambda: False),
-                     pl=SimpleNamespace(Trainer=Trainer), spt=SimpleNamespace(Manager=Manager),
-                     FreezeBackboneCallback=lambda **kw: object(),
-                     create_cp_evaluation_callbacks=lambda *a, **kw: [],
-                     LearningRateMonitor=lambda **kw: object())
+    namespace = dict(
+        Path=Path,
+        inspect=inspect,
+        tempfile=tempfile,
+        ModelCheckpoint=ModelCheckpoint,
+        SLURMEnvironment=SimpleNamespace(detect=lambda: False),
+        pl=SimpleNamespace(Trainer=Trainer),
+        spt=SimpleNamespace(Manager=Manager),
+        FreezeBackboneCallback=lambda **kw: object(),
+        create_cp_evaluation_callbacks=lambda *a, **kw: [],
+        LearningRateMonitor=lambda **kw: object(),
+    )
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), "exec"), namespace)
-    args = SimpleNamespace(num_trained_blocks=2, n_samples=500, knn_k=20, cp_method="diet",
-                           epochs=150, seed=42, resume=True)
+    args = SimpleNamespace(
+        num_trained_blocks=2,
+        n_samples=500,
+        knn_k=20,
+        cp_method="diet",
+        epochs=150,
+        seed=42,
+        resume=True,
+    )
     return namespace["run_training"], calls, args, ModelCheckpoint
 
 

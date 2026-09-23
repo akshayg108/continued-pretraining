@@ -1,22 +1,7 @@
-#!/usr/bin/env python
-# LeJEPA Continued Pretraining with configurable SigReg tests
 import torch.nn as nn
 import stable_pretraining as spt
-from lightning.pytorch.loggers import WandbLogger
 from torchvision.ops import MLP
 
-from continued_pretraining import (
-    BACKBONE_DIMS,
-    create_base_parser,
-    setup_paths,
-    get_config,
-    load_backbone,
-    create_optim_config,
-    run_baseline,
-    run_training,
-    run_final_eval,
-)
-from stable_cp.data import create_transforms, create_data_loaders
 from .lejepa_forward import lejepa_forward
 from .lejepa_losses import (
     EppsPulley,
@@ -110,125 +95,10 @@ def setup_lejepa(backbone, embed_dim, optim_config, sigreg_loss, **kwargs):
     pool_strategy = kwargs.get("pool_strategy", "cls")
     return spt.Module(
         backbone=backbone,
-        projector=build_lejepa_projector(
-            embed_dim, kwargs["hidden_dim"], kwargs["proj_dim"]
-        ),
+        projector=build_lejepa_projector(embed_dim, kwargs["hidden_dim"], kwargs["proj_dim"]),
         sigreg_loss=sigreg_loss,
         lamb=kwargs["lamb"],
         pool_strategy=pool_strategy,
         forward=lejepa_forward,
         optim=optim_config,
     )
-
-
-def main():
-    parser = create_base_parser("LeJEPA Continued Pretraining")
-    # Projector
-    parser.add_argument("--n-views", type=int, default=8)
-    parser.add_argument("--proj-dim", type=int, default=128)
-    parser.add_argument("--hidden-dim", type=int, default=2048)
-    parser.add_argument("--lamb", type=float, default=0.02)
-    parser.add_argument(
-        "--multivariate-test", type=str, default="slicing",
-        choices=list(MULTIVARIATE_TESTS.keys()),
-    )
-    parser.add_argument(
-        "--univariate-test", type=str, default="epps_pulley",
-        choices=list(UNIVARIATE_TESTS.keys()),
-    )
-    parser.add_argument("--t-max", type=float, default=3.0)
-    parser.add_argument("--n-points", type=int, default=17)
-    parser.add_argument("--num-slices", type=int, default=1000)
-    parser.add_argument(
-        "--reduction", type=str, default="mean", choices=["mean", "sum", "none"],
-    )
-    parser.add_argument("--clip-value", type=float, default=None)
-    parser.add_argument("--bhep-beta", type=float, default=0.1)
-    parser.add_argument("--bhep-m-beta", type=float, default=10)
-    parser.add_argument("--comb-gamma", type=float, default=0.1)
-    parser.add_argument("--hv-gamma", type=float, default=1.0)
-    parser.add_argument("--entropy-m", type=int, default=1)
-    parser.add_argument(
-        "--entropy-method", type=str, default="centered",
-        choices=["centered", "right"],
-    )
-    parser.add_argument("--moments-k-max", type=int, default=4)
-    parser.add_argument(
-        "--sw-expectation", type=str, default="elfving",
-        choices=["elfving", "blom", "rahman"],
-    )
-    parser.add_argument(
-        "--sw-covariance", type=str, default="shapiro_francia",
-        choices=["shapiro_francia", "rahman"],
-    )
-    parser.add_argument("--nll-alpha", type=float, default=0.5)
-
-    args = parser.parse_args()
-    if args.reduction == "none":
-        args.reduction = None
-
-    data_dir, checkpoint_dir = setup_paths(args)
-    ds_cfg, embed_dim, freeze_epochs, warmup_epochs = get_config(args)
-
-    print(
-        f"LeJEPA CP: {args.dataset} | {args.backbone} | views={args.n_views} freeze={freeze_epochs}"
-    )
-    print(
-        f"  SigReg: {args.multivariate_test}({args.univariate_test}) slices={args.num_slices} lamb={args.lamb}"
-    )
-
-    train_transform, val_transform = create_transforms(
-        ds_cfg, n_views=args.n_views, strong_aug=True
-    )
-    data, test_loader, eval_train_loader, indices = create_data_loaders(
-        args, ds_cfg, train_transform, val_transform, data_dir
-    )
-
-    backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
-
-    project = args.project or f"{args.dataset}-lejepa-cp"
-    run_name = f"lejepa_n{args.n_samples}_ep{args.epochs}_frz{freeze_epochs}_blk{args.num_trained_blocks}_v{args.n_views}_{args.univariate_test}"
-    logger = WandbLogger(project=project, name=run_name, log_model=False)
-
-    baseline_results = run_baseline(
-        backbone, eval_train_loader, test_loader, device, args, logger
-    )
-    optim_config = create_optim_config(args, warmup_epochs)
-
-    sigreg_loss = build_sigreg_loss(args)
-    module = setup_lejepa(
-        backbone,
-        embed_dim,
-        optim_config,
-        sigreg_loss,
-        proj_dim=args.proj_dim,
-        hidden_dim=args.hidden_dim,
-        lamb=args.lamb,
-        pool_strategy=args.pool_strategy,
-    )
-
-    ckpt_path = str(
-        checkpoint_dir
-        / f"lejepa_cp_{args.dataset}_{args.backbone.replace('/', '_')}.ckpt"
-    )
-    run_training(
-        module,
-        data,
-        args,
-        ds_cfg,
-        embed_dim,
-        freeze_epochs,
-        logger,
-        ckpt_path,
-        method="lejepa",
-    )
-    run_final_eval(
-        backbone, eval_train_loader, test_loader, device, args, logger, baseline_results
-    )
-
-    logger.experiment.finish()
-    print("Done!")
-
-
-if __name__ == "__main__":
-    main()

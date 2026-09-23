@@ -21,7 +21,9 @@ def _get_views_list(batch):
 
 def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
     if backbone_output.ndim == 3:
-        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout): attn_pool + fc_norm
+        if (
+            pool_strategy == "map"
+        ):  # SigLIP MAP attention-pool head (frozen native readout): attn_pool + fc_norm
             return backbone.fc_norm(backbone.attn_pool(backbone_output))
         if pool_strategy == "mean":
             return backbone_output[:, 1:, :].mean(dim=1)
@@ -59,9 +61,7 @@ def lejepa_forward(self, batch, stage):
             if _supports_3d_input(self.sigreg_loss):
                 sigreg_loss = self.sigreg_loss(proj_stacked)
             else:
-                sigreg_loss = self.sigreg_loss(
-                    proj_stacked.reshape(-1, proj_stacked.size(-1))
-                )
+                sigreg_loss = self.sigreg_loss(proj_stacked.reshape(-1, proj_stacked.size(-1)))
 
             lamb = getattr(self, "lamb", 0.02)
             lejepa_loss = sigreg_loss * lamb + inv_loss * (1 - lamb)
@@ -74,9 +74,7 @@ def lejepa_forward(self, batch, stage):
                 on_epoch=True,
                 sync_dist=True,
             )
-            self.log(
-                f"{stage}/inv", inv_loss, on_step=True, on_epoch=True, sync_dist=True
-            )
+            self.log(f"{stage}/inv", inv_loss, on_step=True, on_epoch=True, sync_dist=True)
             self.log(
                 f"{stage}/lejepa",
                 lejepa_loss,

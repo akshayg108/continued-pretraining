@@ -1,39 +1,4 @@
-"""LeJEPA/SIGReg losses - copied from lejepa_REPO_REFERENCE.
-
-Statistical normality tests used as loss functions to push embeddings toward N(0,I).
-
-This file consolidates ALL core LeJEPA components:
-
-Utilities:
-- log_norm_cdf_helper, norm_cdf, log_norm_cdf
-
-Distributed utilities:
-- is_dist_avail_and_initialized, all_reduce
-
-Base classes:
-- UnivariateTest
-- MultivariatetTest
-
-Univariate tests:
-- EppsPulley
-- AndersonDarling
-- CramerVonMises
-- Watson
-- Entropy
-- Moments
-- VCReg
-- ExtendedJarqueBera
-- ShapiroWilk
-- NLL
-
-Multivariate tests:
-- SlicingUnivariateTest
-- BHEP
-- BHEP_M
-- COMB
-- HV
-- HZ
-"""
+"""LeJEPA/SIGReg normality losses, adapted from lejepa_REPO_REFERENCE."""
 
 import numpy as np
 import torch
@@ -41,7 +6,6 @@ from torch import distributed as dist
 import torch.distributed.nn
 from scipy.stats import norm as scipy_norm
 from typing import Union
-
 
 
 def log_norm_cdf_helper(x):
@@ -66,20 +30,15 @@ def log_norm_cdf(x: torch.Tensor, thresh: float = 3.0) -> torch.Tensor:
 
     if left.any():
         x_left = x[left]
-        out[left] = (
-            -(x_left**2 + np.log(2 * np.pi)) / 2 - log_norm_cdf_helper(-x_left).log()
-        )
+        out[left] = -(x_left**2 + np.log(2 * np.pi)) / 2 - log_norm_cdf_helper(-x_left).log()
 
     if right.any():
         x_right = x[right]
         out[right] = torch.log1p(
-            -(-(x_right**2) / 2).exp()
-            / np.sqrt(2 * np.pi)
-            / log_norm_cdf_helper(x_right)
+            -(-(x_right**2) / 2).exp() / np.sqrt(2 * np.pi) / log_norm_cdf_helper(x_right)
         )
 
     return out
-
 
 
 def is_dist_avail_and_initialized():
@@ -89,10 +48,10 @@ def is_dist_avail_and_initialized():
 def all_reduce(x, op="AVG"):
     if dist.is_available() and dist.is_initialized():
         from torch.distributed._functional_collectives import all_reduce as functional_all_reduce
+
         return functional_all_reduce(x, op.lower(), dist.group.WORLD)
     else:
         return x
-
 
 
 class UnivariateTest(torch.nn.Module):
@@ -121,7 +80,6 @@ class UnivariateTest(torch.nn.Module):
         return 1
 
 
-
 class MultivariatetTest(torch.nn.Module):
     def __init__(self, dim=None):
         super().__init__()
@@ -137,19 +95,8 @@ class MultivariatetTest(torch.nn.Module):
         return x
 
 
-
 class EppsPulley(UnivariateTest):
-    """
-    Fast Epps-Pulley two-sample test statistic for univariate distributions.
-
-    This implementation uses numerical integration over the characteristic function
-    to compute a goodness-of-fit test statistic.
-
-    Args:
-        t_max (float, optional): Maximum integration point. Default: 3.
-        n_points (int, optional): Number of integration points. Must be odd. Default: 17.
-        integration (str, optional): Integration method. Default: 'trapezoid'.
-    """
+    """Epps-Pulley normality loss integrated over characteristic functions."""
 
     def __init__(self, t_max: float = 3, n_points: int = 17, integration: str = "trapezoid"):
         super().__init__()
@@ -181,25 +128,15 @@ class EppsPulley(UnivariateTest):
         return (err @ self.weights) * N * self.world_size
 
 
-
 class AndersonDarling(UnivariateTest):
-    """
-    Anderson-Darling goodness-of-fit test for normality.
-
-    The test gives more weight to observations in the tails, making it
-    particularly effective at detecting departures from normality in the extremes.
-    """
+    """Anderson-Darling normality loss, with greater weight on distribution tails."""
 
     def forward(self, x):
         s = self.prepare_data(x)
         n = x.size(0)
 
         with torch.no_grad():
-            k = (
-                torch.arange(1, n + 1, device=x.device, dtype=torch.float)
-                .mul_(2)
-                .sub_(1)
-            )
+            k = torch.arange(1, n + 1, device=x.device, dtype=torch.float).mul_(2).sub_(1)
 
         A = log_norm_cdf(s) + log_norm_cdf(-s.flip(0))
         A_squared = -n - torch.tensordot(A, k, [[0], [0]]) / n
@@ -207,39 +144,21 @@ class AndersonDarling(UnivariateTest):
         return A_squared
 
 
-
 class CramerVonMises(UnivariateTest):
-    """
-    Cramer-von Mises goodness-of-fit test for univariate distributions.
-
-    Measures the discrepancy between the empirical distribution function
-    and the cumulative distribution function of a reference distribution.
-    """
+    """Cramer-von Mises discrepancy between empirical and normal CDFs."""
 
     def forward(self, x):
         s = self.prepare_data(x)
         with torch.no_grad():
             n = x.size(0)
-            k = (
-                torch.arange(1, n + 1, device=x.device, dtype=x.dtype)
-                .mul_(2)
-                .sub_(1)
-                .div_(2 * n)
-            )
+            k = torch.arange(1, n + 1, device=x.device, dtype=x.dtype).mul_(2).sub_(1).div_(2 * n)
             k = k.view(n, *tuple([1] * (x.ndim - 1)))
         T = (k - self.g.cdf(s)).square().mean(0)
         return T
 
 
-
 class Watson(CramerVonMises):
-    """
-    Watson's U^2 test for goodness-of-fit to standard normal N(0,1).
-
-    Location-adjusted modification of the Cramer-von Mises test that reduces
-    sensitivity to shifts in location while maintaining power to detect
-    differences in scale and shape.
-    """
+    """Watson's location-adjusted Cramer-von Mises normality loss."""
 
     def forward(self, x):
         T = super().forward(x)
@@ -247,13 +166,8 @@ class Watson(CramerVonMises):
         return T - (m - 0.5).square()
 
 
-
 class Entropy(UnivariateTest):
-    """
-    Vasicek entropy-based test for normality.
-
-    Reference: Vasicek, Oldrich (1976). "A Test for Normality Based on Sample Entropy".
-    """
+    """Vasicek (1976) entropy-based normality loss."""
 
     def __init__(
         self,
@@ -278,10 +192,7 @@ class Entropy(UnivariateTest):
             delta = 1
             stat += (s[1 + i] - s[0]).mul(delta).clip(self.eps).log() / x.size(0)
             stat += (s[-1] - s[-2 - i]).mul(delta).clip(self.eps).log() / x.size(0)
-        return (
-            cst - stat - np.log(x.size(0)) + np.log(2 * self.m) + torch.log(x.std(0))
-        ).exp()
-
+        return (cst - stat - np.log(x.size(0)) + np.log(2 * self.m) + torch.log(x.std(0))).exp()
 
 
 class Moments(UnivariateTest):
@@ -306,9 +217,7 @@ class Moments(UnivariateTest):
 
     def forward(self, x):
         x = self.prepare_data(x)
-        k = torch.arange(2, self.k_max + 1, device=x.device, dtype=x.dtype).view(
-            -1, 1, 1
-        )
+        k = torch.arange(2, self.k_max + 1, device=x.device, dtype=x.dtype).view(-1, 1, 1)
         m1 = self.dist_mean(x.mean(0)).abs_()
         if self.k_max >= 2:
             xpow = self.dist_mean((x**k).mean(1))
@@ -318,11 +227,8 @@ class Moments(UnivariateTest):
         return m1 / self.world_size
 
 
-
 class VCReg(UnivariateTest):
-    """
-    VCReg test statistic testing mean=0 and var=1.
-    """
+    """VCReg statistic for zero mean and unit variance."""
 
     def forward(self, x):
         n = x.shape[0]
@@ -334,14 +240,8 @@ class VCReg(UnivariateTest):
         return stat
 
 
-
 class ExtendedJarqueBera(UnivariateTest):
-    """
-    Extended Jarque-Bera test for goodness-of-fit to standard normal N(0,1).
-
-    Tests all four moments: mean=0, variance=1, skewness=0, kurtosis=3.
-    Under H0: X ~ N(0,1), the total statistic ~ chi^2(4).
-    """
+    """Extended Jarque-Bera loss for the first four standard-normal moments."""
 
     def forward(self, x):
         n = x.shape[0]
@@ -359,14 +259,8 @@ class ExtendedJarqueBera(UnivariateTest):
         return stat
 
 
-
 class ShapiroWilk(UnivariateTest):
-    """
-    Shapiro-Wilk test for standard normality N(0,1).
-
-    A correlation-based goodness-of-fit test that measures how well ordered
-    sample values match the expected order statistics from a standard normal.
-    """
+    """Shapiro-Wilk correlation between ordered samples and normal order statistics."""
 
     def __init__(
         self,
@@ -392,9 +286,7 @@ class ShapiroWilk(UnivariateTest):
                 )
         extra_dims = tuple([1] * (x.ndim - 1))
         k = self._k.view(x.size(0), *extra_dims)
-        return (
-            1 - torch.nn.functional.cosine_similarity(k, s, dim=0, eps=self.eps).abs()
-        )
+        return 1 - torch.nn.functional.cosine_similarity(k, s, dim=0, eps=self.eps).abs()
 
     @staticmethod
     def get_shapiro_weights(
@@ -430,7 +322,6 @@ class ShapiroWilk(UnivariateTest):
             raise ValueError(f"Unknown covariance_mode: {covariance_mode}")
 
         return torch.nn.functional.normalize(a, p=2, dim=0)
-
 
 
 class NLL(UnivariateTest):
@@ -497,9 +388,7 @@ class NLL(UnivariateTest):
             bottom_left = bottom_left.sum()
             bottom_right = torch.arange(1, self.N - self.k + 1, device=device).log()
             bottom_right = bottom_right.sum()
-            N_m_k_factors = torch.full(
-                (1,), self.N - self.k, device=device, dtype=torch.float
-            )
+            N_m_k_factors = torch.full((1,), self.N - self.k, device=device, dtype=torch.float)
         else:
             k_factors = torch.arange(self.N, device=device, dtype=torch.float)
             bottom_left = k_factors.log()
@@ -538,10 +427,7 @@ class NLL(UnivariateTest):
         one_m_logcdf = log_norm_cdf(-s)
 
         sample_loss = -(
-            cst
-            + logcdf.mul(k_factors)
-            + one_m_logcdf.mul(N_m_k_factors)
-            + self.g.log_prob(s)
+            cst + logcdf.mul(k_factors) + one_m_logcdf.mul(N_m_k_factors) + self.g.log_prob(s)
         )
         if self.alpha < 0.5:
             assert cutoffs is not None
@@ -555,21 +441,8 @@ class NLL(UnivariateTest):
         return sample_loss
 
 
-
 class SlicingUnivariateTest(torch.nn.Module):
-    """
-    Multivariate distribution test using random slicing and univariate test statistics.
-
-    Extends univariate statistical tests to multivariate data by projecting
-    samples onto random 1D directions and aggregating univariate test statistics.
-
-    Args:
-        univariate_test (torch.nn.Module): A univariate test module (e.g., EppsPulley).
-        num_slices (int): Number of random 1D projections to use.
-        reduction (str, optional): How to aggregate statistics: 'mean', 'sum', or None.
-        sampler (str, optional): Random sampling method: 'gaussian'. Default: 'gaussian'.
-        clip_value (float, optional): Minimum threshold for test statistics. Default: None.
-    """
+    """Aggregate univariate normality losses over synchronized random projections."""
 
     def __init__(
         self,
@@ -617,17 +490,8 @@ class SlicingUnivariateTest(torch.nn.Module):
             return stats
 
 
-
 class BHEP(MultivariatetTest):
-    """
-    Beta-Henze Energy-based Projection (BHEP) test statistic.
-
-    Computes the BHEP test statistic for multivariate normality testing
-    using a Gaussian kernel with bandwidth parameter beta.
-
-    Args:
-        beta: Bandwidth parameter for the Gaussian kernel (must be > 0)
-    """
+    """BHEP multivariate normality loss using a Gaussian kernel of bandwidth beta."""
 
     def __init__(self, beta: float = 0.1):
         super().__init__()
@@ -644,9 +508,7 @@ class BHEP(MultivariatetTest):
 
         beta_squared = self.beta**2
         squared_norms = x.square().sum(dim=1)
-        pairwise_distances = (
-            -2 * x @ x.T + squared_norms.unsqueeze(1) + squared_norms.unsqueeze(0)
-        )
+        pairwise_distances = -2 * x @ x.T + squared_norms.unsqueeze(1) + squared_norms.unsqueeze(0)
 
         lhs = torch.exp(pairwise_distances * (-beta_squared / 2)).sum() / (N**2)
         scaling_factor = 2 / ((1 + beta_squared) ** (D / 2))
@@ -659,7 +521,6 @@ class BHEP(MultivariatetTest):
 
     def __repr__(self) -> str:
         return f"BHEP(beta={self.beta})"
-
 
 
 class BHEP_M(MultivariatetTest):
@@ -675,27 +536,13 @@ class BHEP_M(MultivariatetTest):
         _, D = x.shape
         norms = x.square().sum(1)
         pair_sim = 2 * x @ x.T + norms + norms.unsqueeze(1)
-        lhs = (
-            (1 / self.beta ** (D / 2))
-            * torch.exp(pair_sim.div(4 * self.beta)).sum()
-            / x.size(0)
-        )
-        rhs = (2 / (self.beta - 0.5) ** (D / 2)) * torch.exp(
-            norms / (4 * self.beta - 2)
-        ).sum()
+        lhs = (1 / self.beta ** (D / 2)) * torch.exp(pair_sim.div(4 * self.beta)).sum() / x.size(0)
+        rhs = (2 / (self.beta - 0.5) ** (D / 2)) * torch.exp(norms / (4 * self.beta - 2)).sum()
         return lhs - rhs
 
 
-
 class COMB(MultivariatetTest):
-    """
-    Combination-based (COMB) test statistic for multivariate normality.
-
-    Uses a combination of exponential and cosine kernels.
-
-    Args:
-        gamma: Bandwidth parameter for the kernel (must be > 0)
-    """
+    """COMB multivariate normality loss combining exponential and cosine kernels."""
 
     def __init__(self, gamma: float = 0.1):
         super().__init__()
@@ -727,7 +574,6 @@ class COMB(MultivariatetTest):
         return f"COMB(gamma={self.gamma})"
 
 
-
 class HV(MultivariatetTest):
     """HV test statistic for multivariate normality."""
 
@@ -751,15 +597,8 @@ class HV(MultivariatetTest):
         return (lhs * rhs).sum() / N
 
 
-
 class HZ(MultivariatetTest):
-    """
-    Henze-Zirkler (HZ) test for multivariate normality.
-
-    Uses an adaptive bandwidth selection rule. Unlike the standard BHEP test
-    which requires manual bandwidth tuning, the HZ test automatically computes
-    an optimal bandwidth parameter based on sample size and dimensionality.
-    """
+    """Henze-Zirkler normality loss with sample- and dimension-dependent bandwidth."""
 
     def __init__(self):
         super().__init__()
@@ -772,11 +611,7 @@ class HZ(MultivariatetTest):
 
     @staticmethod
     def compute_bandwidth(n_samples: int, n_dims: int) -> float:
-        """
-        Compute the Henze-Zirkler optimal bandwidth parameter.
-
-        Formula: beta = (1/sqrt(2)) * [(2D + 1) * N / 4]^(1/(D+4))
-        """
+        """Return beta = [(2D + 1) N / 4] ** (1 / (D + 4)) / sqrt(2)."""
         if n_samples <= 0:
             raise ValueError(f"n_samples must be a positive integer, got {n_samples}")
         if n_dims <= 0:
@@ -784,6 +619,7 @@ class HZ(MultivariatetTest):
 
         if n_samples < 10:
             import warnings
+
             warnings.warn(
                 f"Sample size {n_samples} is very small (< 10). "
                 "The Henze-Zirkler test may not be reliable.",
@@ -793,6 +629,7 @@ class HZ(MultivariatetTest):
 
         if n_dims / n_samples > 0.1:
             import warnings
+
             warnings.warn(
                 f"Dimensionality ({n_dims}) is high relative to sample size "
                 f"({n_samples}). Test power may be reduced.",
