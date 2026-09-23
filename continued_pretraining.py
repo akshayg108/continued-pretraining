@@ -34,7 +34,11 @@ def create_base_parser(description="Continued Pretraining"):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--dataset", type=str, required=True, choices=list(DATASETS.keys()))
     parser.add_argument("--backbone", type=str, required=True)
-    parser.add_argument("--n-samples", type=int, default=1000)
+    budget = parser.add_mutually_exclusive_group()
+    budget.add_argument("--n-samples", type=int, default=1000)
+    budget.add_argument(
+        "--full-train", action="store_true", help="Use the complete training split."
+    )
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -85,7 +89,8 @@ def setup_paths(args):
     checkpoint_dir = Path(args.checkpoint_dir).expanduser()
     data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if not args.no_cp:
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
     return data_dir, checkpoint_dir
 
 
@@ -436,7 +441,7 @@ def main():
     parser = create_base_parser("Continued Pretraining CLI")
 
     # ---- CP method  ----
-    parser.add_argument("--cp-method", type=str, required=True, choices=list(METHODS.keys()))
+    parser.add_argument("--cp-method", type=str, choices=list(METHODS.keys()))
 
     # ---- Shared CP hyper-parameters ----
     parser.add_argument("--n-views", type=int, default=8)
@@ -547,6 +552,8 @@ def main():
     args = parser.parse_args()
 
     # ---- Validate flag combinations ----
+    if not args.no_cp and args.cp_method is None:
+        parser.error("--cp-method is required unless --no-cp is set")
     if args.no_cp and args.post_cp_sft:
         parser.error("--post-cp-sft requires CP training (remove --no-cp)")
 
@@ -554,6 +561,17 @@ def main():
     data_dir, checkpoint_dir = setup_paths(args)
     pl.seed_everything(args.seed, workers=True)
     ds_cfg, freeze_epochs, warmup_epochs = get_config(args)
+    if args.full_train:
+        args.n_samples = len(
+            get_dataset(
+                args.dataset,
+                split=ds_cfg["splits"][0],
+                transform=None,
+                cache_dir=data_dir,
+                seed=args.seed,
+            )
+        )
+        print(f"Full training split: {args.n_samples} samples")
 
     # ---- Backbone ----
     backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
@@ -719,8 +737,11 @@ def main():
             "dataset": args.dataset,
             "n_samples": args.n_samples,
             "n_train_actual": len(indices),
+            "n_test": len(test_loader.dataset),
+            "num_classes": ds_cfg["num_classes"],
+            "full_train": args.full_train,
             "backbone": args.backbone,
-            "method": args.cp_method or "none",
+            "method": "none" if args.no_cp else args.cp_method,
             "seed": args.seed,
             "epochs": args.epochs,
             "no_cp": args.no_cp,
@@ -747,8 +768,16 @@ def main():
 
         results_path = Path(args.results_json).expanduser()
         results_path.parent.mkdir(parents=True, exist_ok=True)
-        with results_path.open("w", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=results_path.parent,
+            prefix=f".{results_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
             json.dump(results_json, f, indent=2)
+        Path(f.name).replace(results_path)
         print(f"Results saved to {results_path}")
 
     logger.experiment.finish()

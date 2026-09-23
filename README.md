@@ -44,6 +44,7 @@ Use `WANDB_MODE=offline` or `WANDB_MODE=disabled` when online W&B logging is
 unavailable. `--help` lists datasets and method-specific options.
 
 - `--no-cp`: run pre-CP evaluation only.
+- `--full-train`: use every image in the training split instead of `--n-samples`.
 - `--skip-baseline` / `--skip-final-eval`: skip pre-CP / post-CP frozen evaluation.
 - `--pre-cp-sft` / `--post-cp-sft`: additionally fine-tune a copy of the encoder
   before / after CP; the encoder used by CP is not modified by FT.
@@ -134,6 +135,77 @@ DINOv3-L jobs. `CP_REPO_ROOT` overrides the default repository location
 (`SLURM_SUBMIT_DIR`). The launcher uses the supplied interpreter directly,
 without changing Conda environments or creating experiment manifests.
 
+## Full Pre-CP Grid
+
+The grid evaluates five encoders on the original 15 datasets and eight held-out
+datasets, with seeds 42, 43, and 44. kNN and LP both use the full training split;
+validation and test images are not added to it. Existing dataset splits, pooling,
+and evaluation recipes are retained, with each encoder's pretrained mean/std.
+There is no CP, FT, checkpoint saving, or online W&B logging in this grid.
+Stanford Dogs keeps its existing validation holdout from the official training
+split; custom splits are unchanged. Galaxy10's split varies with the seed.
+
+The 17 Slurm tasks contain one dataset each, except task 0, which serializes all
+seven MedMNIST datasets. Every task runs all five encoders and three seeds in
+separate processes. In total there are 345 evaluations. The default resources
+are one V100, eight CPUs, 96 GB RAM, and 96 hours, with at most 12 tasks running.
+The extraction batch is 32 with two loader workers; these are frozen evaluations,
+not the memory-intensive CP configurations above.
+Task 0 has 105 evaluations rather than 15, so it will usually finish later.
+
+Start from the new project directory on the cluster:
+
+```bash
+export CP_ROOT=/scratch/gs4133/zhd/CP_new
+cd "$CP_ROOT"
+git clone --branch organized --single-branch \
+    git@github.com:akshayg108/continued-pretraining.git
+cd continued-pretraining
+module load miniconda/3-4.11.0
+bash run/setup_env.sh "$CP_ROOT"
+source run/precp_env.sh
+```
+
+The setup script creates `CP_ROOT/env` with Python 3.11, CUDA 12.8 PyTorch 2.10.0
+and torchvision 0.25.0, and the pinned lab `stable-pretraining` and user
+`stable-datasets` revisions. It does not modify the old environment. PyTorch
+is pinned to retain V100 support; do not upgrade it independently. A dependency
+snapshot is saved in `outputs/environment/pip-freeze.txt`.
+
+For gated DINOv3 weights, authorize your Hugging Face account for the checkpoints
+and log in to the new cache, or supply `HF_TOKEN` through your environment:
+
+```bash
+"$CP_ROOT/env/bin/hf" auth login
+"$CP_PYTHON" run/precp.py list
+"$CP_PYTHON" run/precp.py run --task-id 1 --dry-run
+bash run/slurm/submit_precp.sh
+squeue -u "$USER"
+```
+
+Dataset archives and processed data go to `data/stable_datasets`; model caches
+go to `data/huggingface` and `data/torch`. Download, package, and temporary caches
+also live under `data`. Results and per-evaluation logs are stored in
+`outputs/precp_full/{results,logs}/ENCODER/DATASET/seedSEED.{json,log}`; Slurm logs
+are in `outputs/slurm-log/precp-JOB_TASK.{out,err}`.
+
+Completed JSON results are skipped on resubmission. A failed evaluation is logged
+and the job continues through the other combinations, then exits nonzero. Retry
+the affected task IDs, or submit the full grid again. Slurm resource overrides
+are accepted by the submission script. Invalid or mismatched existing JSON files
+stop the command for inspection rather than being silently overwritten:
+
+```bash
+bash run/slurm/submit_precp.sh --array=0,16%2 --gres=gpu:a100:1
+"$CP_PYTHON" run/precp.py report
+```
+
+The report writes `outputs/precp_full/results.csv` and `summary.csv`, including
+actual training/test sizes, per-seed scores, means and sample standard deviations.
+Missing seeds stay missing rather than contributing zero to a mean. Re-running
+a failed combination restarts that evaluation; already completed combinations
+are not repeated.
+
 ## Layout
 
 ```text
@@ -143,6 +215,9 @@ stable_cp/methods/        LeJEPA, SimCLR, DIET, MAE
 stable_cp/evaluation/     Frozen kNN/LP and optional FT
 stable_cp/callbacks/      Unfreezing and online validation
 run/slurm/run.sh          Generic single-job launcher
+run/setup_env.sh          Independent cluster environment installation
+run/precp.py              Full pre-CP grid and CSV report
+run/slurm/submit_precp.sh  Submit the 17-task pre-CP array
 ```
 
 Historical experiment grids, geometry/causal analyses, rerun tools, and their
