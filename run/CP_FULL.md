@@ -8,7 +8,8 @@ on the training split, not the sum of all splits. Seeds are 42, 43, and 44.
 There are 176 tasks: 99 on V100 and 77 on A100, each running three seeds
 sequentially (528 fits). No preparation job or preparation dependency is added;
 submission first checks the existing pre-CP results and reference banks.
-It also imports the training module, SQLite, and the SPT registry before submitting.
+It also imports the training module, SQLite, and the SPT registry with one CPU
+thread before submitting, leaving compute-node thread settings unchanged.
 The import check and CP tasks prefer `$CP_ROOT/env/lib` for runtime libraries;
 this avoids loading an older system C++ runtime for ICU/SQLite. The override
 is local to the CP process tree, not the shared environment or `sbatch`.
