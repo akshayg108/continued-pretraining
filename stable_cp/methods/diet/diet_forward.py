@@ -2,16 +2,7 @@ import torch
 import torch.nn.functional as F
 from torchvision.transforms import v2
 
-
-def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
-    if backbone_output.ndim == 3:
-        tokens = backbone_output
-        if pool_strategy == "map":  # SigLIP MAP attention-pool head (frozen native readout)
-            return backbone.fc_norm(backbone.attn_pool(tokens))
-        if pool_strategy == "mean":
-            return tokens[:, 1:, :].mean(dim=1)  # Mean over patch tokens (exclude CLS)
-        return tokens[:, 0, :]  # CLS token (default)
-    return backbone_output
+from stable_cp.utils.backbone import forward_embedding
 
 
 def diet_forward(self, batch, stage):
@@ -38,9 +29,7 @@ def diet_forward(self, batch, stage):
             images, sample_idx = self._mixup_cutmix(images, sample_idx)
 
     pool_strategy = getattr(self, "pool_strategy", "cls")
-    embedding = _extract_embedding(
-        self.backbone.forward_features(images), pool_strategy, backbone=self.backbone
-    )
+    embedding = forward_embedding(self.backbone, images, pool_strategy)
     out["embedding"] = embedding
 
     if "label" in batch:

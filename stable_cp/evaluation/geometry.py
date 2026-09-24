@@ -114,6 +114,8 @@ def evaluate_geometry(features, reference_path, output_path=None, *, metadata):
         "n_reference": _BANK_SIZE,
         **{key: metadata[key] for key in ("backbone", "pool_strategy", "normalization")},
     }
+    if "feature_readout" in metadata:
+        expected["feature_readout"] = metadata["feature_readout"]
     for key, value in expected.items():
         if reference_metadata.get(key) != value:
             raise ValueError(f"Reference metadata mismatch for {key}: {reference_path}")
@@ -129,6 +131,8 @@ def evaluate_geometry(features, reference_path, output_path=None, *, metadata):
         "reference_file": str(reference_path),
         **geometry_descriptors(bank, reference),
     }
+    if "feature_readout" in metadata:
+        results["feature_readout"] = metadata["feature_readout"]
     if output_path is not None:
         output_path = Path(output_path).expanduser().resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -11,6 +11,8 @@ import torch.nn as nn
 
 import stable_pretraining as spt
 
+from stable_cp.utils.backbone import forward_embedding, is_mae_backbone
+
 from .zero_shot_eval import finetune_evaluate
 
 # Fixed full-FT protocol.
@@ -30,24 +32,12 @@ class _NoCheckpointTrainer(pl.Trainer):
         raise RuntimeError("FT checkpoint writes are disabled by the evaluation protocol")
 
 
-def _extract_embedding(backbone_output, pool_strategy="cls", backbone=None):
-    """Read CLS, patch-mean, or SigLIP attention-pooled features."""
-    if backbone_output.ndim == 3:
-        if pool_strategy == "map":  # SigLIP's native attention-pool readout
-            return backbone.fc_norm(backbone.attn_pool(backbone_output))
-        if pool_strategy == "mean":
-            return backbone_output[:, 1:, :].mean(dim=1)
-        return backbone_output[:, 0, :]  # CLS token
-    return backbone_output
-
-
 def _sft_forward(self, batch, stage):
     """Compute supervised logits and loss for ``spt.Module``."""
     out = {}
     pool_strategy = getattr(self, "pool_strategy", "cls")
     prefix = getattr(self, "metric_prefix", "sft")
-    features = self.backbone.forward_features(batch["image"])
-    out["embedding"] = _extract_embedding(features, pool_strategy, backbone=self.backbone)
+    out["embedding"] = forward_embedding(self.backbone, batch["image"], pool_strategy)
     out["logits"] = self.classifier(out["embedding"])
 
     if "label" in batch:
@@ -131,6 +121,11 @@ def sft_evaluate(
     pl.seed_everything(seed, workers=True)
     # CP's requires_grad mask survives deepcopy. Reset it before optimizers exist.
     backbone_copy = copy.deepcopy(backbone).requires_grad_(True)
+    protocol = SFT_PROTOCOL
+    if is_mae_backbone(backbone_copy) and pool_strategy == "mean":
+        # Official MAE global-pool FT initializes a fresh post-pooling LayerNorm.
+        backbone_copy.norm.reset_parameters()
+        protocol = "full_ft_mae_mean_fresh_ln_v2"
 
     steps_per_epoch = max(n_samples // SFT_BATCH_SIZE, 1)
     total_steps = SFT_EPOCHS * steps_per_epoch
@@ -199,7 +194,7 @@ def sft_evaluate(
         f"{prefix}_acc": raw["finetune_acc"],
         f"{prefix}_f1": raw["finetune_f1"],
         f"{prefix}_auroc": raw.get("finetune_auroc", 0.0),
-        "sft_protocol": SFT_PROTOCOL,
+        "sft_protocol": protocol,
         "sft_trainable_params": trainable_params,
         "sft_total_params": total_params,
     }

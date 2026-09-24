@@ -11,7 +11,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 
-from precp import ENCODERS, REPO
+from precp import ENCODERS, REPO, encoder_pool_strategy
 
 PROTOCOL = "precp_geometry_5000_v1"
 N_REFERENCE = 5000
@@ -163,13 +163,13 @@ def _extract_references(args, encoders, selected, indices, source_metadata, stag
     from continued_pretraining import configure_normalization, load_backbone
     from stable_cp.data import create_transforms
     from stable_cp.evaluation.zero_shot_eval import extract_features
-    from stable_cp.utils.backbone import default_pool_strategy
+    from stable_cp.utils.backbone import feature_readout
 
     print(f"GPU: {torch.cuda.get_device_name(0)}", flush=True)
     staged = False
     for encoder in encoders:
         backbone_name = ENCODERS[encoder]
-        pool = default_pool_strategy(backbone_name)
+        pool = encoder_pool_strategy(encoder)
         backbone, device = load_backbone(SimpleNamespace(backbone=backbone_name), img_size=224)
         config = configure_normalization({"input_size": 224}, backbone)
         metadata = {
@@ -183,6 +183,8 @@ def _extract_references(args, encoders, selected, indices, source_metadata, stag
             "input_size": 224,
             **source_metadata,
         }
+        if backbone_name.endswith(".mae"):
+            metadata["feature_readout"] = feature_readout(backbone_name, pool)
         path = args.root / "outputs/precp_full/reference" / f"{encoder}.npz"
         if existing_reference(path, metadata, indices, backbone.num_features):
             print(f"SKIP {encoder}: {path}", flush=True)
@@ -224,7 +226,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(os.environ.get("CP_ROOT", REPO.parent)))
     parser.add_argument("--imagenet-dir", type=Path)
-    parser.add_argument("--encoder", choices=tuple(ENCODERS))
+    parser.add_argument("--encoder", nargs="+", choices=tuple(ENCODERS))
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--stage-data", action="store_true", help="Prepare and copy the reference subset to node-local storage")
     parser.add_argument("--dry-run", action="store_true")
@@ -235,14 +237,14 @@ def main():
     args.imagenet_dir = (
         (args.imagenet_dir or args.root / "data/imagenet_val").expanduser().resolve()
     )
-    encoders = [args.encoder] if args.encoder else list(ENCODERS)
+    encoders = [encoder for encoder in ENCODERS if args.encoder is None or encoder in args.encoder]
     if args.dry_run:
         print(f"ImageNet validation cache: {args.imagenet_dir}")
         if args.stage_data:
             print(f"Prepared ImageNet reference: {args.root / 'data/imagenet_reference_5000'}")
         for encoder in encoders:
             path = args.root / "outputs/precp_full/reference" / f"{encoder}.npz"
-            print(f"{encoder}: {ENCODERS[encoder]} -> {path}")
+            print(f"{encoder}: {ENCODERS[encoder]} pool={encoder_pool_strategy(encoder)} -> {path}")
         return
     extract_references(args, encoders)
 

@@ -78,13 +78,23 @@ training transform with the model's inference transform.
 | DINOv3-L | `vit_large_patch16_dinov3.lvd1689m` | CLS |
 | CLIP | `vit_base_patch16_clip_224.openai` | CLS |
 | SigLIP-2 | `vit_base_patch16_siglip_224.v2_webli` | MAP |
-| MAE | `vit_base_patch16_224.mae` | Patch mean |
+| MAE | `vit_base_patch16_224.mae` | Patch mean, then LayerNorm |
 
 `--pool-strategy` can override the default. CP, kNN, LP, and optional FT share
 the sampled training indices. kNN uses clean training features; LP uses the
 existing augmented training features. Frozen pre/post evaluation uses the same test
 split and L2-normalized features. Dataset readers and split rules live in
 `stable_cp/data/`.
+
+For MAE, `cls` reads the final normalized CLS token; `mean` averages raw final-block
+patch tokens before applying the pretrained final LayerNorm. Frozen kNN/LP and
+LeJEPA/SimCLR/DIET CP use this same readout. Optional MAE mean-pool FT reinitializes
+the copied norm's affine parameters, matching the official global-pool FT
+initialization; it does not change the original encoder. These readout choices do
+not replace our LP or FT optimizer/augmentation recipes with the official ones.
+MAE-CP reconstruction still uses the normalized token sequence, not a pooled
+vector; its online probes retain the masked encoder's visible-token readout.
+New MAE CP checkpoint names include the readout ID and do not resume old pooling runs.
 
 `--n-samples` specifies the exact number of distinct training images. Sampling
 follows class proportions while ensuring at least one image per class, so the
@@ -149,17 +159,19 @@ local copy is removed on normal exit and catchable termination.
 
 ## Full Pre-CP Grid
 
-The grid evaluates five encoders on the original 15 datasets and eight held-out
+The grid evaluates five encoder models on the original 15 datasets and eight held-out
 datasets, with seeds 42, 43, and 44. kNN and LP both use the full training split;
-validation and test images are not added to it. Existing dataset splits, pooling,
-and evaluation recipes are retained, with each encoder's pretrained mean/std.
+validation and test images are not added to it. MAE has two readout variants,
+`MAE-CLS` and `MAE-Mean`, each with its own kNN, LP, and five geometry metrics.
+Both use the same pretrained weights, splits, and seeded evaluation recipe.
+The other four encoders retain their existing readouts and pretrained mean/std.
 There is no CP, FT, checkpoint saving, or online W&B logging in this grid.
 Stanford Dogs keeps its existing validation holdout from the official training
 split; custom splits are unchanged. Galaxy10's split varies with the seed.
 
 The 17 Slurm tasks contain one dataset each, except task 0, which serializes all
-seven MedMNIST datasets. Every task runs all five encoders and three seeds in
-separate processes. In total there are 345 evaluations. One additional reference
+seven MedMNIST datasets. Every task runs six readout variants and three seeds in
+separate processes. In total there are 414 evaluations. One additional reference
 job runs first; the 17 evaluation tasks depend on its successful completion.
 Each dataset is staged once for all encoders and seeds. Task 0 stages and releases
 one MedMNIST dataset at a time. The reference job stages only its selected 5000
@@ -168,7 +180,7 @@ The default resources
 are one V100, eight CPUs, 96 GB RAM, and 96 hours, with at most 12 tasks running.
 The extraction batch is 32 with two loader workers; these are frozen evaluations,
 not the memory-intensive CP configurations above.
-Task 0 has 105 evaluations rather than 15, so it will usually finish later.
+Task 0 has 126 evaluations rather than 18, so it will usually finish later.
 
 Start from the new project directory on the cluster:
 
@@ -264,6 +276,46 @@ descriptors, means and sample standard deviations.
 Missing seeds stay missing rather than contributing zero to a mean. Re-running
 a failed combination restarts that evaluation; already completed combinations
 are not repeated.
+
+### MAE Readout Comparison Only
+
+Legacy `MAE/` results and `reference/MAE.npz` remain untouched. The new variants
+use `MAE-CLS/`, `MAE-Mean/`, and matching reference filenames. Readout IDs in JSON
+and NPZ metadata prevent reuse of the old mean-after-token-normalization features.
+No other encoder needs rerunning for this comparison (23 datasets x 2 readouts x
+3 seeds = 138 evaluations). Once this code is available on the cluster:
+
+```bash
+(
+    set -euo pipefail
+    export CP_ROOT=/scratch/gs4133/zhd/CP_new
+    cd "$CP_ROOT/continued-pretraining"
+    source run/precp_env.sh
+    LOG="$CP_ROOT/outputs/slurm-log"
+
+    REFERENCE=$(sbatch --parsable --chdir="$PWD" --export=ALL \
+        --output="$LOG/precp-reference-%j.out" \
+        --error="$LOG/precp-reference-%j.err" \
+        run/slurm/precp_reference.sh --encoder MAE-CLS MAE-Mean)
+    REFERENCE=${REFERENCE%%;*}
+    printf 'MAE reference job: %s\n' "$REFERENCE"
+
+    sbatch --chdir="$PWD" --export=ALL --dependency="afterok:$REFERENCE" \
+        --output="$LOG/precp-%A_%a.out" --error="$LOG/precp-%A_%a.err" \
+        run/slurm/precp.sh --encoder MAE-CLS MAE-Mean
+)
+```
+
+Both scripts stage image data on node-local storage. To inspect the selected grid
+or export only the comparison after jobs finish:
+
+```bash
+"$CP_PYTHON" run/precp.py list --encoder MAE-CLS MAE-Mean
+"$CP_PYTHON" run/precp.py report --encoder MAE-CLS MAE-Mean
+```
+
+Filtered reports are named `results.MAE-CLS_MAE-Mean.csv` and
+`summary.MAE-CLS_MAE-Mean.csv`; the full-grid reports keep their usual filenames.
 
 ## Layout
 

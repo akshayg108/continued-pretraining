@@ -21,7 +21,7 @@ from stable_cp.callbacks import (
 )
 from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
 from stable_cp.evaluation.sft_eval import sft_evaluate
-from stable_cp.utils.backbone import default_pool_strategy
+from stable_cp.utils.backbone import default_pool_strategy, feature_readout
 from stable_cp.data import DATASETS, get_dataset_config, get_dataset, CPSubset
 from stable_cp.data import (
     create_eval_loaders,
@@ -598,8 +598,9 @@ def main():
     backbone, device = load_backbone(args, img_size=ds_cfg["input_size"])
     embed_dim = backbone.num_features
     args.pool_strategy = args.pool_strategy or default_pool_strategy(args.backbone)
+    readout = feature_readout(args.backbone, args.pool_strategy)
     ds_cfg = configure_normalization(ds_cfg, backbone)
-    print(f"Pretrained normalization: {ds_cfg['normalization']}; pooling: {args.pool_strategy}")
+    print(f"Pretrained normalization: {ds_cfg['normalization']}; readout: {readout}")
     geometry = None
     if args.geometry_reference:
         geometry = dict(
@@ -613,6 +614,8 @@ def main():
                 normalization=ds_cfg["normalization"],
             ),
         )
+        if args.backbone.endswith(".mae"):
+            geometry["metadata"]["feature_readout"] = readout
 
     # ---- Wandb logger ----
     if args.no_cp:
@@ -628,6 +631,8 @@ def main():
         )
     if args.run_name:
         run_name = args.run_name
+    elif args.backbone.endswith(".mae"):
+        run_name += f"_{readout}"
     logger = WandbLogger(project=project, name=run_name, log_model=False)
 
     sft_data = None
@@ -722,9 +727,10 @@ def main():
 
         cp_dir = checkpoint_dir / args.cp_method
         cp_dir.mkdir(parents=True, exist_ok=True)
+        readout_suffix = f"_{readout}" if args.backbone.endswith(".mae") else ""
         cp_ckpt_path = str(
             cp_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-            f"_n{args.n_samples}_s{args.seed}.ckpt"
+            f"_n{args.n_samples}_s{args.seed}{readout_suffix}.ckpt"
         )
         run_training(
             module,
@@ -782,6 +788,7 @@ def main():
             "no_cp": args.no_cp,
             "normalization_mode": "pretrained",
             "normalization": ds_cfg["normalization"],
+            "feature_readout": readout,
             "cp_config": dict(vars(args), freeze_epochs=freeze_epochs, warmup_epochs=warmup_epochs),
         }
 

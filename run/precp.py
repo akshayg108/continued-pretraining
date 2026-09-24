@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-training-set frozen evaluation: 23 datasets, five encoders, three seeds."""
+"""Frozen evaluation: 23 datasets, five encoder models, six readouts, three seeds."""
 
 import argparse
 from contextlib import nullcontext
@@ -14,11 +14,16 @@ import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from stable_cp.utils.backbone import default_pool_strategy
+
 ENCODERS = {
     "DINOv3": "vit_base_patch16_dinov3.lvd1689m",
     "CLIP": "vit_base_patch16_clip_224.openai",
     "SigLIP-2": "vit_base_patch16_siglip_224.v2_webli",
-    "MAE": "vit_base_patch16_224.mae",
+    "MAE-CLS": "vit_base_patch16_224.mae",
+    "MAE-Mean": "vit_base_patch16_224.mae",
     "DINOv3-L": "vit_large_patch16_dinov3.lvd1689m",
 }
 SEEDS = (42, 43, 44)
@@ -64,6 +69,14 @@ GEOMETRY_METRICS = (
 )
 
 
+def encoder_pool_strategy(encoder):
+    if encoder == "MAE-CLS":
+        return "cls"
+    if encoder == "MAE-Mean":
+        return "mean"
+    return default_pool_strategy(ENCODERS[encoder])
+
+
 def result_path(root, encoder, dataset, seed):
     return root / "outputs/precp_full/results" / encoder / dataset / f"seed{seed}.json"
 
@@ -80,9 +93,19 @@ def completed_result(path, encoder, dataset, seed):
         "no_cp": True,
         "normalization_mode": "pretrained",
     }
+    if ENCODERS[encoder].endswith(".mae"):
+        from stable_cp.utils.backbone import feature_readout
+
+        expected["feature_readout"] = feature_readout(
+            ENCODERS[encoder], encoder_pool_strategy(encoder)
+        )
     valid = all(row.get(key) == value for key, value in expected.items())
     valid = valid and row.get("n_train_actual", 0) == row.get("n_samples", -1) > 0
     valid = valid and row.get("cp_config", {}).get("knn_k") == 20
+    if ENCODERS[encoder].endswith(".mae"):
+        valid = valid and row.get("cp_config", {}).get("pool_strategy") == encoder_pool_strategy(
+            encoder
+        )
     valid = valid and all(
         isinstance(row.get(key), (int, float))
         and math.isfinite(row[key])
@@ -113,7 +136,7 @@ def run_group(args):
     failures = []
     for dataset in GROUPS[args.task_id]:
         pending = []
-        for encoder in ENCODERS:
+        for encoder in args.encoder:
             for seed in SEEDS:
                 if completed_result(result_path(args.root, encoder, dataset, seed), encoder, dataset, seed):
                     print(f"SKIP {encoder}/{dataset}/seed{seed}", flush=True)
@@ -168,6 +191,8 @@ def run_dataset(args, dataset, pending, cache_dir):
             "--geometry-features",
             str(args.root / "outputs/precp_full/features" / encoder / dataset / f"seed{seed}.npz"),
         ]
+        if ENCODERS[encoder].endswith(".mae"):
+            command.extend(("--pool-strategy", encoder_pool_strategy(encoder)))
         if args.dry_run:
             print(shlex.join(command))
             continue
@@ -186,11 +211,12 @@ def run_dataset(args, dataset, pending, cache_dir):
     return failures
 
 
-def report(root):
+def report(root, encoders=None):
+    encoders = tuple(encoders) if encoders is not None else tuple(ENCODERS)
     rows, summary = [], []
     for group in GROUPS:
         for dataset in group:
-            for encoder in ENCODERS:
+            for encoder in encoders:
                 found = []
                 for seed in SEEDS:
                     path = result_path(root, encoder, dataset, seed)
@@ -235,9 +261,10 @@ def report(root):
         *GEOMETRY_METRICS,
         "source",
     ]
+    suffix = "" if encoders == tuple(ENCODERS) else "." + "_".join(encoders)
     for name, records, columns in (
-        ("results.csv", rows, fields),
-        ("summary.csv", summary, list(summary[0])),
+        (f"results{suffix}.csv", rows, fields),
+        (f"summary{suffix}.csv", summary, list(summary[0])),
     ):
         path = directory / name
         with path.open("w", newline="") as stream:
@@ -252,7 +279,7 @@ def report(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("list", help="Show Slurm task IDs and dataset groups.")
+    listing = commands.add_parser("list", help="Show Slurm task IDs and dataset groups.")
     run = commands.add_parser("run", help="Run one dataset group, skipping completed results.")
     run.add_argument("--task-id", type=int, choices=range(len(GROUPS)), required=True)
     run.add_argument("--num-workers", type=int, default=2)
@@ -261,17 +288,34 @@ def main():
     reports = commands.add_parser(
         "report", help="Export per-seed results and means with sample SD."
     )
+    for subparser in (listing, run, reports):
+        subparser.add_argument(
+            "--encoder",
+            nargs="+",
+            choices=tuple(ENCODERS),
+            help="Select readout variants (default: all).",
+        )
     for subparser in (run, reports):
         subparser.add_argument(
             "--root", type=Path, default=Path(os.environ.get("CP_ROOT", REPO.parent))
         )
     args = parser.parse_args()
+    args.encoder = tuple(
+        encoder for encoder in ENCODERS if args.encoder is None or encoder in args.encoder
+    )
     if args.command == "list":
         for task_id, group in enumerate(GROUPS):
             print(
-                f"{task_id:2d}  {','.join(group)}  evaluations={len(group) * len(ENCODERS) * len(SEEDS)}"
+                f"{task_id:2d}  {','.join(group)}  evaluations={len(group) * len(args.encoder) * len(SEEDS)}"
             )
-        print("17 jobs; 23 datasets x 5 encoders x 3 seeds = 345 pre-CP evaluations; 0 CP; 0 FT.")
+        n_datasets = sum(len(group) for group in GROUPS)
+        n_models = len({ENCODERS[encoder] for encoder in args.encoder})
+        n_evaluations = n_datasets * len(args.encoder) * len(SEEDS)
+        print(
+            f"{len(GROUPS)} jobs; {n_datasets} datasets x {len(args.encoder)} readouts "
+            f"({n_models} encoder models) x {len(SEEDS)} seeds = {n_evaluations} "
+            "pre-CP evaluations; 0 CP; 0 FT."
+        )
         print(
             "One additional reference job; all five geometry metrics use min(train size, 5000) target images."
         )
@@ -279,7 +323,7 @@ def main():
         args.root = args.root.expanduser().resolve()
         run_group(args)
     else:
-        report(args.root.expanduser().resolve())
+        report(args.root.expanduser().resolve(), args.encoder)
 
 
 if __name__ == "__main__":
