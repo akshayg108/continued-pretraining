@@ -12,6 +12,8 @@ Each task stages target and reference images on node-local storage.
 The four encoders are DINOv3-B, CLIP, SigLIP-2, and DINOv3-L; each uses LeJEPA,
 SimCLR, DIET, and MAE objectives. All LeJEPA and all DINOv3-L tasks use A100;
 the other tasks use V100.
+All 176 tasks share one Slurm array with at most 10 running tasks by default.
+There is no separate V100 or A100 concurrency quota.
 
 ## Training And Evaluation
 
@@ -73,21 +75,31 @@ tree. A pull there is safe only when no live or queued job can read any file it
 would change; waiting for all original-directory jobs to finish is the simplest
 way to establish that condition.
 
-Both arrays request account `civil`, partition/QoS `nvidia`, one GPU, eight CPUs,
+The array requests account `civil`, partition/QoS `nvidia`, one GPU, eight CPUs,
 96 GB host memory, and 96 hours per task. A100 requests use `gpu:a100:1` with no
-GPU-memory-size constraint. The separate concurrency limits default to 12:
+GPU-memory-size constraint. Set the shared concurrency limit with:
 
 ```bash
-CP_V100_CONCURRENCY=12 CP_A100_CONCURRENCY=12 \
-    bash run/slurm/submit_cp_full.sh
+CP_CONCURRENCY=10 bash run/slurm/submit_cp_full.sh
 ```
 
-Additional arguments to the submission script are passed to both `sbatch`
-calls, for example `--time=48:00:00`. Array task IDs, GPU type, working directory,
-and log paths remain controlled by the script. The two limits are independent;
-cluster QoS limits may reduce their combined running count. Submission is not
-transactional: if the second submission fails, the first array remains queued
-and its job ID has already been printed. Do not blindly resubmit both arrays.
+The script submits one held array, changes the A100 task requests using
+`scontrol update`, verifies every task's GPU request with `squeue`, then releases
+the array. All tasks retain the same array-wide
+`%10` throttle: 10 V100, 10 A100, or any combination totaling at most 10 is
+allowed. See the [Slurm array documentation](https://slurm.schedmd.com/job_array.html)
+and [job update options](https://slurm.schedmd.com/scontrol.html).
+Cluster QoS limits and GPU availability can reduce the actual running count.
+This limit applies to this array, not unrelated jobs under the same account.
+
+Additional arguments are passed to `sbatch`, for example `--time=48:00:00`.
+Array task IDs, initial hold, GPU type, working directory, and log paths remain
+controlled by the script. Logs use `cp-full-<array>_<task>.out` and `.err`.
+The old `CP_V100_CONCURRENCY` and `CP_A100_CONCURRENCY` variables are no longer
+used. Do not submit another copy while an earlier CP array is still active.
+If a GPU-request update or verification fails, the script stops and leaves the
+array held with its ID printed. Do not release it manually or blindly resubmit;
+inspect the error and cancel that held array before a fresh submission.
 
 ## Outputs
 

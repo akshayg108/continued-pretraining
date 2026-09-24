@@ -3,14 +3,11 @@ set -euo pipefail
 
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/run/precp_env.sh"
-V100_CONCURRENCY="${CP_V100_CONCURRENCY:-12}"
-A100_CONCURRENCY="${CP_A100_CONCURRENCY:-12}"
-for limit in "$V100_CONCURRENCY" "$A100_CONCURRENCY"; do
-    if [[ ! "$limit" =~ ^[1-9][0-9]*$ ]]; then
-        printf 'CP_V100_CONCURRENCY and CP_A100_CONCURRENCY must be positive integers.\n' >&2
-        exit 2
-    fi
-done
+CONCURRENCY="${CP_CONCURRENCY:-10}"
+if [[ ! "$CONCURRENCY" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'CP_CONCURRENCY must be a positive integer.\n' >&2
+    exit 2
+fi
 
 "$CP_PYTHON" "$REPO/run/cp_full.py" check --root "$CP_ROOT"
 "$CP_PYTHON" "$REPO/run/cp_full.py" list
@@ -23,18 +20,43 @@ for tasks in "$V100_TASKS" "$A100_TASKS"; do
     fi
 done
 
-for gpu in v100 a100; do
-    if [[ "$gpu" == v100 ]]; then
-        tasks="$V100_TASKS"
-        limit="$V100_CONCURRENCY"
-    else
-        tasks="$A100_TASKS"
-        limit="$A100_CONCURRENCY"
-    fi
-    job=$(sbatch --parsable "$@" --chdir="$REPO" --export=ALL \
-        --gres="gpu:$gpu:1" --array="$tasks%$limit" \
-        --output="$CP_ROOT/outputs/slurm-log/cp-full-$gpu-%A_%a.out" \
-        --error="$CP_ROOT/outputs/slurm-log/cp-full-$gpu-%A_%a.err" \
-        "$REPO/run/slurm/cp_full.sh")
-    printf '%s CP array: %s\n' "$gpu" "${job%%;*}"
-done
+# Keep all tasks held until their GPU requests are assigned within one array.
+job=$(sbatch --parsable "$@" --hold --chdir="$REPO" --export=ALL \
+    --gres=gpu:v100:1 --array="$V100_TASKS,$A100_TASKS%$CONCURRENCY" \
+    --output="$CP_ROOT/outputs/slurm-log/cp-full-%A_%a.out" \
+    --error="$CP_ROOT/outputs/slurm-log/cp-full-%A_%a.err" \
+    "$REPO/run/slurm/cp_full.sh")
+job="${job%%;*}"
+printf 'CP array: %s (held; shared concurrency=%s)\n' "$job" "$CONCURRENCY"
+
+if ! scontrol update "JobId=${job}_[${A100_TASKS}]" Gres=gpu:a100:1; then
+    printf 'GPU assignment failed; array %s remains held. Do not release it manually.\n' "$job" >&2
+    exit 1
+fi
+if ! squeue --array --noheader --jobs="$job" --Format='ArrayTaskID:12,tres-per-node:80' |
+    awk -v v100="$V100_TASKS" -v a100="$A100_TASKS" '
+        BEGIN {
+            n = split(v100, ids, ",")
+            for (i = 1; i <= n; i++) expected[ids[i]] = "gpu:v100:1"
+            n = split(a100, ids, ",")
+            for (i = 1; i <= n; i++) expected[ids[i]] = "gpu:a100:1"
+        }
+        {
+            request = $2
+            sub(/^gres[:\/]/, "", request)
+            if (NF != 2 || !($1 in expected) || expected[$1] != request) bad = 1
+            delete expected[$1]
+        }
+        END {
+            for (id in expected) bad = 1
+            exit bad
+        }
+    '; then
+    printf 'GPU verification failed; array %s remains held. Do not release it manually.\n' "$job" >&2
+    exit 1
+fi
+if ! scontrol release "$job"; then
+    printf 'Could not release array %s; inspect its state before retrying.\n' "$job" >&2
+    exit 1
+fi
+printf 'CP array: %s (released; V100 + A100 running limit=%s)\n' "$job" "$CONCURRENCY"
