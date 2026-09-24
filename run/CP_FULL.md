@@ -21,6 +21,8 @@ the other tasks use V100.
   recipe. Full training data does not mean full-parameter backbone training.
 - DIET uses batch 32 with accumulation 1. LeJEPA and SimCLR use 256 with
   accumulation 1, except on DINOv3-L, which uses 128 with accumulation 2.
+- LeJEPA uses lambda 0.05 and 1,024 random SigReg projection directions.
+  Its learned MLP projector still outputs 128 dimensions (hidden size 2,048).
 - MAE uses batch 256 with accumulation 1 on all four encoders. This choice
   for MAE-CP on DINOv3-L has not yet been
   validated for GPU memory usage; GPU training is required to confirm it.

@@ -75,8 +75,8 @@ def recipe(task):
     if method == "LeJEPA-CP":
         config.update(
             n_views=8,
-            lamb=0.02,
-            num_slices=1000,
+            lamb=0.05,
+            num_slices=1024,
             t_max=3.0,
             n_points=17,
             multivariate_test="slicing",
