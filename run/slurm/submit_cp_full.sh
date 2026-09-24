@@ -9,6 +9,9 @@ if [[ ! "$CONCURRENCY" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+LD_LIBRARY_PATH="$CP_ROOT/env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$CP_PYTHON" -c 'import continued_pretraining; import sqlite3; from stable_pretraining.registry.logger import RegistryLogger; print("CP runtime imports OK")'
+
 "$CP_PYTHON" "$REPO/run/cp_full.py" check --root "$CP_ROOT"
 "$CP_PYTHON" "$REPO/run/cp_full.py" list
 V100_TASKS=$("$CP_PYTHON" "$REPO/run/cp_full.py" array --gpu v100)

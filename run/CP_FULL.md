@@ -8,6 +8,10 @@ on the training split, not the sum of all splits. Seeds are 42, 43, and 44.
 There are 176 tasks: 99 on V100 and 77 on A100, each running three seeds
 sequentially (528 fits). No preparation job or preparation dependency is added;
 submission first checks the existing pre-CP results and reference banks.
+It also imports the training module, SQLite, and the SPT registry before submitting.
+The import check and CP tasks prefer `$CP_ROOT/env/lib` for runtime libraries;
+this avoids loading an older system C++ runtime for ICU/SQLite. The override
+is local to the CP process tree, not the shared environment or `sbatch`.
 Each task stages target and reference images on node-local storage.
 The four encoders are DINOv3-B, CLIP, SigLIP-2, and DINOv3-L; each uses LeJEPA,
 SimCLR, DIET, and MAE objectives. All LeJEPA and all DINOv3-L tasks use A100;

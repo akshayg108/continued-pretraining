@@ -22,5 +22,7 @@ export OPENBLAS_NUM_THREADS="$OMP_NUM_THREADS"
 export MKL_NUM_THREADS="$OMP_NUM_THREADS"
 export SKLEARN_WORKING_MEMORY=256
 
+# Keep ICU/SQLite on the environment's C++ runtime before torch is imported.
+export LD_LIBRARY_PATH="$CP_ROOT/env/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$CP_PYTHON" -u run/cp_full.py run --root "$CP_ROOT" \
     --task-id "$SLURM_ARRAY_TASK_ID" --num-workers 8 "$@"
