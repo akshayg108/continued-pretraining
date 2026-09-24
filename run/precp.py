@@ -17,7 +17,6 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from stable_cp.utils.backbone import default_pool_strategy
-from stable_cp.utils.lp_protocol import LP_DIRECTORY, lp_config
 
 ENCODERS = {
     "DINOv3": "vit_base_patch16_dinov3.lvd1689m",
@@ -79,10 +78,7 @@ def encoder_pool_strategy(encoder):
 
 
 def result_path(root, encoder, dataset, seed):
-    return (
-        root / "outputs/precp_full" / LP_DIRECTORY / "results" / encoder / dataset
-        / f"seed{seed}.json"
-    )
+    return root / "outputs/precp_full/results" / encoder / dataset / f"seed{seed}.json"
 
 
 def completed_result(path, encoder, dataset, seed):
@@ -96,7 +92,6 @@ def completed_result(path, encoder, dataset, seed):
         "full_train": True,
         "no_cp": True,
         "normalization_mode": "pretrained",
-        "pre_lp": lp_config(),
     }
     if ENCODERS[encoder].endswith(".mae"):
         from stable_cp.utils.backbone import feature_readout
@@ -194,24 +189,14 @@ def run_dataset(args, dataset, pending, cache_dir):
             "--geometry-reference",
             str(args.root / "outputs/precp_full/reference" / f"{encoder}.npz"),
             "--geometry-features",
-            str(
-                args.root / "outputs/precp_full" / LP_DIRECTORY / "features" / encoder / dataset
-                / f"seed{seed}.npz"
-            ),
+            str(args.root / "outputs/precp_full/features" / encoder / dataset / f"seed{seed}.npz"),
         ]
-        lp = lp_config()
-        for key in ("epochs", "batch_size", "lr", "forward_batch_size"):
-            if lp[key] is not None:
-                command.extend(("--lp-" + key.replace("_", "-"), str(lp[key])))
         if ENCODERS[encoder].endswith(".mae"):
             command.extend(("--pool-strategy", encoder_pool_strategy(encoder)))
         if args.dry_run:
             print(shlex.join(command))
             continue
-        log = (
-            args.root / "outputs/precp_full" / LP_DIRECTORY / "logs" / encoder / dataset
-            / f"seed{seed}.log"
-        )
+        log = args.root / "outputs/precp_full/logs" / encoder / dataset / f"seed{seed}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         print(f"RUN {label} log={log}", flush=True)
         with log.open("a") as stream:
@@ -261,7 +246,7 @@ def report(root, encoders=None):
                     cell[f"{key}_sd"] = statistics.stdev(scores) if len(scores) > 1 else ""
                 summary.append(cell)
 
-    directory = root / "outputs/precp_full" / LP_DIRECTORY
+    directory = root / "outputs/precp_full"
     directory.mkdir(parents=True, exist_ok=True)
     fields = [
         "encoder",

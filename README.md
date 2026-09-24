@@ -85,8 +85,8 @@ training transform with the model's inference transform.
 | MAE | `vit_base_patch16_224.mae` | Patch mean, then LayerNorm |
 
 `--pool-strategy` can override the default. CP, kNN, LP, and optional FT share
-the sampled training indices. kNN uses clean training features; LP rereads images
-with fresh random crops and flips on every training pass. Frozen pre/post evaluation uses the same test
+the sampled training indices. kNN uses clean training features; LP uses the
+existing augmented training features. Frozen pre/post evaluation uses the same test
 split and L2-normalized features. Dataset readers and split rules live in
 `stable_cp/data/`.
 
@@ -107,34 +107,7 @@ pass the class count instead when it exceeds 100.
 
 SPT's `OnlineKNN` and `OnlineProbe` monitor training; they do not replace frozen
 pre/post evaluation. The reported kNN keeps sklearn inverse-cosine-distance
-weighting. Frozen LP uses the versioned protocol below, independently of SPT's
-training-time `OnlineProbe`.
-
-### Frozen Linear Probe
-
-`frozen_online_lp_v1` freezes the encoder in evaluation mode, extracts features
-under `no_grad`, and trains only a freshly initialized linear classifier. Every
-epoch visits the training subset again, shuffled, using random resized crops
-(scale 0.08-1.0) and horizontal flips (probability 0.5). No color jitter,
-grayscale, or blur is used by LP. The existing deterministic square resize and
-encoder-specific mean/std are retained for test images and the kNN bank.
-
-Defaults are 150 actual epochs, classifier batch 512 (including the final short
-batch), Adam at 0.001 with zero weight decay, and L2-normalized features. There
-is no 10,000-step minimum. The entire LP batch is passed through the encoder;
-an optional forward chunk size can reduce peak memory without changing the
-classifier batch. CLI overrides are `--lp-epochs`, `--lp-batch-size`,
-`--lp-lr`, and `--lp-forward-batch-size`. Test labels are used only for reporting
-after the fixed training budget, not for selecting checkpoints or settings.
-
-This adopts per-epoch augmentation, not the entire official MAE/DINO recipe:
-readout, L2 normalization, optimizer, and deterministic resize remain our controlled
-protocol. It costs substantially more encoder forwards than the legacy cached LP.
-JSON records contain `pre_lp` and/or `post_lp`; grid runners only accept exact
-matching metadata. For existing experiments, use the dedicated
-[LP-only rerun](run/ONLINE_LP.md) to preserve checkpoints, kNN, and geometry.
-It runs 23 separate pre-CP dataset jobs and the completed original post-CP jobs,
-without starting or resuming CP training.
+weighting, and LP keeps the existing normalized-feature Adam protocol.
 
 SPT now handles gradient accumulation inside `Module` via `Manager`; CP forwards
 return unscaled losses. Logged losses are therefore unscaled, and `global_step`
@@ -256,7 +229,7 @@ squeue -u "$USER"
 Persistent dataset archives and processed data go to `data/stable_datasets`; model caches
 go to `data/huggingface` and `data/torch`. Download, package, and temporary caches
 also live under `data`. Results and per-evaluation logs are stored in
-`outputs/precp_full/lp_online_v1/{results,logs}/ENCODER/DATASET/seedSEED.{json,log}`; Slurm logs
+`outputs/precp_full/{results,logs}/ENCODER/DATASET/seedSEED.{json,log}`; Slurm logs
 are in `outputs/slurm-log/precp-JOB_TASK.{out,err}`.
 Image reads during evaluation use the node-local processed cache. First-time
 download/cache construction can still leave the GPU idle; if the cluster cancels
@@ -285,10 +258,10 @@ and 2000-query overlap, so those old values must not be mixed into this grid.
 
 Reference features are saved to `outputs/precp_full/reference/ENCODER.npz`.
 Selected raw target features and training-row indices are saved to
-`outputs/precp_full/lp_online_v1/features/ENCODER/DATASET/seedSEED.npz`. No full-training-set
+`outputs/precp_full/features/ENCODER/DATASET/seedSEED.npz`. No full-training-set
 feature archive is written. JSON records include sample counts, MMD bandwidth,
 and reference paths. For unchanged train splits, deterministic geometry can be
-identical across evaluation seeds; LP uses a seeded fresh-view training protocol.
+identical across evaluation seeds; LP still follows its original seeded protocol.
 
 Completed JSON results are skipped on resubmission. A failed evaluation is logged
 and the job continues through the other combinations, then exits nonzero. Retry
@@ -301,7 +274,7 @@ bash run/slurm/submit_precp.sh --array=0,16%2 --gres=gpu:a100:1
 "$CP_PYTHON" run/precp.py report
 ```
 
-The report writes `outputs/precp_full/lp_online_v1/results.csv` and `summary.csv`, including
+The report writes `outputs/precp_full/results.csv` and `summary.csv`, including
 actual training/test/geometry sizes, per-seed scores and all five geometry
 descriptors, means and sample standard deviations.
 Missing seeds stay missing rather than contributing zero to a mean. Re-running

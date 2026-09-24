@@ -79,23 +79,6 @@ def create_transforms(ds_cfg, n_views=1, strong_aug=False):
     return train_transform, val_transform
 
 
-def create_lp_transforms(ds_cfg):
-    """Fresh weak training views and the unchanged deterministic test transform."""
-    size = (ds_cfg["input_size"], ds_cfg["input_size"])
-    train_transform = transforms.Compose(
-        transforms.RGB(),
-        transforms.RandomResizedCrop(size, scale=(0.08, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ToImage(**ds_cfg["normalization"]),
-    )
-    test_transform = transforms.Compose(
-        transforms.RGB(),
-        transforms.Resize(size),
-        transforms.ToImage(**ds_cfg["normalization"]),
-    )
-    return train_transform, test_transform
-
-
 class CPSubset(torch.utils.data.Dataset):
     """Shared training subset with local IDs for instance classification."""
 
@@ -129,8 +112,6 @@ def create_eval_loaders(
     data_dir,
     indices=None,
     remap_sample_idx=True,
-    train_batch_size=None,
-    train_shuffle=False,
 ):
     """Return test and training-reference loaders plus their shared indices."""
     splits = ds_cfg.get("splits", ["train", "validation", "test"])
@@ -161,9 +142,7 @@ def create_eval_loaders(
     )
     eval_train_loader = torch.utils.data.DataLoader(
         eval_subset,
-        batch_size=args.batch_size if train_batch_size is None else train_batch_size,
-        shuffle=train_shuffle,
-        generator=torch.Generator().manual_seed(args.seed) if train_shuffle else None,
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=True,
         persistent_workers=args.num_workers > 0,

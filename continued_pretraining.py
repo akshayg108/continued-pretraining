@@ -22,13 +22,11 @@ from stable_cp.callbacks import (
 from stable_cp.evaluation.zero_shot_eval import zero_shot_eval
 from stable_cp.evaluation.sft_eval import sft_evaluate
 from stable_cp.utils.backbone import default_pool_strategy, feature_readout
-from stable_cp.utils.lp_protocol import lp_config
 from stable_cp.data import DATASETS, get_dataset_config, get_dataset, CPSubset
 from stable_cp.data import (
     create_eval_loaders,
     create_train_datamodule,
     create_transforms,
-    create_lp_transforms,
 )
 
 
@@ -52,19 +50,6 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--num-trained-blocks", type=int, default=2)
     parser.add_argument("--warmup-epochs", type=int, default=None)
     parser.add_argument("--knn-k", type=int, default=20)
-    parser.add_argument(
-        "--lp-epochs", type=int, default=150,
-        help="Frozen LP epochs with fresh random crops on each pass.",
-    )
-    parser.add_argument(
-        "--lp-batch-size", type=int, default=512,
-        help="Linear-classifier training batch size, independent of CP.",
-    )
-    parser.add_argument("--lp-lr", type=float, default=1e-3)
-    parser.add_argument(
-        "--lp-forward-batch-size", type=int, default=None,
-        help="Optional encoder forward chunk size; by default forward the whole LP batch.",
-    )
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--skip-final-eval", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
@@ -204,11 +189,9 @@ def _create_shared_eval_data(args, ds_cfg, data_dir):
         eval_args.batch_size = args.eval_batch_size
     if getattr(args, "eval_num_workers", None) is not None:
         eval_args.num_workers = args.eval_num_workers
-    train_tf, eval_tf = create_lp_transforms(ds_cfg)
+    train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
     test_loader, eval_train_loader, indices = create_eval_loaders(
-        eval_args, ds_cfg, train_tf, eval_tf, data_dir,
-        train_batch_size=args.lp_batch_size,
-        train_shuffle=True,
+        eval_args, ds_cfg, train_tf, eval_tf, data_dir
     )
     # Clean train loader for KNN (same indices, no augmentation)
     _, knn_train_loader, _ = create_eval_loaders(
@@ -325,7 +308,6 @@ def run_baseline(
     logger,
     knn_train_loader=None,
     geometry=None,
-    num_classes=None,
 ):
     """Pre-CP evaluation: KNN + Linear Probe."""
     if args.skip_baseline:
@@ -341,13 +323,8 @@ def run_baseline(
         knn_train_loader=knn_train_loader,
         verbose=True,
         geometry=geometry,
-        lp_epochs=args.lp_epochs,
-        lp_lr=args.lp_lr,
-        lp_forward_batch_size=args.lp_forward_batch_size,
-        lp_num_classes=num_classes,
-        lp_seed=args.seed,
     )
-    logged = {k: v for k, v in results.items() if k not in ("geometry", "lp")}
+    logged = {k: v for k, v in results.items() if k != "geometry"}
     logged.update(
         {
             f"geometry/{k}": v
@@ -372,7 +349,6 @@ def run_final_eval(
     baseline_results,
     knn_train_loader=None,
     geometry=None,
-    num_classes=None,
 ):
     """Post-CP evaluation: KNN + Linear Probe."""
     if args.skip_final_eval:
@@ -388,11 +364,6 @@ def run_final_eval(
         knn_train_loader=knn_train_loader,
         verbose=True,
         geometry=geometry,
-        lp_epochs=args.lp_epochs,
-        lp_lr=args.lp_lr,
-        lp_forward_batch_size=args.lp_forward_batch_size,
-        lp_num_classes=num_classes,
-        lp_seed=args.seed,
     )
     if geometry is not None:
         final_results["geometry"].update(phase="post", reference_encoder="post_cp")
@@ -423,13 +394,12 @@ def _load_completed_checkpoint(module, checkpoint, args):
     progress = saved.get("loops", {}).get("fit_loop", {}).get("epoch_progress", {})
     # Lightning checkpoints at epoch-end precede the completed counter increment.
     processed = progress.get("current", {}).get("processed", -1)
-    if saved.get("epoch", -1) < args.epochs - 1 or processed < args.epochs:
+    if not (
+        saved.get("epoch", -1) >= args.epochs - 1
+        and processed >= args.epochs
+        and saved.get("global_step") == expected_steps
+    ):
         return False
-    if saved.get("global_step") != expected_steps:
-        raise ValueError(
-            f"Completed checkpoint has {saved.get('global_step')} main updates, "
-            f"expected {expected_steps}: {checkpoint}. Check its training recipe and SPT version."
-        )
     # Online probes are callback-owned; all CP backbone/head/decoder keys stay strict.
     state = {
         key: value
@@ -675,10 +645,6 @@ def main():
         parser.error("--eval-batch-size must be positive")
     if args.eval_num_workers is not None and args.eval_num_workers < 0:
         parser.error("--eval-num-workers must be nonnegative")
-    try:
-        lp_config(args.lp_epochs, args.lp_batch_size, args.lp_lr, args.lp_forward_batch_size)
-    except ValueError as exc:
-        parser.error(str(exc))
 
     # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
@@ -775,7 +741,6 @@ def main():
             logger,
             knn_train_loader=knn_train_loader,
             geometry=geometry,
-            num_classes=ds_cfg["num_classes"],
         )
 
     if args.pre_cp_sft:
@@ -871,7 +836,6 @@ def main():
             baseline_results,
             knn_train_loader=knn_train_loader,
             geometry=post_geometry,
-            num_classes=ds_cfg["num_classes"],
         )
 
     if args.post_cp_sft:
@@ -909,7 +873,6 @@ def main():
 
         for stage, metrics in (("pre", baseline_results), ("post", final_eval_results)):
             if metrics:
-                results_json[f"{stage}_lp"] = metrics["lp"]
                 for output, source in (
                     ("knn_f1", "knn_f1"),
                     ("knn_acc", "knn_acc"),
