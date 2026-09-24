@@ -1,5 +1,9 @@
-def _extract_embedding(encoded_tokens, num_prefix_tokens, pool_strategy="cls"):
-    """Pool CLS or visible patches, excluding all prefix tokens from patch means."""
+def _extract_embedding(encoded_tokens, num_prefix_tokens, pool_strategy="cls", backbone=None):
+    """Use native MAP, CLS, or visible-patch mean for online probes."""
+    if pool_strategy == "map":
+        if backbone is None or getattr(backbone, "attn_pool", None) is None:
+            raise ValueError("MAP pooling requires the backbone's native attention pool")
+        return backbone.fc_norm(backbone.attn_pool(encoded_tokens))
     if pool_strategy == "mean":
         return encoded_tokens[:, num_prefix_tokens:, :].mean(dim=1)
     return encoded_tokens[:, 0, :]
@@ -14,7 +18,10 @@ def mae_forward(self, batch, stage):
     enc_out = self.backbone(images)
 
     out["embedding"] = _extract_embedding(
-        enc_out.encoded, self.backbone.num_prefix_tokens, pool_strategy
+        enc_out.encoded,
+        self.backbone.num_prefix_tokens,
+        pool_strategy,
+        backbone=self.backbone.vit,
     )
 
     if "label" in batch:

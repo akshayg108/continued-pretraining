@@ -1,11 +1,12 @@
 """MAE CP with image-level masking, a decoder, and masked-patch reconstruction."""
 
 import stable_pretraining as spt
-from stable_pretraining.backbone import MaskedEncoder, PatchMasking
+from stable_pretraining.backbone import PatchMasking
 from stable_pretraining.backbone.vit import MAEDecoder
 from stable_pretraining.losses import MAELoss
 
 from .mae_cp_forward import mae_forward
+from .masked_encoder import NativeMaskedEncoder
 
 
 def setup_mae(backbone, embed_dim, optim_config, **kwargs):
@@ -15,7 +16,7 @@ def setup_mae(backbone, embed_dim, optim_config, **kwargs):
     pool_strategy = kwargs.get("pool_strategy", "mean")
 
     masking = PatchMasking(mask_ratio=mask_ratio)
-    encoder = MaskedEncoder(backbone, masking=masking)
+    encoder = NativeMaskedEncoder(backbone, masking=masking)
 
     patch_size = encoder.patch_size_h
     num_patches = encoder.default_grid_h * encoder.default_grid_w

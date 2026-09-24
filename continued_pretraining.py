@@ -41,6 +41,9 @@ def create_base_parser(description="Continued Pretraining"):
     )
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--eval-batch-size", type=int, help="Frozen-evaluation batch size (default: --batch-size)."
+    )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--freeze-epochs", type=int, default=None)
@@ -51,6 +54,9 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--skip-final-eval", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=8)
+    parser.add_argument(
+        "--eval-num-workers", type=int, help="Frozen-evaluation workers (default: --num-workers)."
+    )
     parser.add_argument("--project", type=str, default=None)
     parser.add_argument(
         "--run-name",
@@ -59,6 +65,9 @@ def create_base_parser(description="Continued Pretraining"):
         help="Override Wandb run name (default: auto-generated)",
     )
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
+    parser.add_argument(
+        "--checkpoint-path", type=str, help="Exact CP .ckpt path, overriding --checkpoint-dir."
+    )
     parser.add_argument("--cache-dir", type=str, default="~/.cache")
     parser.add_argument(
         "--pool-strategy",
@@ -89,7 +98,7 @@ def setup_paths(args):
     checkpoint_dir = Path(args.checkpoint_dir).expanduser()
     data_dir = cache_dir
     data_dir.mkdir(parents=True, exist_ok=True)
-    if not args.no_cp:
+    if not args.no_cp and not getattr(args, "checkpoint_path", None):
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
     return data_dir, checkpoint_dir
 
@@ -175,13 +184,18 @@ def _get_methods():
 
 def _create_shared_eval_data(args, ds_cfg, data_dir):
     """Create shared eval loaders and the shared sampled train indices."""
+    eval_args = argparse.Namespace(**vars(args))
+    if getattr(args, "eval_batch_size", None) is not None:
+        eval_args.batch_size = args.eval_batch_size
+    if getattr(args, "eval_num_workers", None) is not None:
+        eval_args.num_workers = args.eval_num_workers
     train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
     test_loader, eval_train_loader, indices = create_eval_loaders(
-        args, ds_cfg, train_tf, eval_tf, data_dir
+        eval_args, ds_cfg, train_tf, eval_tf, data_dir
     )
     # Clean train loader for KNN (same indices, no augmentation)
     _, knn_train_loader, _ = create_eval_loaders(
-        args, ds_cfg, eval_tf, eval_tf, data_dir, indices=indices
+        eval_args, ds_cfg, eval_tf, eval_tf, data_dir, indices=indices
     )
     return eval_tf, test_loader, eval_train_loader, knn_train_loader, indices
 
@@ -334,6 +348,7 @@ def run_final_eval(
     logger,
     baseline_results,
     knn_train_loader=None,
+    geometry=None,
 ):
     """Post-CP evaluation: KNN + Linear Probe."""
     if args.skip_final_eval:
@@ -348,7 +363,10 @@ def run_final_eval(
         pool_strategy=args.pool_strategy,
         knn_train_loader=knn_train_loader,
         verbose=True,
+        geometry=geometry,
     )
+    if geometry is not None:
+        final_results["geometry"].update(phase="post", reference_encoder="post_cp")
     for k, v in final_results.items():
         logger.experiment.summary[f"final/{k}"] = v
 
@@ -364,6 +382,33 @@ def run_final_eval(
                 )
 
     return final_results
+
+
+def _load_completed_checkpoint(module, checkpoint, args):
+    """Restore CP weights only when epoch progress and main-update counts agree."""
+    saved = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    accumulation = max(int(getattr(args, "accumulate_grad_batches", 1)), 1)
+    expected_steps = args.epochs * get_steps_per_epoch(
+        args.n_samples, args.batch_size * accumulation
+    )
+    progress = saved.get("loops", {}).get("fit_loop", {}).get("epoch_progress", {})
+    # Lightning checkpoints at epoch-end precede the completed counter increment.
+    processed = progress.get("current", {}).get("processed", -1)
+    if not (
+        saved.get("epoch", -1) >= args.epochs - 1
+        and processed >= args.epochs
+        and saved.get("global_step") == expected_steps
+    ):
+        return False
+    # Online probes are callback-owned; all CP backbone/head/decoder keys stay strict.
+    state = {
+        key: value
+        for key, value in saved["state_dict"].items()
+        if not key.startswith(("callbacks_modules.", "callbacks_metrics."))
+    }
+    module.load_state_dict(state, strict=True)
+    print(f"CP already complete ({expected_steps} updates); restored {checkpoint} for evaluation")
+    return True
 
 
 def run_training(
@@ -390,6 +435,12 @@ def run_training(
         )
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
     resume_path = str(checkpoint) if checkpoint.is_file() else None
+    if (
+        resume_path
+        and getattr(args, "checkpoint_path", None)
+        and _load_completed_checkpoint(module, checkpoint, args)
+    ):
+        return
 
     callbacks = [
         FreezeBackboneCallback(freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks),
@@ -557,6 +608,13 @@ def main():
     parser.add_argument(
         "--geometry-features", help="Optional NPZ output for the selected raw geometry features."
     )
+    parser.add_argument(
+        "--post-geometry-reference-data",
+        help="Prepared 5000-image ImageNet reference to re-encode with the post-CP backbone.",
+    )
+    parser.add_argument(
+        "--post-geometry-dir", help="Directory for post_reference.npz and post_features.npz."
+    )
 
     # ---- Results output ----
     parser.add_argument(
@@ -577,6 +635,16 @@ def main():
         parser.error("--geometry-features requires --geometry-reference")
     if args.geometry_reference and args.skip_baseline:
         parser.error("--geometry-reference requires pre-CP evaluation")
+    if bool(args.post_geometry_reference_data) != bool(args.post_geometry_dir):
+        parser.error("--post-geometry-reference-data and --post-geometry-dir must be used together")
+    if args.post_geometry_reference_data and (args.no_cp or args.skip_final_eval):
+        parser.error("Post-CP geometry requires CP and final evaluation")
+    if args.checkpoint_path and Path(args.checkpoint_path).suffix != ".ckpt":
+        parser.error("--checkpoint-path must end in .ckpt")
+    if args.eval_batch_size is not None and args.eval_batch_size < 1:
+        parser.error("--eval-batch-size must be positive")
+    if args.eval_num_workers is not None and args.eval_num_workers < 0:
+        parser.error("--eval-num-workers must be nonnegative")
 
     # ---- Setup ----
     data_dir, checkpoint_dir = setup_paths(args)
@@ -725,13 +793,16 @@ def main():
         else:
             module = method_cfg["setup"](backbone, embed_dim, optim_config, **kwargs)
 
-        cp_dir = checkpoint_dir / args.cp_method
-        cp_dir.mkdir(parents=True, exist_ok=True)
-        readout_suffix = f"_{readout}" if args.backbone.endswith(".mae") else ""
-        cp_ckpt_path = str(
-            cp_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
-            f"_n{args.n_samples}_s{args.seed}{readout_suffix}.ckpt"
-        )
+        if args.checkpoint_path:
+            cp_ckpt_path = str(Path(args.checkpoint_path).expanduser().resolve())
+        else:
+            cp_dir = checkpoint_dir / args.cp_method
+            cp_dir.mkdir(parents=True, exist_ok=True)
+            readout_suffix = f"_{readout}" if args.backbone.endswith(".mae") else ""
+            cp_ckpt_path = str(
+                cp_dir / f"{args.dataset}_{args.backbone.replace('/', '_')}"
+                f"_n{args.n_samples}_s{args.seed}{readout_suffix}.ckpt"
+            )
         run_training(
             module,
             cp_data,
@@ -748,6 +819,13 @@ def main():
     sft_post_results = None
 
     if not args.skip_final_eval and not args.no_cp:
+        post_geometry = None
+        if args.post_geometry_reference_data:
+            from stable_cp.evaluation.post_geometry import create_post_geometry
+
+            # New post-geometry runs keep evaluation RNG independent of CP/resume work.
+            pl.seed_everything(args.seed, workers=True)
+            post_geometry = create_post_geometry(backbone, device, args, ds_cfg)
         final_eval_results = run_final_eval(
             backbone,
             eval_train_loader,
@@ -757,6 +835,7 @@ def main():
             logger,
             baseline_results,
             knn_train_loader=knn_train_loader,
+            geometry=post_geometry,
         )
 
     if args.post_cp_sft:
@@ -803,6 +882,8 @@ def main():
                     results_json[f"{stage}_{output}"] = metrics[source]
         if baseline_results and "geometry" in baseline_results:
             results_json["geometry"] = baseline_results["geometry"]
+        if final_eval_results and "geometry" in final_eval_results:
+            results_json["post_geometry"] = final_eval_results["geometry"]
         for stage, metrics in (("pre", sft_pre_results), ("post", sft_post_results)):
             if metrics:
                 for key in ("f1", "acc", "auroc"):
