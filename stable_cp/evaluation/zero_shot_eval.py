@@ -1,4 +1,6 @@
-"""Frozen-feature kNN and linear-probe evaluation."""
+"""Frozen-feature kNN and fresh-view linear-probe evaluation."""
+
+import warnings
 
 import numpy as np
 import torch
@@ -13,6 +15,7 @@ from torchmetrics.classification import (
 from tqdm import tqdm
 
 from stable_cp.utils.backbone import forward_embedding
+from .linear_probe import _frozen_encoder, _preserve_rng, linear_probe_online_evaluate
 
 
 def extract_features(
@@ -24,11 +27,10 @@ def extract_features(
 ) -> tuple:
     """Read features without gradients or changes to the trainable-parameter mask."""
     features, labels = [], []
-    model.eval()
 
     iterator = tqdm(loader, desc="Extracting features") if verbose else loader
 
-    with torch.no_grad():
+    with _frozen_encoder(model), torch.no_grad():
         for batch in iterator:
             if isinstance(batch, dict):
                 x = batch["image"]
@@ -191,44 +193,62 @@ def zero_shot_eval(
     knn_train_loader: torch.utils.data.DataLoader = None,
     verbose: bool = True,
     geometry: dict = None,
+    *,
+    lp_epochs: int = 150,
+    lp_lr: float = None,
+    lp_forward_batch_size: int = 32,
+    lp_num_classes: int = None,
+    lp_seed: int = None,
 ) -> dict:
-    """Evaluate kNN and LP, optionally using clean training views for kNN."""
-    model = model.to(device)
-    train_features, train_labels = extract_features(
-        model, train_loader, device, pool_strategy=pool_strategy, verbose=verbose
-    )
-    test_features, test_labels = extract_features(
-        model, test_loader, device, pool_strategy=pool_strategy, verbose=verbose
-    )
-    if knn_train_loader is not None:
+    """Evaluate clean-view kNN and frozen online LP with fresh training views.
+
+    train_loader is the LP loader; knn_train_loader must provide clean views.
+    linear_pytorch_min_steps is retained for call compatibility but is unused:
+    LP always makes exactly lp_epochs complete passes through train_loader.
+    """
+    if knn_train_loader is None:
+        raise ValueError("A clean knn_train_loader is required separately from the LP train_loader")
+    if linear_pytorch_min_steps != 10000:
+        warnings.warn(
+            "linear_pytorch_min_steps is unused by online LP; configure lp_epochs instead",
+            FutureWarning,
+            stacklevel=2,
+        )
+    with _preserve_rng(lp_seed):
+        model = model.to(device)
+        test_features, test_labels = extract_features(
+            model, test_loader, device, pool_strategy=pool_strategy, verbose=verbose
+        )
         knn_features, knn_labels = extract_features(
             model, knn_train_loader, device, pool_strategy=pool_strategy, verbose=verbose
         )
-    else:
-        knn_features, knn_labels = train_features, train_labels
 
-    results = knn_evaluate(knn_features, knn_labels, test_features, test_labels, k=k_neighbors)
-    results.update(
-        linear_probe_pytorch_evaluate(
-            train_features,
-            train_labels,
-            test_features,
-            test_labels,
-            device=device,
-            lr=linear_pytorch_lr,
-            min_steps=linear_pytorch_min_steps,
-            verbose=verbose,
+        results = knn_evaluate(knn_features, knn_labels, test_features, test_labels, k=k_neighbors)
+        if geometry is not None:
+            from .geometry import evaluate_geometry
+
+            results["geometry"] = evaluate_geometry(knn_features, **geometry)
+            if verbose:
+                print(f"  Geometry: {results['geometry']}")
+        del knn_features, knn_labels, test_features, test_labels
+        results.update(
+            linear_probe_online_evaluate(
+                model,
+                train_loader,
+                test_loader,
+                device=device,
+                pool_strategy=pool_strategy,
+                epochs=lp_epochs,
+                lr=linear_pytorch_lr if lp_lr is None else lp_lr,
+                forward_batch_size=lp_forward_batch_size,
+                num_classes=lp_num_classes,
+                seed=lp_seed,
+                verbose=verbose,
+            )
         )
-    )
-    if verbose:
-        print(f"  kNN F1: {results['knn_f1']:.4f}, LP F1: {results['linear_pytorch_f1']:.4f}")
-    if geometry is not None:
-        from .geometry import evaluate_geometry
-
-        results["geometry"] = evaluate_geometry(knn_features, **geometry)
         if verbose:
-            print(f"  Geometry: {results['geometry']}")
-    return results
+            print(f"  kNN F1: {results['knn_f1']:.4f}, LP F1: {results['linear_pytorch_f1']:.4f}")
+        return results
 
 
 def finetune_evaluate(

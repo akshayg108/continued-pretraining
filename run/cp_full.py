@@ -26,6 +26,7 @@ from precp import (
     result_path as pre_path,
 )
 from stable_cp.utils.backbone import feature_readout
+from stable_cp.utils.lp_protocol import LP_DIRECTORY, LP_PROTOCOL, lp_config
 
 DATASETS = {
     "breastmnist": 546,
@@ -116,9 +117,13 @@ def seed_dir(root, task, seed):
     return root / "outputs/results" / dataset / encoder / method / "Full" / str(seed)
 
 
+def evaluation_dir(root, task, seed):
+    return seed_dir(root, task, seed) / LP_DIRECTORY
+
+
 def command_for(root, task, seed, cache_dir, reference_dir, workers):
     encoder, dataset, _ = task
-    output = seed_dir(root, task, seed)
+    output = evaluation_dir(root, task, seed)
     command = [
         sys.executable,
         "-u",
@@ -137,7 +142,7 @@ def command_for(root, task, seed, cache_dir, reference_dir, workers):
         "--cache-dir",
         str(cache_dir),
         "--checkpoint-path",
-        str(output / "cp.ckpt"),
+        str(seed_dir(root, task, seed) / "cp.ckpt"),
         "--results-json",
         str(output / "result.json"),
         "--post-geometry-reference-data",
@@ -147,6 +152,9 @@ def command_for(root, task, seed, cache_dir, reference_dir, workers):
     ]
     for key, value in recipe(task).items():
         command.extend(("--" + key.replace("_", "-"), str(value)))
+    lp = lp_config()
+    for key in ("epochs", "batch_size", "lr", "forward_batch_size"):
+        command.extend(("--lp-" + key.replace("_", "-"), str(lp[key])))
     return command
 
 
@@ -207,7 +215,7 @@ def write_json(path, content):
     temporary.replace(path)
 
 
-def run_config(task, seed, digest):
+def checkpoint_config(task, seed, digest):
     encoder, dataset, method = task
     return dict(
         protocol=PROTOCOL,
@@ -225,11 +233,57 @@ def run_config(task, seed, digest):
     )
 
 
-def completed_result(root, task, seed, pre, digest):
-    path = seed_dir(root, task, seed)
+def run_config(task, seed, digest):
+    return dict(
+        checkpoint_config(task, seed, digest),
+        lp_protocol=LP_PROTOCOL,
+        pre_lp=lp_config(),
+        post_lp=lp_config(),
+    )
+
+
+def validate_checkpoint_config(root, task, seed):
+    path = seed_dir(root, task, seed) / "config.json"
+    if not path.is_file():
+        raise ValueError(f"Existing checkpoint artifacts have no run configuration: {path.parent}")
+    actual = json.loads(path.read_text())
+    expected = checkpoint_config(task, seed, None)
+    # Only the evaluation baseline changed; all checkpoint training provenance must match.
+    actual = {key: value for key, value in actual.items() if key != "baseline_sha256"}
+    expected.pop("baseline_sha256")
+    if actual != expected:
+        raise ValueError(f"Existing checkpoint has a different CP recipe or identity: {path}")
+
+
+def prepare_run(root, task, seed, digest):
+    checkpoint = seed_dir(root, task, seed)
+    checkpoint.mkdir(parents=True, exist_ok=True)
+    if (checkpoint / "config.json").exists():
+        validate_checkpoint_config(root, task, seed)
+    elif any(checkpoint.iterdir()):
+        raise ValueError(f"Existing checkpoint artifacts have no run configuration: {checkpoint}")
+    else:
+        write_json(checkpoint / "config.json", checkpoint_config(task, seed, digest))
+
+    path = evaluation_dir(root, task, seed)
+    path.mkdir(exist_ok=True)
+    config = run_config(task, seed, digest)
+    if (path / "config.json").exists():
+        if json.loads((path / "config.json").read_text()) != config:
+            raise ValueError(f"Existing LP evaluation has a different recipe or baseline: {path}")
+    elif any(path.iterdir()):
+        raise ValueError(f"Existing LP artifacts have no run configuration: {path}")
+    else:
+        write_json(path / "config.json", config)
+    return path
+
+
+def completed_result(root, task, seed, pre, digest, *, allow_unattached=False):
+    path = evaluation_dir(root, task, seed)
     result = path / "result.json"
     if not result.is_file():
         return None
+    validate_checkpoint_config(root, task, seed)
     row = json.loads(result.read_text())
     encoder, dataset, method = task
     expected = dict(
@@ -247,9 +301,16 @@ def completed_result(root, task, seed, pre, digest):
         normalization_mode="pretrained",
         normalization=pre["normalization"],
         feature_readout=encoder_readout(encoder),
+        post_lp=lp_config(),
     )
     config = row.get("cp_config", {})
     valid = all(row.get(key) == value for key, value in expected.items())
+    valid = valid and pre.get("pre_lp") == lp_config()
+    attached = "baseline_sha256" in row
+    if attached:
+        valid = valid and row["baseline_sha256"] == digest and row.get("pre_lp") == lp_config()
+    elif row.get("pre_lp") is not None:
+        valid = valid and row["pre_lp"] == lp_config()
     valid = valid and all(config.get(key) == value for key, value in recipe(task).items())
     valid = valid and not config.get("pre_cp_sft", False) and not config.get("post_cp_sft", False)
     valid = valid and all(
@@ -275,23 +336,35 @@ def completed_result(root, task, seed, pre, digest):
     )
     if encoder == "MAE":
         valid = valid and geometry.get("feature_readout") == encoder_readout(encoder)
+    valid = valid and (seed_dir(root, task, seed) / "cp.ckpt").is_file()
     valid = valid and all(
-        (path / name).is_file() for name in ("cp.ckpt", "post_reference.npz", "post_features.npz")
+        (path / name).is_file() for name in ("post_reference.npz", "post_features.npz")
     )
-    valid = valid and json.loads((path / "config.json").read_text()) == run_config(
-        task, seed, digest
-    )
+    config_path = path / "config.json"
+    valid = valid and config_path.is_file()
+    valid = valid and json.loads(config_path.read_text()) == run_config(task, seed, digest)
     if not valid:
         raise ValueError(f"Result does not match this CP recipe: {result}")
-    return row
+    # Interrupted attachment is pending, never a completed run to skip.
+    return row if attached or allow_unattached else None
 
 
 def attach_baseline(row, pre, source, digest):
+    if pre.get("pre_lp") != lp_config() or row.get("post_lp") != lp_config():
+        raise ValueError("Cannot mix legacy or different pre/post linear-probe protocols")
+    if row.get("pre_lp") is not None and row["pre_lp"] != lp_config():
+        raise ValueError("Existing result has a different pre-CP linear-probe protocol")
+    if "baseline_sha256" in row and (
+        row["baseline_sha256"] != digest or row.get("pre_lp") != lp_config()
+    ):
+        raise ValueError("Existing result belongs to a different baseline or LP protocol")
     row.update({key: pre[key] for key in PRE_METRICS})
     row.update(
         protocol=PROTOCOL,
         baseline_file=str(source),
         baseline_sha256=digest,
+        lp_protocol=LP_PROTOCOL,
+        pre_lp=pre["pre_lp"],
         pre_geometry=pre["geometry"],
     )
     row["delta"] = {key[4:]: row[key.replace("pre_", "post_")] - pre[key] for key in PRE_METRICS}
@@ -334,16 +407,7 @@ def run_task(args):
         pending = []
         for seed in SEEDS:
             pre, source, digest = baseline(args.root, task, seed)
-            path = seed_dir(args.root, task, seed)
-            path.mkdir(exist_ok=True)
-            config = run_config(task, seed, digest)
-            if (path / "config.json").exists():
-                if json.loads((path / "config.json").read_text()) != config:
-                    raise ValueError(f"Existing seed has a different recipe or baseline: {path}")
-            elif any(path.iterdir()):
-                raise ValueError(f"Existing artifacts have no run configuration: {path}")
-            else:
-                write_json(path / "config.json", config)
+            path = prepare_run(args.root, task, seed, digest)
             row = completed_result(args.root, task, seed, pre, digest)
             if row:
                 write_json(path / "result.json", attach_baseline(row, pre, source, digest))
@@ -357,7 +421,7 @@ def run_task(args):
         local_reference = stack.enter_context(staged_directory(reference))
         for seed, pre, source, digest in pending:
             label = f"{encoder}/{dataset}/{method}/{seed}"
-            path = seed_dir(args.root, task, seed)
+            path = evaluation_dir(args.root, task, seed)
             command = command_for(
                 args.root, task, seed, local_data, local_reference, args.num_workers
             )
@@ -368,7 +432,7 @@ def run_task(args):
                 stream.flush()
                 result = subprocess.run(command, cwd=REPO, stdout=stream, stderr=subprocess.STDOUT)
             row = (
-                completed_result(args.root, task, seed, pre, digest)
+                completed_result(args.root, task, seed, pre, digest, allow_unattached=True)
                 if result.returncode == 0
                 else None
             )
@@ -397,15 +461,18 @@ def report(root, encoders=None):
             continue
         found = []
         for seed in SEEDS:
-            pre, source, digest = baseline(root, task, seed)
-            row = completed_result(root, task, seed, pre, digest)
+            result = evaluation_dir(root, task, seed) / "result.json"
+            row = None
+            if result.is_file():
+                pre, source, digest = baseline(root, task, seed)
+                row = completed_result(root, task, seed, pre, digest)
             record = dict(
                 encoder=encoder,
                 dataset=dataset,
                 method=method,
                 seed=seed,
                 status="OK" if row else "MISSING",
-                source=str(seed_dir(root, task, seed) / "result.json"),
+                source=str(result),
             )
             if row:
                 row = attach_baseline(row, pre, source, digest)
@@ -432,7 +499,7 @@ def report(root, encoders=None):
             summary[f"{key}_mean"] = statistics.mean(values) if values else ""
             summary[f"{key}_sd"] = statistics.stdev(values) if len(values) > 1 else ""
         summaries.append(summary)
-    destination = root / "outputs/results"
+    destination = root / "outputs/results" / LP_DIRECTORY
     destination.mkdir(parents=True, exist_ok=True)
     suffix = "" if encoders == tuple(ENCODERS) else "." + "_".join(encoders)
     for name, rows in (

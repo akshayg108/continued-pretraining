@@ -39,7 +39,10 @@ does not provide a lock against simultaneous independent submissions.
 - Reuse matching pre-CP baselines; evaluate post-CP kNN, LP, and geometry.
   Pretrained normalization and encoder readout must match the baseline.
   Frozen feature extraction uses batch 32 and two workers, independently of CP
-  training batches. LP optimization keeps the existing evaluation recipe.
+  training batches. Frozen LP uses fresh random crops/flips each epoch for 150
+  actual epochs, classifier batch 512, Adam at 0.001, and L2 features. Encoder
+  forwards are chunked to at most 32 images without gradients. Test inputs remain
+  deterministic. See [LP migration](ONLINE_LP.md) for checkpoint reuse.
   Merge the matching seed's pre-CP scores and geometry into its result JSON,
   recording post-minus-pre deltas without rerunning the baseline.
 - The MAE encoder uses `vit_base_patch16_224.mae` with
@@ -145,7 +148,7 @@ without submitting anything:
 "$CP_PYTHON" run/cp_full.py report --root "$CP_ROOT" --encoder MAE
 ```
 
-MAE-only reports are `outputs/results/cp_full_results.MAE.csv` and
+MAE-only reports are `outputs/results/lp_online_v1/cp_full_results.MAE.csv` and
 `cp_full_summary.MAE.csv`, with a completion denominator of 132. They do not
 overwrite the combined five-encoder reports, whose denominator is 660.
 
@@ -156,17 +159,23 @@ Each seed writes to:
 ```text
 outputs/results/<dataset>/<encoder>/<method>/Full/<42|43|44>/
     cp.ckpt
-    result.json
     config.json
-    post_reference.npz
-    post_features.npz
-    run.log
+    lp_online_v1/
+        result.json
+        config.json
+        post_reference.npz
+        post_features.npz
+        run.log
 ```
 
 The output encoder folder is `SigLiP-2` to match the existing result folders;
 the display name and baseline lookup remain `SigLIP-2`. The MAE output folder
 is `MAE`, while its baseline lookup is `MAE-Mean`. Existing pre-CP and
-source-pretraining output namespaces are untouched.
+source-pretraining artifacts are untouched. Legacy cached-LP result files directly
+under each seed remain unchanged. New pre-CP baselines are read only from
+`outputs/precp_full/lp_online_v1/results`; shared reference banks remain at
+`outputs/precp_full/reference`. The combined CP reports are written under
+`outputs/results/lp_online_v1/`.
 
 ```bash
 "$CP_PYTHON" run/cp_full.py report --root "$CP_ROOT"
