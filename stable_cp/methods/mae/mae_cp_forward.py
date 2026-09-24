@@ -1,3 +1,6 @@
+from stable_cp.utils.backbone import forward_embedding, is_mae_backbone
+
+
 def _extract_embedding(encoded_tokens, num_prefix_tokens, pool_strategy="cls", backbone=None):
     """Use native MAP, CLS, or visible-patch mean for online probes."""
     if pool_strategy == "map":
@@ -15,14 +18,16 @@ def mae_forward(self, batch, stage):
     images = batch["image"]
     pool_strategy = getattr(self, "pool_strategy", "mean")
 
-    enc_out = self.backbone(images)
-
-    out["embedding"] = _extract_embedding(
-        enc_out.encoded,
-        self.backbone.num_prefix_tokens,
-        pool_strategy,
-        backbone=self.backbone.vit,
-    )
+    if not self.training and is_mae_backbone(self.backbone.vit):
+        out["embedding"] = forward_embedding(self.backbone.vit, images, pool_strategy)
+    else:
+        enc_out = self.backbone(images)
+        out["embedding"] = _extract_embedding(
+            enc_out.encoded,
+            self.backbone.num_prefix_tokens,
+            pool_strategy,
+            backbone=self.backbone.vit,
+        )
 
     if "label" in batch:
         out["label"] = batch["label"]

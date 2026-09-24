@@ -8,8 +8,9 @@ Optional supervised fine-tuning (FT) is retained.
 The separate [source-coverage experiment](run/SOURCE_PRETRAIN.md) trains paired
 ViT-B models from scratch on ImageNet alone or ImageNet plus three target domains.
 
-The [full-training CP grid](run/CP_FULL.md) runs 528 fits on 11 small-training-set
-targets, reuses pre-CP baselines, and keeps each seed's checkpoint and results.
+The [full-training CP grid](run/CP_FULL.md) runs 660 fits across five encoders on
+11 small-training-set targets, reuses pre-CP baselines, and keeps each seed's
+checkpoint and results. Select `CP_ENCODERS=MAE` to add only the 132 MAE fits.
 
 ## Installation
 

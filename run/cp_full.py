@@ -25,6 +25,7 @@ from precp import (
     encoder_pool_strategy,
     result_path as pre_path,
 )
+from stable_cp.utils.backbone import feature_readout
 
 DATASETS = {
     "breastmnist": 546,
@@ -39,7 +40,13 @@ DATASETS = {
     "jena_flowers30": 1183,
     "flavia": 1525,
 }
-ENCODERS = {"DINOv3-B": "DINOv3", "CLIP": "CLIP", "SigLiP-2": "SigLIP-2", "DINOv3-L": "DINOv3-L"}
+ENCODERS = {
+    "DINOv3-B": "DINOv3",
+    "CLIP": "CLIP",
+    "SigLiP-2": "SigLIP-2",
+    "DINOv3-L": "DINOv3-L",
+    "MAE": "MAE-Mean",
+}
 METHODS = {"LeJEPA-CP": "lejepa", "SimCLR-CP": "simclr", "DIET-CP": "diet", "MAE-CP": "mae"}
 TASKS = tuple(product(ENCODERS, DATASETS, METHODS))
 PROTOCOL = "cp_full_small_v1"
@@ -49,6 +56,11 @@ POST_METRICS = tuple(key.replace("pre_", "post_") for key in PRE_METRICS)
 def gpu_for(task):
     encoder, _, method = task
     return "a100" if encoder == "DINOv3-L" or method == "LeJEPA-CP" else "v100"
+
+
+def encoder_readout(encoder):
+    alias = ENCODERS[encoder]
+    return feature_readout(PRE_ENCODERS[alias], encoder_pool_strategy(alias))
 
 
 def recipe(task):
@@ -146,7 +158,10 @@ def baseline(root, task, seed):
         raise ValueError(f"Missing or incorrect full-training baseline: {path}")
     pool = encoder_pool_strategy(ENCODERS[encoder])
     # Older baseline JSONs record readout only as cp_config.pool_strategy.
-    if row["cp_config"].get("pool_strategy") != pool or row.get("feature_readout", pool) != pool:
+    if (
+        row["cp_config"].get("pool_strategy") != pool
+        or row.get("feature_readout", pool) != encoder_readout(encoder)
+    ):
         raise ValueError(f"Baseline feature readout does not match CP: {path}")
     return row, path, hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -178,6 +193,8 @@ def validate_reference(root, encoders):
                 not np.array_equal(archive["indices"], indices)
                 or metadata.get("backbone") != PRE_ENCODERS[ENCODERS[encoder]]
                 or metadata.get("pool_strategy") != encoder_pool_strategy(ENCODERS[encoder])
+                or metadata.get("feature_readout", metadata.get("pool_strategy"))
+                != encoder_readout(encoder)
                 or metadata.get("source_fingerprint") != source.get("source_fingerprint")
             ):
                 raise ValueError(f"Pre/post reference images do not match: {path}")
@@ -229,7 +246,7 @@ def completed_result(root, task, seed, pre, digest):
         num_classes=pre["num_classes"],
         normalization_mode="pretrained",
         normalization=pre["normalization"],
-        feature_readout=encoder_pool_strategy(ENCODERS[encoder]),
+        feature_readout=encoder_readout(encoder),
     )
     config = row.get("cp_config", {})
     valid = all(row.get(key) == value for key, value in expected.items())
@@ -256,6 +273,8 @@ def completed_result(root, task, seed, pre, digest):
         isinstance(geometry.get(key), (int, float)) and math.isfinite(geometry[key])
         for key in GEOMETRY_METRICS
     )
+    if encoder == "MAE":
+        valid = valid and geometry.get("feature_readout") == encoder_readout(encoder)
     valid = valid and all(
         (path / name).is_file() for name in ("cp.ckpt", "post_reference.npz", "post_features.npz")
     )
@@ -363,7 +382,8 @@ def run_task(args):
         raise SystemExit("Failed CP evaluations: " + ", ".join(failures))
 
 
-def report(root):
+def report(root, encoders=None):
+    encoders = tuple(ENCODERS) if encoders is None else tuple(encoders)
     records, summaries = [], []
     metrics = (
         *PRE_METRICS,
@@ -373,6 +393,8 @@ def report(root):
     )
     for task in TASKS:
         encoder, dataset, method = task
+        if encoder not in encoders:
+            continue
         found = []
         for seed in SEEDS:
             pre, source, digest = baseline(root, task, seed)
@@ -412,7 +434,11 @@ def report(root):
         summaries.append(summary)
     destination = root / "outputs/results"
     destination.mkdir(parents=True, exist_ok=True)
-    for name, rows in (("cp_full_results.csv", records), ("cp_full_summary.csv", summaries)):
+    suffix = "" if encoders == tuple(ENCODERS) else "." + "_".join(encoders)
+    for name, rows in (
+        (f"cp_full_results{suffix}.csv", records),
+        (f"cp_full_summary{suffix}.csv", summaries),
+    ):
         path = destination / name
         fields = list(dict.fromkeys(key for row in rows for key in row))
         with path.open("w", newline="") as stream:
@@ -421,7 +447,7 @@ def report(root):
             writer.writerows(rows)
         print(path)
     print(
-        f"Completed: {sum(row['status'] == 'OK' for row in records)}/528; means use completed seeds; SD is sample SD."
+        f"Completed: {sum(row['status'] == 'OK' for row in records)}/{len(records)}; means use completed seeds; SD is sample SD."
     )
 
 
@@ -431,6 +457,7 @@ def main():
     for name in ("list", "array"):
         command = sub.add_parser(name)
         command.add_argument("--gpu", choices=("v100", "a100"), required=name == "array")
+        command.add_argument("--encoder", nargs="+", choices=tuple(ENCODERS))
     for name in ("check", "run", "report"):
         command = sub.add_parser(name)
         command.add_argument(
@@ -440,12 +467,18 @@ def main():
             command.add_argument("--task-id", type=int, required=True, choices=range(len(TASKS)))
             command.add_argument("--num-workers", type=int, default=8)
             command.add_argument("--dry-run", action="store_true")
+        else:
+            command.add_argument("--encoder", nargs="+", choices=tuple(ENCODERS))
     args = parser.parse_args()
+    encoders = tuple(
+        encoder for encoder in ENCODERS
+        if getattr(args, "encoder", None) is None or encoder in args.encoder
+    )
     if args.command in {"list", "array"}:
         selected = [
             (i, task)
             for i, task in enumerate(TASKS)
-            if args.gpu is None or gpu_for(task) == args.gpu
+            if task[0] in encoders and (args.gpu is None or gpu_for(task) == args.gpu)
         ]
         if args.command == "array":
             print(",".join(str(i) for i, _ in selected))
@@ -458,12 +491,13 @@ def main():
     if args.command == "run":
         run_task(args)
     elif args.command == "report":
-        report(args.root)
+        report(args.root, encoders)
     else:
-        for encoder, dataset, seed in product(ENCODERS, DATASETS, SEEDS):
+        for encoder, dataset, seed in product(encoders, DATASETS, SEEDS):
             baseline(args.root, (encoder, dataset, "LeJEPA-CP"), seed)
-        validate_reference(args.root, ENCODERS)
-        print("READY: 132 full-training baselines and the same 5000 ImageNet reference images.")
+        validate_reference(args.root, encoders)
+        count = len(encoders) * len(DATASETS) * len(SEEDS)
+        print(f"READY: {count} full-training baselines and the same 5000 ImageNet reference images.")
 
 
 if __name__ == "__main__":

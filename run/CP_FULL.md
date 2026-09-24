@@ -5,8 +5,8 @@ fewer than 10,000 images: breastmnist, dermamnist, dtd, fgvc_aircraft, cars196,
 cub200, flowers102, oxford_pet, aid, jena_flowers30, and flavia. The threshold is
 on the training split, not the sum of all splits. Seeds are 42, 43, and 44.
 
-There are 176 tasks: 99 on V100 and 77 on A100, each running three seeds
-sequentially (528 fits). No preparation job or preparation dependency is added;
+There are 220 tasks: 132 on V100 and 88 on A100, each running three seeds
+sequentially (660 fits). No preparation job or preparation dependency is added;
 submission first checks the existing pre-CP results and reference banks.
 It also imports the training module, SQLite, and the SPT registry with one CPU
 thread before submitting, leaving compute-node thread settings unchanged.
@@ -14,11 +14,14 @@ The import check and CP tasks prefer `$CP_ROOT/env/lib` for runtime libraries;
 this avoids loading an older system C++ runtime for ICU/SQLite. The override
 is local to the CP process tree, not the shared environment or `sbatch`.
 Each task stages target and reference images on node-local storage.
-The four encoders are DINOv3-B, CLIP, SigLIP-2, and DINOv3-L; each uses LeJEPA,
-SimCLR, DIET, and MAE objectives. All LeJEPA and all DINOv3-L tasks use A100;
+The five encoders are DINOv3-B, CLIP, SigLIP-2, DINOv3-L, and MAE; each uses
+LeJEPA, SimCLR, DIET, and MAE objectives. All LeJEPA and all DINOv3-L tasks use A100;
 the other tasks use V100.
 The V100 array runs first with a `%10` limit. The A100 array has the same limit
 and starts only after every V100 task has ended, so at most 10 CP jobs run at once.
+When existing `cp-full` jobs are found, the new V100 array also waits for all of
+them to end. Submit batches sequentially from one terminal; the queue snapshot
+does not provide a lock against simultaneous independent submissions.
 
 ## Training And Evaluation
 
@@ -30,7 +33,7 @@ and starts only after every V100 task has ended, so at most 10 CP jobs run at on
   accumulation 1, except on DINOv3-L, which uses 128 with accumulation 2.
 - LeJEPA uses lambda 0.05 and 1,024 random SigReg projection directions.
   Its learned MLP projector still outputs 128 dimensions (hidden size 2,048).
-- MAE uses batch 256 with accumulation 1 on all four encoders. This choice
+- MAE-CP uses batch 256 with accumulation 1 on all five encoders. This choice
   for MAE-CP on DINOv3-L has not yet been
   validated for GPU memory usage; GPU training is required to confirm it.
 - Reuse matching pre-CP baselines; evaluate post-CP kNN, LP, and geometry.
@@ -39,6 +42,12 @@ and starts only after every V100 task has ended, so at most 10 CP jobs run at on
   training batches. LP optimization keeps the existing evaluation recipe.
   Merge the matching seed's pre-CP scores and geometry into its result JSON,
   recording post-minus-pre deltas without rerunning the baseline.
+- The MAE encoder uses `vit_base_patch16_224.mae` with
+  `LayerNorm(mean(raw patch tokens))`, using the pretrained final LayerNorm.
+  Its baseline and pre-CP reference come only from `MAE-Mean`, never old `MAE`
+  or `MAE-CLS` results. Baseline, reference, and post-CP metadata must record
+  `mae_patch_mean_pretrained_ln_v1`. MAE-CP online full-image validation uses
+  that same readout; masked training and reconstruction remain unchanged.
 - All five geometry metrics (`uniformity_t2`, `mean_pairwise_cos`,
   `rankme_l2_uncentered`, `mmd_rbf`, and `neighbor_overlap_k50`) use the same
   seed-42 target subset of `min(n_train, 5000)` images. Re-encode the same 5,000
@@ -88,22 +97,57 @@ GPU-memory-size constraint. Set the concurrency limit for each sequential array 
 CP_CONCURRENCY=10 bash run/slurm/submit_cp_full.sh
 ```
 
-The script makes two ordinary `sbatch` submissions: 99 V100 tasks, then 77 A100
+The full grid makes two ordinary `sbatch` submissions: 132 V100 tasks, then 88 A100
 tasks with `--dependency=afterany:<V100-array-ID>`. A100 waits for the entire V100
 array to finish, regardless of success or failure. Seeing `Dependency` for A100
 while V100 is active is expected. There is no hold, GPU-request update, or release
 step. See the [Slurm array documentation](https://slurm.schedmd.com/job_array.html).
 Cluster QoS limits and GPU availability can reduce the actual running count.
-This limit applies to this pair of arrays, not unrelated jobs under the same account.
+The first array additionally uses `afterany` for all current user's existing
+`cp-full` array parents. This avoids adding another ten jobs alongside an existing
+batch. Unrelated source-pretraining and pre-CP jobs are not included in this cap.
+`CP_CONCURRENCY` accepts integers from 1 through 10.
 
 Additional arguments are passed to `sbatch`, for example `--time=48:00:00`.
-Array task IDs, GPU type, one-node allocation, A100 dependency, working directory,
-and log paths remain controlled by the script. Logs use
+Array task IDs, GPU type, one-node allocation, job name, dependencies, working
+directory, and log paths remain controlled by the script. Dependency arguments
+and `SBATCH_DEPENDENCY` are rejected rather than overriding that ordering. Logs use
 `cp-full-<v100|a100>-<array>_<task>.out` and `.err`.
 The old `CP_V100_CONCURRENCY` and `CP_A100_CONCURRENCY` variables are no longer
-used. Do not submit another copy while an earlier CP array is still active.
+used. Do not submit another copy of the same encoder selection while it is active.
 If the A100 submission fails, the V100 array remains submitted and its ID has
 already been printed. Do not blindly resubmit both arrays.
+
+## Add Only The MAE Encoder
+
+The original four-encoder task IDs 0-175 and their recipes are unchanged. MAE
+is appended as IDs 176-219: 44 jobs, 132 fits, with 33 V100 jobs followed by 11
+A100 jobs. Use a new pinned worktree as above so running or queued jobs continue
+reading their original code. Then submit only MAE:
+
+```bash
+CP_ENCODERS=MAE CP_CONCURRENCY=10 bash run/slurm/submit_cp_full.sh
+```
+
+The preflight checks only MAE's 33 full-training baselines and its matching
+reference bank. The launcher automatically waits for existing `cp-full` jobs;
+there is no need to cancel or resubmit the other encoders. Data staging, three
+sequential seeds, checkpoint resumption, and post-CP evaluation remain unchanged.
+
+`CP_ENCODERS` can contain space-separated encoder keys. Leaving it unset selects
+all five encoders. The two-array launcher requires a selection with tasks on
+both GPU types; MAE alone meets this requirement. Inspect or report a selection
+without submitting anything:
+
+```bash
+"$CP_PYTHON" run/cp_full.py list --encoder MAE
+"$CP_PYTHON" run/cp_full.py check --root "$CP_ROOT" --encoder MAE
+"$CP_PYTHON" run/cp_full.py report --root "$CP_ROOT" --encoder MAE
+```
+
+MAE-only reports are `outputs/results/cp_full_results.MAE.csv` and
+`cp_full_summary.MAE.csv`, with a completion denominator of 132. They do not
+overwrite the combined five-encoder reports, whose denominator is 660.
 
 ## Outputs
 
@@ -120,7 +164,8 @@ outputs/results/<dataset>/<encoder>/<method>/Full/<42|43|44>/
 ```
 
 The output encoder folder is `SigLiP-2` to match the existing result folders;
-the display name and baseline lookup remain `SigLIP-2`. Existing pre-CP and
+the display name and baseline lookup remain `SigLIP-2`. The MAE output folder
+is `MAE`, while its baseline lookup is `MAE-Mean`. Existing pre-CP and
 source-pretraining output namespaces are untouched.
 
 ```bash
