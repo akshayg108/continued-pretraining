@@ -94,7 +94,7 @@ class LPIntegrationTests(unittest.TestCase):
         args = entry.create_base_parser().parse_args(["--dataset", "dtd", "--backbone", "test"])
         self.assertEqual(
             (args.lp_epochs, args.lp_batch_size, args.lp_lr, args.lp_forward_batch_size),
-            (150, 512, 1e-3, 32),
+            (150, 512, 1e-3, None),
         )
         self.assertEqual(args.batch_size, 32)
         args = entry.create_base_parser().parse_args(

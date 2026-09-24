@@ -62,8 +62,8 @@ def create_base_parser(description="Continued Pretraining"):
     )
     parser.add_argument("--lp-lr", type=float, default=1e-3)
     parser.add_argument(
-        "--lp-forward-batch-size", type=int, default=32,
-        help="Maximum images per no-gradient encoder forward during LP.",
+        "--lp-forward-batch-size", type=int, default=None,
+        help="Optional encoder forward chunk size; by default forward the whole LP batch.",
     )
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--skip-final-eval", action="store_true")

@@ -12,6 +12,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, RandomSampler, Sampler, Subset
 
 from stable_cp import evaluation
+from stable_cp.utils.lp_protocol import lp_config
 
 
 class RecordingDataset(Dataset):
@@ -41,7 +42,6 @@ class RecordingEncoder(nn.Module):
         self.projection = nn.Linear(3, 3)
         self.norm = nn.BatchNorm1d(3)
         self.dropout = nn.Dropout(0.5)
-        self.register_buffer("forward_counter", torch.zeros(()))
         self.fail_at = fail_at
         self.calls = []
 
@@ -55,7 +55,6 @@ class RecordingEncoder(nn.Module):
                 "images": images.detach().clone(),
             }
         )
-        self.forward_counter.add_(1)
         if self.fail_at == len(self.calls):
             raise RuntimeError("synthetic encoder failure")
         return self.dropout(self.norm(self.projection(images)))
@@ -117,6 +116,30 @@ class OnlineLinearProbeTests(unittest.TestCase):
                 "lp",
             },
         )
+
+    def test_default_encoder_forward_uses_the_complete_classifier_batch(self):
+        self.train = RecordingDataset(size=513, augmented=True)
+        self.train_loader = DataLoader(self.train, batch_size=512)
+        result = evaluation.linear_probe_online_evaluate(
+            self.model,
+            self.train_loader,
+            self.test_loader,
+            torch.device("cpu"),
+            epochs=1,
+            verbose=False,
+        )
+        self.assertEqual([call["batch_size"] for call in self.model.calls], [512, 1, 3, 1])
+        self.assertIsNone(result["lp"]["forward_batch_size"])
+        self.assertIsNone(lp_config()["forward_batch_size"])
+
+    def test_none_forward_size_is_equivalent_to_explicit_full_batch(self):
+        full = self.evaluate(forward_batch_size=None, seed=41)
+        full_views = [call["images"].clone() for call in self.model.calls]
+        self.model.calls.clear()
+        explicit = self.evaluate(forward_batch_size=4, seed=41)
+        self.assertEqual(full["linear_pytorch_f1"], explicit["linear_pytorch_f1"])
+        for left, right in zip(full_views, self.model.calls):
+            self.assertTrue(torch.equal(left, right["images"]))
 
     def test_encoder_parameters_buffers_gradients_and_mixed_modes_are_restored(self):
         self.model.train()
@@ -434,6 +457,14 @@ class OnlineLinearProbeTests(unittest.TestCase):
         self.assertIsNot(fresh.generator, generator)
         self.assertEqual(fresh.generator.initial_seed(), 29)
         self.assertTrue(torch.equal(before, generator.get_state()))
+
+    def test_standard_settings_on_a_loader_subclass_are_supported(self):
+        class ImageLoader(DataLoader):
+            pass
+
+        self.train_loader = ImageLoader(self.train, batch_size=4, shuffle=True)
+        self.evaluate(epochs=1, seed=29)
+        self.assertEqual(sorted(index for index, _ in self.train.reads), list(range(5)))
 
     def test_rejects_unsupported_custom_sampler_without_reading_images(self):
         class ReversedSampler(Sampler):

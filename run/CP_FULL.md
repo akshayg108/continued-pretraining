@@ -41,8 +41,9 @@ does not provide a lock against simultaneous independent submissions.
   Frozen feature extraction uses batch 32 and two workers, independently of CP
   training batches. Frozen LP uses fresh random crops/flips each epoch for 150
   actual epochs, classifier batch 512, Adam at 0.001, and L2 features. Encoder
-  forwards are chunked to at most 32 images without gradients. Test inputs remain
-  deterministic. See [LP migration](ONLINE_LP.md) for checkpoint reuse.
+  forwards use the entire LP batch without gradients by default. Test inputs remain
+  deterministic. Use [LP-only reruns](ONLINE_LP.md) to update LP on existing
+  checkpoints without resuming CP or recomputing kNN and geometry.
   Merge the matching seed's pre-CP scores and geometry into its result JSON,
   recording post-minus-pre deltas without rerunning the baseline.
 - The MAE encoder uses `vit_base_patch16_224.mae` with

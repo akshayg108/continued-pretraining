@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.utils.data import BatchSampler, DataLoader, RandomSampler, SequentialSampler, Subset
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Subset
 from torchmetrics.classification import (
     MulticlassAccuracy,
     MulticlassAUROC,
@@ -24,17 +24,12 @@ from stable_cp.utils.lp_protocol import lp_config
 def _frozen_encoder(model):
     parameters = [(param, param.requires_grad) for param in model.parameters()]
     modes = [(module, module.training) for module in model.modules()]
-    buffers = [(buffer, buffer.detach().clone()) for buffer in model.buffers()]
     try:
         model.eval()
         for param, _ in parameters:
             param.requires_grad_(False)
         yield
     finally:
-        with torch.no_grad():
-            for buffer, original in buffers:
-                if not torch.equal(buffer, original):
-                    buffer.copy_(original)
         for param, requires_grad in parameters:
             param.requires_grad_(requires_grad)
         # Direct assignment preserves mixed modes without recursive train() calls.
@@ -90,21 +85,13 @@ def _dataset_num_classes(dataset):
 
 def _fresh_loader(loader, seed):
     """Copy standard loader settings without reusing sampler or worker RNG state."""
-    if type(loader) is not DataLoader:
-        raise ValueError("Online LP requires standard DataLoader instances, not custom subclasses")
     sampler = loader.sampler
-    if (
-        type(loader.batch_sampler) is not BatchSampler
-        or loader.batch_size is None
-        or loader.batch_sampler.sampler is not sampler
-        or loader.batch_sampler.batch_size != loader.batch_size
-        or loader.batch_sampler.drop_last != loader.drop_last
-    ):
+    if loader.batch_size is None:
         raise ValueError("Online LP does not support custom batch samplers")
-    if type(sampler) is SequentialSampler:
+    if isinstance(sampler, SequentialSampler):
         shuffle = False
     elif (
-        type(sampler) is RandomSampler
+        isinstance(sampler, RandomSampler)
         and not sampler.replacement
         and len(sampler) == len(loader.dataset)
     ):
@@ -147,7 +134,7 @@ def _fresh_loader(loader, seed):
 def _encode_batch(model, images, device, pool_strategy, forward_batch_size):
     features = []
     with torch.no_grad():
-        for chunk in images.split(forward_batch_size):
+        for chunk in images.split(forward_batch_size or len(images)):
             encoded = forward_embedding(model, chunk.to(device), pool_strategy)
             features.append(F.normalize(encoded.detach().float(), p=2, dim=1))
     features = torch.cat(features, dim=0)
@@ -164,7 +151,7 @@ def linear_probe_online_evaluate(
     pool_strategy: str = "cls",
     epochs: int = 150,
     lr: float = 1e-3,
-    forward_batch_size: int = 32,
+    forward_batch_size: int = None,
     verbose: bool = True,
     num_classes: int = None,
     seed: int = None,
@@ -175,8 +162,9 @@ def linear_probe_online_evaluate(
     and a deterministic test loader. Fresh standard loaders reset sampling and
     worker randomness per evaluation without advancing caller-owned generators.
     Only sequential or full nonreplacement random samplers are supported.
-    Encoder image forwards are chunked before device transfer; each complete
-    loader batch makes one Adam update. Exact AUROC retains CPU probabilities,
+    Encoder forwards use the complete loader batch unless a smaller forward
+    batch size is explicitly supplied. Each loader batch makes one Adam update.
+    Exact AUROC retains CPU probabilities,
     but test images and features are streamed.
     """
     if train_loader.drop_last:

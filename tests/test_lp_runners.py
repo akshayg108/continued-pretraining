@@ -190,11 +190,11 @@ class LPRunnerTests(unittest.TestCase):
                 ("--lp-epochs", "150"),
                 ("--lp-batch-size", "512"),
                 ("--lp-lr", "0.001"),
-                ("--lp-forward-batch-size", "32"),
             ):
                 with self.subTest(flag=flag, command=command):
                     self.assertIn(flag, command)
                     self.assertEqual(command[command.index(flag) + 1], value)
+            self.assertNotIn("--lp-forward-batch-size", command)
         self.assertTrue(
             (
                 self.root

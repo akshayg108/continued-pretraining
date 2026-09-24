@@ -196,7 +196,7 @@ def zero_shot_eval(
     *,
     lp_epochs: int = 150,
     lp_lr: float = None,
-    lp_forward_batch_size: int = 32,
+    lp_forward_batch_size: int = None,
     lp_num_classes: int = None,
     lp_seed: int = None,
 ) -> dict:

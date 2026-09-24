@@ -154,7 +154,8 @@ def command_for(root, task, seed, cache_dir, reference_dir, workers):
         command.extend(("--" + key.replace("_", "-"), str(value)))
     lp = lp_config()
     for key in ("epochs", "batch_size", "lr", "forward_batch_size"):
-        command.extend(("--lp-" + key.replace("_", "-"), str(lp[key])))
+        if lp[key] is not None:
+            command.extend(("--lp-" + key.replace("_", "-"), str(lp[key])))
     return command
 
 

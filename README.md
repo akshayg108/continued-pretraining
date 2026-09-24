@@ -121,9 +121,9 @@ encoder-specific mean/std are retained for test images and the kNN bank.
 
 Defaults are 150 actual epochs, classifier batch 512 (including the final short
 batch), Adam at 0.001 with zero weight decay, and L2-normalized features. There
-is no 10,000-step minimum. Images are sent through the frozen encoder in chunks
-of at most 32, then their features form one classifier batch; this is not CP
-gradient accumulation. CLI overrides are `--lp-epochs`, `--lp-batch-size`,
+is no 10,000-step minimum. The entire LP batch is passed through the encoder;
+an optional forward chunk size can reduce peak memory without changing the
+classifier batch. CLI overrides are `--lp-epochs`, `--lp-batch-size`,
 `--lp-lr`, and `--lp-forward-batch-size`. Test labels are used only for reporting
 after the fixed training budget, not for selecting checkpoints or settings.
 
@@ -131,7 +131,10 @@ This adopts per-epoch augmentation, not the entire official MAE/DINO recipe:
 readout, L2 normalization, optimizer, and deterministic resize remain our controlled
 protocol. It costs substantially more encoder forwards than the legacy cached LP.
 JSON records contain `pre_lp` and/or `post_lp`; grid runners only accept exact
-matching metadata. See [LP migration](run/ONLINE_LP.md) before resuming old runs.
+matching metadata. For existing experiments, use the dedicated
+[LP-only rerun](run/ONLINE_LP.md) to preserve checkpoints, kNN, and geometry.
+It runs 23 separate pre-CP dataset jobs and the completed original post-CP jobs,
+without starting or resuming CP training.
 
 SPT now handles gradient accumulation inside `Module` via `Manager`; CP forwards
 return unscaled losses. Logged losses are therefore unscaled, and `global_step`
