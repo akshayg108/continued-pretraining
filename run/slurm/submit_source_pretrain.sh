@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# )); then
-    printf 'Usage: %s (configure SOURCE_TASKS, SOURCE_STEPS, or SBATCH_* through the environment)\n' "$0" >&2
+    printf 'Usage: %s (configure SOURCE_TASKS, SOURCE_STEPS, SOURCE_NUM_WORKERS, or SBATCH_* through the environment)\n' "$0" >&2
     exit 2
 fi
 
@@ -20,7 +20,9 @@ if [[ "$IMAGENET_SOURCE" == local && ! -d "$IMAGENET_TRAIN_DIR" && ! -f "${IMAGE
     exit 1
 fi
 
+# Preparation does not need the training job's A100-only resources.
 PREPARE=$(sbatch --parsable --chdir="$REPO" --export=ALL --gres=gpu:v100:1 \
+    --constraint="" --exclude="" --cpus-per-task=16 \
     --output="$CP_ROOT/outputs/slurm-log/source-prepare-%j.out" \
     --error="$CP_ROOT/outputs/slurm-log/source-prepare-%j.err" \
     "$REPO/run/slurm/source_pretrain.sh" prepare)

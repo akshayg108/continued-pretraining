@@ -5,8 +5,10 @@
 #SBATCH --qos=nvidia
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gres=gpu:h200:1
-#SBATCH --cpus-per-task=16
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=80g
+#SBATCH --exclude=cn253,cn259
+#SBATCH --cpus-per-task=64
 #SBATCH --mem=128G
 #SBATCH --time=96:00:00
 set -euo pipefail
@@ -48,7 +50,8 @@ else
     fi
     CONDITIONS=(imagenet mixed)
     ARGS+=(--condition "${CONDITIONS[$((TASK % 2))]}"
-        --seed 42 --steps "${SOURCE_STEPS:-500400}" --resume)
+        --seed 42 --steps "${SOURCE_STEPS:-500400}" --resume
+        --num-workers "${SOURCE_NUM_WORKERS:-48}")
 fi
 
 exec "$CP_PYTHON" -u run/source_pretrain.py "${ARGS[@]}"
