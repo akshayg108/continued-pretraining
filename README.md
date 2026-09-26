@@ -11,6 +11,8 @@ ViT-B models from scratch on ImageNet alone or ImageNet plus three target domain
 The [full-training CP grid](run/CP_FULL.md) runs 660 fits across five encoders on
 11 small-training-set targets, reuses pre-CP baselines, and keeps each seed's
 checkpoint and results. Select `CP_ENCODERS=MAE` to add only the 132 MAE fits.
+Select `CP_GROUP=four-block` for 240 additional fits on BloodMNIST, Galaxy10,
+EuroSAT, and Stanford Dogs, using A100 (A100 80GB for DINOv3-L).
 
 ## Installation
 

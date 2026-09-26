@@ -136,8 +136,8 @@ sequential seeds, checkpoint resumption, and post-CP evaluation remain unchanged
 
 `CP_ENCODERS` can contain space-separated encoder keys. Leaving it unset selects
 all five encoders. The two-array launcher requires a selection with tasks on
-both GPU types; MAE alone meets this requirement. Inspect or report a selection
-without submitting anything:
+both GPU types to submit both arrays; an empty GPU group is simply skipped.
+Inspect or report a selection without submitting anything:
 
 ```bash
 "$CP_PYTHON" run/cp_full.py list --encoder MAE
@@ -148,6 +148,75 @@ without submitting anything:
 MAE-only reports are `outputs/results/cp_full_results.MAE.csv` and
 `cp_full_summary.MAE.csv`, with a completion denominator of 132. They do not
 overwrite the combined five-encoder reports, whose denominator is 660.
+
+## Four-Block Full-Training Cohort
+
+Set `CP_GROUP=four-block` to select only the datasets whose **training split**
+falls in the original four-block range, `10000 <= n_train <= 25000`:
+
+| Dataset | Training images |
+| --- | ---: |
+| BloodMNIST | 11,959 |
+| Galaxy10 | 14,188 |
+| EuroSAT | 16,200 |
+| Stanford Dogs | 10,800 |
+
+This adds 80 jobs (five encoders x four datasets x four CP methods), each running
+seeds 42/43/44 sequentially, for 240 fits. The new IDs are 220-299; IDs 0-219 and
+their two-block recipes remain unchanged. Without `CP_GROUP`, submission still
+selects only the original small cohort.
+
+The backbone stays frozen for 15 epochs, then only its **last four Transformer
+blocks** train for the remainder of the 150 epochs. This does not include
+OCTMNIST, PathMNIST, Food101, or TissueMNIST, whose full splits require full
+unfreezing under the original policy, nor the six-block targets.
+
+All other recipe settings above remain unchanged: the existing repeat sampler,
+CP batch/accumulation sizes, lambda 0.05, SigReg 1,024 directions, pretrained
+normalization, and encoder readouts. MAE uses the new patch-mean readout and its
+`MAE-Mean` baseline. Post-CP runs kNN, the original **cached-feature LP**, and all
+five geometry metrics, with no FT. Each CP encoder re-encodes the same 5,000
+ImageNet reference images; target and reference data are staged node-locally.
+
+The launcher submits two ordinary arrays:
+
+- 64 A100 jobs for DINOv3-B, CLIP, SigLiP-2, and MAE, across all CP methods.
+- 16 A100 80GB jobs for DINOv3-L, across all CP methods.
+
+The 80GB request follows the old `MAE` branch's
+`run/slurm/cp-L/completion/submit.sh`: `--gres=gpu:a100:1 --constraint=80g`
+and `--exclude=cn253,cn259`. Host memory remains 96 GB; `--mem` is not GPU VRAM.
+Both groups use eight CPUs, one GPU, and a 96-hour limit. Actual four-block GPU
+memory use has not been tested locally.
+
+As with the small cohort, both arrays use `%10`, run sequentially through
+`afterany`, and first wait for any existing `cp-full` arrays. Thus this submission
+does not add another ten concurrent CP jobs alongside an active batch. A pending
+`Dependency` state is expected while that earlier work is running.
+
+In a new pinned worktree (see deployment instructions above):
+
+```bash
+unset CP_ENCODERS
+CP_GROUP=four-block CP_CONCURRENCY=10 bash run/slurm/submit_cp_full.sh
+```
+
+The preflight checks 60 matching pre-CP baselines (five encoders x four datasets x
+three seeds) and the reference banks before submitting. Output paths still use
+`outputs/results/<dataset>/<encoder>/<method>/Full/<seed>/`. Slurm logs use
+`cp-four-block-<a100|a100-80gb>-<array>_<task>.out` and `.err`.
+To inspect or report without submitting:
+
+```bash
+"$CP_PYTHON" run/cp_full.py list --group four-block
+"$CP_PYTHON" run/cp_full.py check --group four-block --root "$CP_ROOT"
+"$CP_PYTHON" run/cp_full.py report --group four-block --root "$CP_ROOT"
+```
+
+Reports are `outputs/results/cp_full_results.four-block.csv` and
+`cp_full_summary.four-block.csv`, with a denominator of 240. They do not replace
+the small-cohort reports. `--encoder MAE` restricts any of these commands to MAE;
+the corresponding launcher filter remains `CP_ENCODERS=MAE`.
 
 ## Outputs
 

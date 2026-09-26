@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-budget CP on eleven small training splits, with three seeds per job."""
+"""Full-budget CP with two- or four-block unfreezing and three seeds per job."""
 
 import argparse
 from contextlib import ExitStack
@@ -40,6 +40,14 @@ DATASETS = {
     "jena_flowers30": 1183,
     "flavia": 1525,
 }
+FOUR_BLOCK_DATASETS = {
+    "bloodmnist": 11959,
+    "galaxy10": 14188,
+    "eurosat": 16200,
+    "stanford_dogs": 10800,
+}
+GROUPS = {"small": DATASETS, "four-block": FOUR_BLOCK_DATASETS}
+TRAIN_SIZES = {**DATASETS, **FOUR_BLOCK_DATASETS}
 ENCODERS = {
     "DINOv3-B": "DINOv3",
     "CLIP": "CLIP",
@@ -48,14 +56,23 @@ ENCODERS = {
     "MAE": "MAE-Mean",
 }
 METHODS = {"LeJEPA-CP": "lejepa", "SimCLR-CP": "simclr", "DIET-CP": "diet", "MAE-CP": "mae"}
-TASKS = tuple(product(ENCODERS, DATASETS, METHODS))
+# Append new cohorts so existing array IDs keep their original meaning.
+TASKS = tuple(product(ENCODERS, DATASETS, METHODS)) + tuple(
+    product(ENCODERS, FOUR_BLOCK_DATASETS, METHODS)
+)
 PROTOCOL = "cp_full_small_v1"
 POST_METRICS = tuple(key.replace("pre_", "post_") for key in PRE_METRICS)
 
 
 def gpu_for(task):
-    encoder, _, method = task
+    encoder, dataset, method = task
+    if dataset in FOUR_BLOCK_DATASETS:
+        return "a100-80gb" if encoder == "DINOv3-L" else "a100"
     return "a100" if encoder == "DINOv3-L" or method == "LeJEPA-CP" else "v100"
+
+
+def protocol_for(dataset):
+    return "cp_full_four_block_v1" if dataset in FOUR_BLOCK_DATASETS else PROTOCOL
 
 
 def encoder_readout(encoder):
@@ -64,13 +81,13 @@ def encoder_readout(encoder):
 
 
 def recipe(task):
-    encoder, _, method = task
+    encoder, dataset, method = task
     config = {
         "cp_method": METHODS[method],
         "epochs": 150,
         "freeze_epochs": 15,
         "warmup_epochs": 15,
-        "num_trained_blocks": 2,
+        "num_trained_blocks": 4 if dataset in FOUR_BLOCK_DATASETS else 2,
         "lr": 1e-4,
         "weight_decay": 0.05,
         "knn_k": 20,
@@ -154,7 +171,7 @@ def baseline(root, task, seed):
     encoder, dataset, _ = task
     path = pre_path(root, ENCODERS[encoder], dataset, seed)
     row = pre_result(path, ENCODERS[encoder], dataset, seed)
-    if row is None or row["n_train_actual"] != DATASETS[dataset]:
+    if row is None or row["n_train_actual"] != TRAIN_SIZES[dataset]:
         raise ValueError(f"Missing or incorrect full-training baseline: {path}")
     pool = encoder_pool_strategy(ENCODERS[encoder])
     # Older baseline JSONs record readout only as cp_config.pool_strategy.
@@ -210,7 +227,7 @@ def write_json(path, content):
 def run_config(task, seed, digest):
     encoder, dataset, method = task
     return dict(
-        protocol=PROTOCOL,
+        protocol=protocol_for(dataset),
         encoder=encoder,
         dataset=dataset,
         method=method,
@@ -220,7 +237,7 @@ def run_config(task, seed, digest):
         gpu=gpu_for(task),
         backbone=PRE_ENCODERS[ENCODERS[encoder]],
         baseline_sha256=digest,
-        n_train=DATASETS[dataset],
+        n_train=TRAIN_SIZES[dataset],
         recipe=recipe(task),
     )
 
@@ -240,8 +257,8 @@ def completed_result(root, task, seed, pre, digest):
         full_train=True,
         no_cp=False,
         epochs=150,
-        n_samples=DATASETS[dataset],
-        n_train_actual=DATASETS[dataset],
+        n_samples=TRAIN_SIZES[dataset],
+        n_train_actual=TRAIN_SIZES[dataset],
         n_test=pre["n_test"],
         num_classes=pre["num_classes"],
         normalization_mode="pretrained",
@@ -263,7 +280,7 @@ def completed_result(root, task, seed, pre, digest):
         geometry.get(key) == value
         for key, value in {
             "protocol": "precp_geometry_5000_v1",
-            "n_geometry": min(DATASETS[dataset], 5000),
+            "n_geometry": min(TRAIN_SIZES[dataset], 5000),
             "n_reference": 5000,
             "phase": "post",
             "reference_encoder": "post_cp",
@@ -289,7 +306,7 @@ def completed_result(root, task, seed, pre, digest):
 def attach_baseline(row, pre, source, digest):
     row.update({key: pre[key] for key in PRE_METRICS})
     row.update(
-        protocol=PROTOCOL,
+        protocol=protocol_for(row["dataset"]),
         baseline_file=str(source),
         baseline_sha256=digest,
         pre_geometry=pre["geometry"],
@@ -382,7 +399,7 @@ def run_task(args):
         raise SystemExit("Failed CP evaluations: " + ", ".join(failures))
 
 
-def report(root, encoders=None):
+def report(root, encoders=None, group="small"):
     encoders = tuple(ENCODERS) if encoders is None else tuple(encoders)
     records, summaries = [], []
     metrics = (
@@ -393,7 +410,7 @@ def report(root, encoders=None):
     )
     for task in TASKS:
         encoder, dataset, method = task
-        if encoder not in encoders:
+        if encoder not in encoders or dataset not in GROUPS[group]:
             continue
         found = []
         for seed in SEEDS:
@@ -424,7 +441,7 @@ def report(root, encoders=None):
             encoder=encoder,
             dataset=dataset,
             method=method,
-            n_train=DATASETS[dataset],
+            n_train=TRAIN_SIZES[dataset],
             seeds=len(found),
         )
         for key in metrics:
@@ -434,7 +451,8 @@ def report(root, encoders=None):
         summaries.append(summary)
     destination = root / "outputs/results"
     destination.mkdir(parents=True, exist_ok=True)
-    suffix = "" if encoders == tuple(ENCODERS) else "." + "_".join(encoders)
+    suffix = "" if group == "small" else "." + group
+    suffix += "" if encoders == tuple(ENCODERS) else "." + "_".join(encoders)
     for name, rows in (
         (f"cp_full_results{suffix}.csv", records),
         (f"cp_full_summary{suffix}.csv", summaries),
@@ -456,7 +474,8 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("list", "array"):
         command = sub.add_parser(name)
-        command.add_argument("--gpu", choices=("v100", "a100"), required=name == "array")
+        command.add_argument("--gpu", choices=("v100", "a100", "a100-80gb"), required=name == "array")
+        command.add_argument("--group", choices=tuple(GROUPS), default="small")
         command.add_argument("--encoder", nargs="+", choices=tuple(ENCODERS))
     for name in ("check", "run", "report"):
         command = sub.add_parser(name)
@@ -468,6 +487,7 @@ def main():
             command.add_argument("--num-workers", type=int, default=8)
             command.add_argument("--dry-run", action="store_true")
         else:
+            command.add_argument("--group", choices=tuple(GROUPS), default="small")
             command.add_argument("--encoder", nargs="+", choices=tuple(ENCODERS))
     args = parser.parse_args()
     encoders = tuple(
@@ -478,7 +498,8 @@ def main():
         selected = [
             (i, task)
             for i, task in enumerate(TASKS)
-            if task[0] in encoders and (args.gpu is None or gpu_for(task) == args.gpu)
+            if task[0] in encoders and task[1] in GROUPS[args.group]
+            and (args.gpu is None or gpu_for(task) == args.gpu)
         ]
         if args.command == "array":
             print(",".join(str(i) for i, _ in selected))
@@ -491,12 +512,12 @@ def main():
     if args.command == "run":
         run_task(args)
     elif args.command == "report":
-        report(args.root, encoders)
+        report(args.root, encoders, args.group)
     else:
-        for encoder, dataset, seed in product(encoders, DATASETS, SEEDS):
+        for encoder, dataset, seed in product(encoders, GROUPS[args.group], SEEDS):
             baseline(args.root, (encoder, dataset, "LeJEPA-CP"), seed)
         validate_reference(args.root, encoders)
-        count = len(encoders) * len(DATASETS) * len(SEEDS)
+        count = len(encoders) * len(GROUPS[args.group]) * len(SEEDS)
         print(f"READY: {count} full-training baselines and the same 5000 ImageNet reference images.")
 
 
