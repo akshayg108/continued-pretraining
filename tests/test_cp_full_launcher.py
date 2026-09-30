@@ -70,6 +70,7 @@ class CPFullLauncherTests(unittest.TestCase):
                     or {
                         "small": {"v100": "1,2,3,177", "a100": "0,4,176"},
                         "four-block": {"a100": "220,221,222,297", "a100-80gb": "268,272,283"},
+                        "six-block": {"a100-80gb": ",".join(map(str, range(300, 540)))},
                     }
                 ),
             }
@@ -168,6 +169,26 @@ class CPFullLauncherTests(unittest.TestCase):
             self.assertTrue(
                 next(arg for arg in submission if arg.startswith("--array=")).endswith("%7")
             )
+
+    def test_six_block_submits_one_single_seed_array_without_dependencies(self):
+        result, calls, root, repo = self.launch(env_overrides={"CP_GROUP": "six-block"})
+        self.assert_success(result)
+        submissions = self.submissions(calls)
+        self.assertEqual(len(submissions), 1)
+        submission = submissions[0]
+        for arg in ("--nodes=1", "--ntasks=1", "--gres=gpu:a100:1", "--constraint=80g",
+                    "--exclude=cn253,cn259", "--cpus-per-task=24", "--mem=128G"):
+            self.assertIn(arg, submission)
+        self.assertIn(f"--array={','.join(map(str, range(300, 540)))}%10", submission)
+        self.assertIn(f"--output={root}/outputs/slurm-log/cp-six-block-a100-80gb-%A_%a.out", submission)
+        self.assertIn(f"--error={root}/outputs/slurm-log/cp-six-block-a100-80gb-%A_%a.err", submission)
+        self.assertEqual(submission[-3:], [str(repo / "run/slurm/cp_full.sh"), "--num-workers", "16"])
+        self.assertFalse(any(arg.startswith("--dependency=") for arg in submission))
+        self.assertNotIn("squeue", [call["name"] for call in calls])
+        runner_calls = [call["args"] for call in calls if call["name"] == "python3" and "-c" not in call["args"]]
+        self.assertEqual([args[1] for args in runner_calls], ["check", "list", "array"])
+        for args in runner_calls:
+            self.assertEqual(args[args.index("--group") + 1], "six-block")
 
     def test_empty_gpu_groups_are_skipped_without_losing_dependencies(self):
         for group, gpu, empty in (

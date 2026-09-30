@@ -23,6 +23,9 @@ When existing `cp-full` jobs are found, the new V100 array also waits for all of
 them to end. Submit batches sequentially from one terminal; the queue snapshot
 does not provide a lock against simultaneous independent submissions.
 
+The two/four-block cohorts below retain their original three-seed job layout.
+For the new single-seed, A100 80GB cohort, see [Six-Block Cohort](#six-block-cohort).
+
 ## Training And Evaluation
 
 - Use public pretrained weights and full training splits, with no supervised FT.
@@ -217,6 +220,72 @@ Reports are `outputs/results/cp_full_results.four-block.csv` and
 `cp_full_summary.four-block.csv`, with a denominator of 240. They do not replace
 the small-cohort reports. `--encoder MAE` restricts any of these commands to MAE;
 the corresponding launcher filter remains `CP_ENCODERS=MAE`.
+
+## Six-Block Cohort
+
+Set `CP_GROUP=six-block` for the Full-data targets in the original range
+`25000 < n_train <= 50000`:
+
+| Dataset | Training images |
+| --- | ---: |
+| RESISC45 | 25,200 |
+| OrganAMNIST | 34,561 |
+| PlantVillage | 43,596 |
+| IP102 | 45,095 |
+
+This cohort has **240 jobs, one seed per job**: five encoders x four datasets x
+four CP methods x seeds 42/43/44. IDs 300-539 are appended without changing
+IDs 0-299. Consecutive IDs select seeds 42, 43, and 44 for each combination;
+for example, 300/301/302 are DINOv3-B / RESISC45 / LeJEPA-CP with seeds 42/43/44.
+The original cohorts still run three seeds per job. Six-block jobs lock their
+own seed only, allowing different seeds of one combination to run concurrently.
+
+The training recipe changes only `num_trained_blocks=6`: freeze the backbone for
+15 epochs, then unfreeze its last six blocks for the rest of the 150 epochs.
+Keep the same sampler, batches and gradient accumulation, LeJEPA lambda 0.05,
+1,024 SigReg directions, pretrained normalization, and encoder readouts.
+This includes the MAE encoder with the new patch-mean readout and `MAE-Mean`
+baseline. Post-CP still runs kNN, the original cached-feature LP, and all five
+geometry metrics, with no supervised FT. Each seed re-encodes the same 5,000
+ImageNet reference images using its post-CP encoder. Target and reference data
+are staged on node-local storage for each job.
+
+The launcher submits **one ordinary array**, with these defaults for every
+encoder and method:
+
+- One A100 80GB: `--gres=gpu:a100:1 --constraint=80g --exclude=cn253,cn259`.
+- 24 CPUs, 16 training DataLoader workers, 128 GB host memory, and 96 hours.
+- `%10` concurrency and no automatically added dependency on existing jobs.
+- Frozen post-CP feature extraction retains batch 32 and two workers.
+
+The limit applies to this array, not the total across independently submitted
+arrays; existing jobs are not cancelled or throttled. GPU memory and throughput
+for this cohort still require a compute-node run.
+
+From a pinned worktree containing this change, using the existing environment:
+
+```bash
+export CP_ROOT=/scratch/gs4133/zhd/CP_new
+source run/precp_env.sh
+unset CP_ENCODERS
+CP_GROUP=six-block CP_CONCURRENCY=10 bash run/slurm/submit_cp_full.sh
+```
+
+Preflight checks the 60 matching pre-CP baselines and reference banks. Results
+remain in `outputs/results/<dataset>/<encoder>/<method>/Full/<seed>/`.
+Logs are `cp-six-block-a100-80gb-<array>_<task>.out` and `.err`.
+To inspect or report without submitting:
+
+```bash
+"$CP_PYTHON" run/cp_full.py list --group six-block
+"$CP_PYTHON" run/cp_full.py check --group six-block --root "$CP_ROOT"
+"$CP_PYTHON" run/cp_full.py run --task-id 301 --num-workers 16 --dry-run
+"$CP_PYTHON" run/cp_full.py report --group six-block --root "$CP_ROOT"
+```
+
+The report writes `cp_full_results.six-block.csv` (240 seed records) and
+`cp_full_summary.six-block.csv` (80 combinations), without duplicating seeds or
+overwriting the earlier cohorts' CSVs. `CP_ENCODERS=MAE` selects the 48 MAE jobs.
 
 ## Outputs
 

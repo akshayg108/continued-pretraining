@@ -8,7 +8,8 @@ GROUP="${CP_GROUP:-small}"
 case "$GROUP" in
     small) gpu_groups=(v100 a100); log_prefix=cp-full ;;
     four-block) gpu_groups=(a100 a100-80gb); log_prefix=cp-four-block ;;
-    *) printf 'CP_GROUP must be small or four-block.\n' >&2; exit 2 ;;
+    six-block) gpu_groups=(a100-80gb); log_prefix=cp-six-block ;;
+    *) printf 'CP_GROUP must be small, four-block, or six-block.\n' >&2; exit 2 ;;
 esac
 if [[ ! "$CONCURRENCY" =~ ^([1-9]|10)$ ]]; then
     printf 'CP_CONCURRENCY must be an integer from 1 to 10.\n' >&2
@@ -49,7 +50,10 @@ for gpu in "${gpu_groups[@]}"; do
     task_lists+=("$tasks")
 done
 
-existing_jobs=$(squeue -h -u "$(id -un)" -n cp-full -o '%F' | sort -u)
+existing_jobs=""
+if [[ "$GROUP" != six-block ]]; then
+    existing_jobs=$(squeue -h -u "$(id -un)" -n cp-full -o '%F' | sort -u)
+fi
 existing_dependency=afterany
 while read -r job; do
     [[ -z "$job" ]] && continue
@@ -61,6 +65,11 @@ while read -r job; do
 done <<< "$existing_jobs"
 
 common=("$@" --chdir="$REPO" --export=ALL --nodes=1 --ntasks=1 --job-name=cp-full)
+runner_args=()
+if [[ "$GROUP" == six-block ]]; then
+    common+=(--cpus-per-task=24 --mem=128G)
+    runner_args=(--num-workers 16)
+fi
 for index in "${!gpu_groups[@]}"; do
     gpu="${gpu_groups[$index]}"
     tasks="${task_lists[$index]}"
@@ -76,7 +85,7 @@ for index in "${!gpu_groups[@]}"; do
         --array="$tasks%$CONCURRENCY" \
         --output="$CP_ROOT/outputs/slurm-log/$log_prefix-$gpu-%A_%a.out" \
         --error="$CP_ROOT/outputs/slurm-log/$log_prefix-$gpu-%A_%a.err" \
-        "$REPO/run/slurm/cp_full.sh")
+        "$REPO/run/slurm/cp_full.sh" ${runner_args[@]+"${runner_args[@]}"})
     job="${job%%;*}"
     if [[ ! "$job" =~ ^[1-9][0-9]*$ ]]; then
         printf 'sbatch returned an invalid %s array job ID: %s\n' "$gpu" "$job" >&2

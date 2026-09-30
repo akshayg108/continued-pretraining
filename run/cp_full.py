@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-budget CP with two- or four-block unfreezing and three seeds per job."""
+"""Full-budget CP: two/four blocks with three seeds, six blocks with one seed per job."""
 
 import argparse
 from contextlib import ExitStack
@@ -46,8 +46,14 @@ FOUR_BLOCK_DATASETS = {
     "eurosat": 16200,
     "stanford_dogs": 10800,
 }
-GROUPS = {"small": DATASETS, "four-block": FOUR_BLOCK_DATASETS}
-TRAIN_SIZES = {**DATASETS, **FOUR_BLOCK_DATASETS}
+SIX_BLOCK_DATASETS = {
+    "resisc45": 25200,
+    "organamnist": 34561,
+    "plant_village": 43596,
+    "ip102": 45095,
+}
+GROUPS = {"small": DATASETS, "four-block": FOUR_BLOCK_DATASETS, "six-block": SIX_BLOCK_DATASETS}
+TRAIN_SIZES = {**DATASETS, **FOUR_BLOCK_DATASETS, **SIX_BLOCK_DATASETS}
 ENCODERS = {
     "DINOv3-B": "DINOv3",
     "CLIP": "CLIP",
@@ -60,18 +66,25 @@ METHODS = {"LeJEPA-CP": "lejepa", "SimCLR-CP": "simclr", "DIET-CP": "diet", "MAE
 TASKS = tuple(product(ENCODERS, DATASETS, METHODS)) + tuple(
     product(ENCODERS, FOUR_BLOCK_DATASETS, METHODS)
 )
+SIX_BLOCK_RUNS = tuple(product(ENCODERS, SIX_BLOCK_DATASETS, METHODS, SEEDS))
+TASK_SEEDS = (SEEDS,) * len(TASKS) + tuple((run[3],) for run in SIX_BLOCK_RUNS)
+TASKS += tuple(run[:3] for run in SIX_BLOCK_RUNS)
 PROTOCOL = "cp_full_small_v1"
 POST_METRICS = tuple(key.replace("pre_", "post_") for key in PRE_METRICS)
 
 
 def gpu_for(task):
     encoder, dataset, method = task
+    if dataset in SIX_BLOCK_DATASETS:
+        return "a100-80gb"
     if dataset in FOUR_BLOCK_DATASETS:
         return "a100-80gb" if encoder == "DINOv3-L" else "a100"
     return "a100" if encoder == "DINOv3-L" or method == "LeJEPA-CP" else "v100"
 
 
 def protocol_for(dataset):
+    if dataset in SIX_BLOCK_DATASETS:
+        return "cp_full_six_block_v1"
     return "cp_full_four_block_v1" if dataset in FOUR_BLOCK_DATASETS else PROTOCOL
 
 
@@ -82,12 +95,13 @@ def encoder_readout(encoder):
 
 def recipe(task):
     encoder, dataset, method = task
+    blocks = 6 if dataset in SIX_BLOCK_DATASETS else 4 if dataset in FOUR_BLOCK_DATASETS else 2
     config = {
         "cp_method": METHODS[method],
         "epochs": 150,
         "freeze_epochs": 15,
         "warmup_epochs": 15,
-        "num_trained_blocks": 4 if dataset in FOUR_BLOCK_DATASETS else 2,
+        "num_trained_blocks": blocks,
         "lr": 1e-4,
         "weight_decay": 0.05,
         "knn_k": 20,
@@ -320,10 +334,11 @@ def attach_baseline(row, pre, source, digest):
 
 def run_task(args):
     task = TASKS[args.task_id]
+    seeds = TASK_SEEDS[args.task_id]
     encoder, dataset, method = task
     if args.dry_run:
         print(f"STAGE {dataset} and ImageNet reference to node-local storage")
-        for seed in SEEDS:
+        for seed in seeds:
             print(
                 shlex.join(
                     command_for(
@@ -344,12 +359,13 @@ def run_task(args):
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required; submit through Slurm.")
     print(f"GPU: {torch.cuda.get_device_name(0)}; requested={gpu_for(task)}", flush=True)
-    directory = seed_dir(args.root, task, SEEDS[0]).parent
+    directory = seed_dir(args.root, task, seeds[0]).parent
     directory.mkdir(parents=True, exist_ok=True)
+    lock = directory / (f".seed{seeds[0]}.run.lock" if len(seeds) == 1 else ".run.lock")
     failures = []
-    with FileLock(str(directory / ".run.lock"), timeout=0), ExitStack() as stack:
+    with FileLock(str(lock), timeout=0), ExitStack() as stack:
         pending = []
-        for seed in SEEDS:
+        for seed in seeds:
             pre, source, digest = baseline(args.root, task, seed)
             path = seed_dir(args.root, task, seed)
             path.mkdir(exist_ok=True)
@@ -408,7 +424,7 @@ def report(root, encoders=None, group="small"):
         *(f"{stage}_{key}" for stage in ("pre", "post", "delta") for key in GEOMETRY_METRICS),
         *(key.replace("pre_", "delta_") for key in PRE_METRICS),
     )
-    for task in TASKS:
+    for task in dict.fromkeys(TASKS):
         encoder, dataset, method = task
         if encoder not in encoders or dataset not in GROUPS[group]:
             continue
@@ -505,8 +521,10 @@ def main():
             print(",".join(str(i) for i, _ in selected))
         else:
             for i, task in selected:
-                print(f"{i:3d} {gpu_for(task):5s} {' / '.join(task)} seeds=42,43,44")
-            print(f"{len(selected)} jobs; {len(selected) * 3} CP runs; Full; no FT.")
+                seeds = ",".join(map(str, TASK_SEEDS[i]))
+                print(f"{i:3d} {gpu_for(task):5s} {' / '.join(task)} seeds={seeds}")
+            runs = sum(len(TASK_SEEDS[i]) for i, _ in selected)
+            print(f"{len(selected)} jobs; {runs} CP runs; Full; no FT.")
         return
     args.root = args.root.expanduser().resolve()
     if args.command == "run":
