@@ -29,6 +29,9 @@ FOUR_BLOCK = {
 SIX_BLOCK = {
     "resisc45": 25200, "organamnist": 34561, "plant_village": 43596, "ip102": 45095,
 }
+ALL_BLOCK = {
+    "food101": 75750, "pathmnist": 89996, "octmnist": 97477, "tissuemnist": 165466,
+}
 ENCODERS = ("DINOv3-B", "CLIP", "SigLiP-2", "DINOv3-L", "MAE")
 METHODS = ("LeJEPA-CP", "SimCLR-CP", "DIET-CP", "MAE-CP")
 
@@ -135,11 +138,11 @@ class FullGridTests(unittest.TestCase):
             self.assertEqual(merged["baseline_sha256"], "sha")
 
     def test_six_block_ids_cover_each_combination_and_seed_once(self):
-        self.assertEqual(len(cp.TASKS), 540)
+        self.assertEqual(len(cp.TASKS), 732)
         self.assertEqual(len(cp.TASK_SEEDS), len(cp.TASKS))
         self.assertTrue(all(seeds == cp.SEEDS for seeds in cp.TASK_SEEDS[:300]))
         runs = []
-        for task, seeds in zip(cp.TASKS[300:], cp.TASK_SEEDS[300:]):
+        for task, seeds in zip(cp.TASKS[300:540], cp.TASK_SEEDS[300:540]):
             self.assertEqual(len(seeds), 1)
             runs.append((*task, seeds[0]))
         self.assertEqual(runs, list(product(ENCODERS, SIX_BLOCK, METHODS, (42, 43, 44))))
@@ -154,6 +157,29 @@ class FullGridTests(unittest.TestCase):
             self.assertEqual(cli("array", "--group", "six-block", "--gpu", gpu), "\n")
         self.assertIn("48 jobs; 48 CP runs; Full; no FT.",
                       cli("list", "--group", "six-block", "--encoder", "MAE"))
+
+    def test_all_block_cohort_has_four_encoders_and_one_seed_per_job(self):
+        encoders = tuple(e for e in ENCODERS if e != "DINOv3-L")
+        runs = [(*task, seeds[0]) for task, seeds in zip(cp.TASKS[540:], cp.TASK_SEEDS[540:])]
+        self.assertEqual(runs, list(product(encoders, ALL_BLOCK, METHODS, (42, 43, 44))))
+        self.assertTrue(all(len(s) == 1 for s in cp.TASK_SEEDS[540:]))
+        self.assertIn("192 jobs; 192 CP runs; Full; no FT.", cli("list", "--group", "all-block"))
+        for task in cp.TASKS[540:]:
+            expected = cp.recipe((task[0], "breastmnist", task[2]))
+            expected["num_trained_blocks"] = -1
+            self.assertEqual(cp.recipe(task), expected)
+            self.assertEqual(cp.gpu_for(task), "a100-80gb")
+            self.assertEqual(cp.protocol_for(task[1]), "cp_full_all_block_v1")
+        with patch.object(cp, "baseline") as baseline, patch.object(cp, "validate_reference"):
+            self.assertIn("READY: 48", cli("check", "--group", "all-block"))
+            self.assertEqual(baseline.call_count, 48)
+
+    def test_large_memory_workloads_enable_activation_checkpointing(self):
+        for task in [("DINOv3-L", "eurosat", "LeJEPA-CP"),
+                     ("CLIP", "food101", "SimCLR-CP"),
+                     ("MAE", "pathmnist", "MAE-CP")]:
+            args = cp.command_for(Path("/root"), task, 42, "/local/data", "/local/ref", 16)
+            self.assertIn("--activation-checkpointing", args)
 
     def test_six_block_recipe_changes_only_depth(self):
         for encoder, dataset, method in product(ENCODERS, SIX_BLOCK, METHODS):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full-budget CP: two/four blocks with three seeds, six blocks with one seed per job."""
+"""Full-budget CP with stable task IDs and single-seed large-dataset jobs."""
 
 import argparse
 from contextlib import ExitStack
@@ -52,8 +52,15 @@ SIX_BLOCK_DATASETS = {
     "plant_village": 43596,
     "ip102": 45095,
 }
-GROUPS = {"small": DATASETS, "four-block": FOUR_BLOCK_DATASETS, "six-block": SIX_BLOCK_DATASETS}
-TRAIN_SIZES = {**DATASETS, **FOUR_BLOCK_DATASETS, **SIX_BLOCK_DATASETS}
+ALL_BLOCK_DATASETS = {
+    "food101": 75750,
+    "pathmnist": 89996,
+    "octmnist": 97477,
+    "tissuemnist": 165466,
+}
+GROUPS = {"small": DATASETS, "four-block": FOUR_BLOCK_DATASETS,
+          "six-block": SIX_BLOCK_DATASETS, "all-block": ALL_BLOCK_DATASETS}
+TRAIN_SIZES = {**DATASETS, **FOUR_BLOCK_DATASETS, **SIX_BLOCK_DATASETS, **ALL_BLOCK_DATASETS}
 ENCODERS = {
     "DINOv3-B": "DINOv3",
     "CLIP": "CLIP",
@@ -69,13 +76,17 @@ TASKS = tuple(product(ENCODERS, DATASETS, METHODS)) + tuple(
 SIX_BLOCK_RUNS = tuple(product(ENCODERS, SIX_BLOCK_DATASETS, METHODS, SEEDS))
 TASK_SEEDS = (SEEDS,) * len(TASKS) + tuple((run[3],) for run in SIX_BLOCK_RUNS)
 TASKS += tuple(run[:3] for run in SIX_BLOCK_RUNS)
+ALL_BLOCK_ENCODERS = tuple(encoder for encoder in ENCODERS if encoder != "DINOv3-L")
+ALL_BLOCK_RUNS = tuple(product(ALL_BLOCK_ENCODERS, ALL_BLOCK_DATASETS, METHODS, SEEDS))
+TASKS += tuple(run[:3] for run in ALL_BLOCK_RUNS)
+TASK_SEEDS += tuple((run[3],) for run in ALL_BLOCK_RUNS)
 PROTOCOL = "cp_full_small_v1"
 POST_METRICS = tuple(key.replace("pre_", "post_") for key in PRE_METRICS)
 
 
 def gpu_for(task):
     encoder, dataset, method = task
-    if dataset in SIX_BLOCK_DATASETS:
+    if dataset in SIX_BLOCK_DATASETS or dataset in ALL_BLOCK_DATASETS:
         return "a100-80gb"
     if dataset in FOUR_BLOCK_DATASETS:
         return "a100-80gb" if encoder == "DINOv3-L" else "a100"
@@ -83,6 +94,8 @@ def gpu_for(task):
 
 
 def protocol_for(dataset):
+    if dataset in ALL_BLOCK_DATASETS:
+        return "cp_full_all_block_v1"
     if dataset in SIX_BLOCK_DATASETS:
         return "cp_full_six_block_v1"
     return "cp_full_four_block_v1" if dataset in FOUR_BLOCK_DATASETS else PROTOCOL
@@ -96,6 +109,8 @@ def encoder_readout(encoder):
 def recipe(task):
     encoder, dataset, method = task
     blocks = 6 if dataset in SIX_BLOCK_DATASETS else 4 if dataset in FOUR_BLOCK_DATASETS else 2
+    if dataset in ALL_BLOCK_DATASETS:
+        blocks = -1
     config = {
         "cp_method": METHODS[method],
         "epochs": 150,
@@ -178,6 +193,8 @@ def command_for(root, task, seed, cache_dir, reference_dir, workers):
     ]
     for key, value in recipe(task).items():
         command.extend(("--" + key.replace("_", "-"), str(value)))
+    if task[2] == "LeJEPA-CP" or dataset in ALL_BLOCK_DATASETS:
+        command.append("--activation-checkpointing")
     return command
 
 
@@ -510,6 +527,8 @@ def main():
         encoder for encoder in ENCODERS
         if getattr(args, "encoder", None) is None or encoder in args.encoder
     )
+    if getattr(args, "group", None) == "all-block":
+        encoders = tuple(encoder for encoder in encoders if encoder in ALL_BLOCK_ENCODERS)
     if args.command in {"list", "array"}:
         selected = [
             (i, task)

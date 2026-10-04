@@ -3,6 +3,24 @@ set -euo pipefail
 
 REPO="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO/run/precp_env.sh"
+if [[ -n "${CP_TASK_IDS:-}" ]]; then
+    if [[ ! "$CP_TASK_IDS" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]]; then
+        printf 'CP_TASK_IDS must contain comma-separated task IDs or ranges.\n' >&2
+        exit 2
+    fi
+    # Explicit recovery lists were audited against completed seed results.
+    unset SBATCH_DEPENDENCY SBATCH_ARRAY_INX
+    job=$(sbatch --parsable --partition=nvidia --account=civil --qos=nvidia \
+        --chdir="$REPO" --export=ALL --job-name=cp-full \
+        --nodes=1 --ntasks=1 --gres=gpu:a100:1 --constraint=80g \
+        --exclude=cn253,cn259 --cpus-per-task=24 --mem=256G --time=96:00:00 \
+        --array="$CP_TASK_IDS" \
+        --output="$CP_ROOT/outputs/slurm-log/cp-merged-%A_%a.out" \
+        --error="$CP_ROOT/outputs/slurm-log/cp-merged-%A_%a.err" \
+        "$REPO/run/slurm/cp_full.sh" --num-workers 16)
+    printf 'CP merged array: %s (no array throttle; no dependency)\n' "${job%%;*}"
+    exit 0
+fi
 CONCURRENCY="${CP_CONCURRENCY:-10}"
 GROUP="${CP_GROUP:-small}"
 case "$GROUP" in

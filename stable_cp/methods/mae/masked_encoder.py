@@ -2,6 +2,7 @@
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 from timm.layers import apply_keep_indices_nlc
 from stable_pretraining.backbone import MaskedEncoder
 from stable_pretraining.backbone.vit import MaskedEncoderOutput
@@ -39,7 +40,11 @@ class NativeMaskedEncoder(MaskedEncoder):
 
         tokens = self.vit.norm_pre(tokens)
         for block in self.vit.blocks:
-            tokens = block(tokens, rope=rope) if rope is not None else block(tokens)
+            kwargs = {"rope": rope} if rope is not None else {}
+            if self.vit.grad_checkpointing and torch.is_grad_enabled():
+                tokens = checkpoint(block, tokens, use_reentrant=False, **kwargs)
+            else:
+                tokens = block(tokens, **kwargs)
         return MaskedEncoderOutput(
             encoded=self.vit.norm(tokens),
             mask=mask,

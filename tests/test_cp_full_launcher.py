@@ -43,6 +43,20 @@ elif "array" in args:
 
 
 class CPFullLauncherTests(unittest.TestCase):
+    def test_merged_recovery_is_one_unthrottled_array(self):
+        result, calls, root, repo = self.launch(env_overrides={
+            "CP_TASK_IDS": "256,460,540-731",
+        })
+        self.assert_success(result)
+        submissions = self.submissions(calls)
+        self.assertEqual(len(submissions), 1)
+        args = submissions[0]
+        for arg in ("--array=256,460,540-731", "--gres=gpu:a100:1", "--constraint=80g",
+                    "--cpus-per-task=24", "--mem=256G", "--nodes=1", "--ntasks=1"):
+            self.assertIn(arg, args)
+        self.assertFalse(any(arg.startswith("--dependency") for arg in args))
+        self.assertEqual(args[-2:], ["--num-workers", "16"])
+
     def launch(self, *, env_overrides=None, tasks=None, args=()):
         with tempfile.TemporaryDirectory(prefix="cp launcher ") as folder:
             root = Path(folder)

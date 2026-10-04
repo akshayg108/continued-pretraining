@@ -48,6 +48,10 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--freeze-epochs", type=int, default=None)
     parser.add_argument("--num-trained-blocks", type=int, default=2)
+    parser.add_argument(
+        "--activation-checkpointing", action="store_true",
+        help="Recompute transformer activations during backward to reduce GPU memory.",
+    )
     parser.add_argument("--warmup-epochs", type=int, default=None)
     parser.add_argument("--knn-k", type=int, default=20)
     parser.add_argument("--skip-baseline", action="store_true")
@@ -441,6 +445,10 @@ def run_training(
         and _load_completed_checkpoint(module, checkpoint, args)
     ):
         return
+
+    if getattr(args, "activation_checkpointing", False):
+        backbone = getattr(module.backbone, "vit", module.backbone)
+        backbone.set_grad_checkpointing(True)
 
     callbacks = [
         FreezeBackboneCallback(freeze_epochs=freeze_epochs, num_trained_blocks=num_trained_blocks),
