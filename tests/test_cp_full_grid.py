@@ -44,6 +44,25 @@ def cli(*args):
 
 
 class FullGridTests(unittest.TestCase):
+    def test_seed_override_runs_only_requested_seed(self):
+        output = cli("run", "--task-id", "263", "--seed", "43", "--dry-run")
+        self.assertEqual(output.count("--seed 43"), 1)
+        self.assertNotIn("--seed 42", output)
+        self.assertNotIn("--seed 44", output)
+
+    def test_manifest_maps_array_index_to_single_seed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            manifest = Path(folder) / "tasks.json"
+            manifest.write_text(json.dumps([{"task_id": 263, "seed": 44}]))
+            output = cli("run", "--task-id", "0", "--task-manifest", str(manifest), "--dry-run")
+        self.assertIn("--dataset eurosat", output)
+        self.assertIn("--seed 44", output)
+        self.assertNotIn("--seed 42", output)
+
+    def test_evaluation_only_command_requires_completed_checkpoint(self):
+        output = cli("run", "--task-id", "460", "--seed", "43", "--evaluation-only", "--dry-run")
+        self.assertIn("--require-completed-checkpoint", output)
+
     def test_original_ids_and_default_selection_are_unchanged(self):
         self.assertEqual(cp.TASKS[:220], tuple(product(ENCODERS, SMALL, METHODS)))
         self.assertIn("220 jobs; 660 CP runs; Full; no FT.", cli("list"))

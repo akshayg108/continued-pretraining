@@ -162,7 +162,7 @@ def seed_dir(root, task, seed):
     return root / "outputs/results" / dataset / encoder / method / "Full" / str(seed)
 
 
-def command_for(root, task, seed, cache_dir, reference_dir, workers):
+def command_for(root, task, seed, cache_dir, reference_dir, workers, evaluation_only=False):
     encoder, dataset, _ = task
     output = seed_dir(root, task, seed)
     command = [
@@ -195,6 +195,8 @@ def command_for(root, task, seed, cache_dir, reference_dir, workers):
         command.extend(("--" + key.replace("_", "-"), str(value)))
     if task[2] == "LeJEPA-CP" or dataset in ALL_BLOCK_DATASETS:
         command.append("--activation-checkpointing")
+    if evaluation_only:
+        command.append("--require-completed-checkpoint")
     return command
 
 
@@ -352,6 +354,11 @@ def attach_baseline(row, pre, source, digest):
 def run_task(args):
     task = TASKS[args.task_id]
     seeds = TASK_SEEDS[args.task_id]
+    if getattr(args, "seed", None) is not None:
+        if args.seed not in seeds:
+            raise ValueError(f"Seed {args.seed} does not belong to task {args.task_id}")
+        seeds = (args.seed,)
+    evaluation_only = getattr(args, "evaluation_only", False)
     encoder, dataset, method = task
     if args.dry_run:
         print(f"STAGE {dataset} and ImageNet reference to node-local storage")
@@ -365,6 +372,7 @@ def run_task(args):
                         args.root / "data",
                         args.root / "data/imagenet_reference_5000",
                         args.num_workers,
+                        evaluation_only,
                     )
                 )
             )
@@ -409,7 +417,8 @@ def run_task(args):
             label = f"{encoder}/{dataset}/{method}/{seed}"
             path = seed_dir(args.root, task, seed)
             command = command_for(
-                args.root, task, seed, local_data, local_reference, args.num_workers
+                args.root, task, seed, local_data, local_reference, args.num_workers,
+                evaluation_only,
             )
             log = path / "run.log"
             print(f"RUN {label} log={log}", flush=True)
@@ -518,6 +527,9 @@ def main():
         if name == "run":
             command.add_argument("--task-id", type=int, required=True, choices=range(len(TASKS)))
             command.add_argument("--num-workers", type=int, default=8)
+            command.add_argument("--seed", type=int, choices=SEEDS)
+            command.add_argument("--task-manifest", type=Path)
+            command.add_argument("--evaluation-only", action="store_true")
             command.add_argument("--dry-run", action="store_true")
         else:
             command.add_argument("--group", choices=tuple(GROUPS), default="small")
@@ -547,6 +559,9 @@ def main():
         return
     args.root = args.root.expanduser().resolve()
     if args.command == "run":
+        if args.task_manifest:
+            selected = json.loads(args.task_manifest.read_text())[args.task_id]
+            args.task_id, args.seed = selected["task_id"], selected["seed"]
         run_task(args)
     elif args.command == "report":
         report(args.root, encoders, args.group)

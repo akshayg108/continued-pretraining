@@ -56,6 +56,8 @@ def create_base_parser(description="Continued Pretraining"):
     parser.add_argument("--knn-k", type=int, default=20)
     parser.add_argument("--skip-baseline", action="store_true")
     parser.add_argument("--skip-final-eval", action="store_true")
+    parser.add_argument("--require-completed-checkpoint", action="store_true",
+                        help="Evaluate existing completed CP weights without starting training.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument(
@@ -445,6 +447,9 @@ def run_training(
         and _load_completed_checkpoint(module, checkpoint, args)
     ):
         return
+
+    if getattr(args, "require_completed_checkpoint", False):
+        raise ValueError(f"Evaluation requires a completed CP checkpoint: {checkpoint}")
 
     if getattr(args, "activation_checkpointing", False):
         backbone = getattr(module.backbone, "vit", module.backbone)
