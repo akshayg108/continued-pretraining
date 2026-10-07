@@ -189,7 +189,7 @@ def _get_methods():
 
 
 def _create_shared_eval_data(args, ds_cfg, data_dir):
-    """Create shared eval loaders and the shared sampled train indices."""
+    """Use full training data for LP and kNN while preserving the sampled CP indices."""
     eval_args = argparse.Namespace(**vars(args))
     if getattr(args, "eval_batch_size", None) is not None:
         eval_args.batch_size = args.eval_batch_size
@@ -197,11 +197,11 @@ def _create_shared_eval_data(args, ds_cfg, data_dir):
         eval_args.num_workers = args.eval_num_workers
     train_tf, eval_tf = create_transforms(ds_cfg, n_views=1, strong_aug=False)
     test_loader, eval_train_loader, indices = create_eval_loaders(
-        eval_args, ds_cfg, train_tf, eval_tf, data_dir
+        eval_args, ds_cfg, train_tf, eval_tf, data_dir, use_full_train=True
     )
-    # Clean train loader for KNN (same indices, no augmentation)
+    # Clean full-train reference for kNN; CP still uses the sampled indices.
     _, knn_train_loader, _ = create_eval_loaders(
-        eval_args, ds_cfg, eval_tf, eval_tf, data_dir, indices=indices
+        eval_args, ds_cfg, eval_tf, eval_tf, data_dir, indices=indices, use_full_train=True
     )
     return eval_tf, test_loader, eval_train_loader, knn_train_loader, indices
 
@@ -725,6 +725,8 @@ def main():
         ds_cfg,
         data_dir,
     )
+    if geometry is not None and len(indices) < len(knn_train_loader.dataset):
+        geometry["target_indices"] = indices
 
     # SFT data (n_views=1, standard augmentation)
     if args.pre_cp_sft or args.post_cp_sft:
@@ -839,6 +841,8 @@ def main():
             # New post-geometry runs keep evaluation RNG independent of CP/resume work.
             pl.seed_everything(args.seed, workers=True)
             post_geometry = create_post_geometry(backbone, device, args, ds_cfg)
+            if len(indices) < len(knn_train_loader.dataset):
+                post_geometry["target_indices"] = indices
         final_eval_results = run_final_eval(
             backbone,
             eval_train_loader,
@@ -870,6 +874,8 @@ def main():
             "dataset": args.dataset,
             "n_samples": args.n_samples,
             "n_train_actual": len(indices),
+            "n_lp_train": len(eval_train_loader.dataset),
+            "n_knn_train": len(knn_train_loader.dataset),
             "n_test": len(test_loader.dataset),
             "num_classes": ds_cfg["num_classes"],
             "full_train": args.full_train,

@@ -112,8 +112,9 @@ def create_eval_loaders(
     data_dir,
     indices=None,
     remap_sample_idx=True,
+    use_full_train=False,
 ):
-    """Return test and training-reference loaders plus their shared indices."""
+    """Return eval loaders and CP indices, optionally using the full train split for evaluation."""
     splits = ds_cfg.get("splits", ["train", "validation", "test"])
     train_split, _, test_split = splits
 
@@ -135,10 +136,11 @@ def create_eval_loaders(
     if indices is None:
         indices = _sample_shared_train_indices_by_class(args, eval_train)
 
+    eval_indices = list(range(len(eval_train))) if use_full_train else indices
     eval_subset = (
-        CPSubset(eval_train, indices)
+        CPSubset(eval_train, eval_indices)
         if remap_sample_idx
-        else torch.utils.data.Subset(eval_train, indices)
+        else torch.utils.data.Subset(eval_train, eval_indices)
     )
     eval_train_loader = torch.utils.data.DataLoader(
         eval_subset,

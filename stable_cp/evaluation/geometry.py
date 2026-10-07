@@ -103,7 +103,7 @@ def geometry_descriptors(features, reference):
     }
 
 
-def evaluate_geometry(features, reference_path, output_path=None, *, metadata):
+def evaluate_geometry(features, reference_path, output_path=None, *, metadata, target_indices=None):
     """Measure selected clean target features against a compatible reference archive."""
     reference_path = Path(reference_path).expanduser().resolve()
     with np.load(reference_path, allow_pickle=False) as archive:
@@ -120,6 +120,8 @@ def evaluate_geometry(features, reference_path, output_path=None, *, metadata):
         if reference_metadata.get(key) != value:
             raise ValueError(f"Reference metadata mismatch for {key}: {reference_path}")
 
+    if target_indices is not None:
+        features = np.asarray(features)[target_indices]
     indices = select_geometry_indices(len(features))
     bank = np.asarray(features)[indices]
     if bank.dtype.hasobject:
